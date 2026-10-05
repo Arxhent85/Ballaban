@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { viteSingleFile } from 'vite-plugin-singlefile';
@@ -7,7 +8,21 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     base: './',
-    plugins: [react(), tailwindcss(), viteSingleFile()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      viteSingleFile(),
+      {
+        name: 'copy-hausplaner',
+        closeBundle() {
+          try {
+            if (fs.existsSync('dist/index.html')) {
+              fs.copyFileSync('dist/index.html', 'HausPlaner.html');
+            }
+          } catch {}
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
