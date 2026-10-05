@@ -1,0 +1,7 @@
+{
+  "name": "Ferienhaus Grundriss- & Bauplan-Planer CAD",
+  "description": "Professionelles und intuitives CAD-Programm zum Zeichnen von Grundrissen, Bauplänen, 3D-Modellen, Schnitten und Auswertungen für Ferienhäuser.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
