@@ -50,6 +50,7 @@ interface CadToolbarProps {
   onOpenWallNumericModal: () => void;
   onOpenRoofModal?: () => void;
   leftHandedMode?: boolean;
+  isFullscreen?: boolean;
 }
 
 export const CadToolbar: React.FC<CadToolbarProps> = ({
@@ -60,6 +61,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
   onOpenWallNumericModal,
   onOpenRoofModal,
   leftHandedMode = false,
+  isFullscreen = false,
 }) => {
   const t = getT(language);
   const [showWallSubmenu, setShowWallSubmenu] = useState(false);

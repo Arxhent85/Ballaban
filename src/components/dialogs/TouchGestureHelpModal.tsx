@@ -125,9 +125,9 @@ export const TouchGestureHelpModal: React.FC<TouchGestureHelpModalProps> = ({
                   4👆T
                 </div>
                 <div>
-                  <h4 className="font-semibold text-stone-900 dark:text-white">Vierfinger-Tipp: Fokusmodus</h4>
+                  <h4 className="font-semibold text-stone-900 dark:text-white">Vierfinger-Tipp: Vollbild</h4>
                   <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
-                    Blendet alle Leisten aus für 100% freie Arbeitsfläche. Erneuter 4-Finger-Tipp bringt die Leisten zurück.
+                    Schaltet Browser-Vollbild ein oder aus für maximale Arbeitsfläche.
                   </p>
                 </div>
               </div>

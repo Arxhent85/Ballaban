@@ -49,10 +49,6 @@ interface CadTouchControlsProps {
   precisionMode: PrecisionMode;
   onTogglePrecisionMode: () => void;
 
-  // Focus mode
-  isFocusMode: boolean;
-  onExitFocusMode: () => void;
-
   // View rotation
   viewRotationDeg: number;
   onResetRotation?: () => void;
@@ -96,8 +92,6 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
   onTogglePencilMode,
   precisionMode,
   onTogglePrecisionMode,
-  isFocusMode,
-  onExitFocusMode,
   viewRotationDeg,
   onResetRotation,
   showNumpad,
@@ -121,21 +115,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
 }) => {
   return (
     <>
-      {/* 1. FOCUS MODE EXIT CHIP (Discreet glass pill in top center) */}
-      {isFocusMode && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 animate-in fade-in duration-200">
-          <button
-            onClick={onExitFocusMode}
-            className="flex items-center gap-2 px-4 py-2 bg-stone-900/90 text-white border border-stone-700/80 rounded-full shadow-2xl backdrop-blur-md text-xs font-semibold hover:bg-stone-800 transition-all cursor-pointer active:scale-95"
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
-            <span>Fokusmodus beenden (Vierfinger-Tipp)</span>
-            <X className="w-3.5 h-3.5 ml-1 text-stone-400" />
-          </button>
-        </div>
-      )}
-
-      {/* 2. ROTATION RESET CHIP (When view is rotated with 2 fingers) */}
+      {/* 1. ROTATION RESET CHIP (When view is rotated with 2 fingers) */}
       {Math.abs(viewRotationDeg) > 1 && (
         <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 animate-in fade-in duration-200">
           <button
@@ -148,7 +128,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
         </div>
       )}
 
-      {/* 3. FLOATING PRIMARY ACTION BUTTONS [Fertig ✓] & [Abbrechen ✕] (When drawing walls / plot) */}
+      {/* 2. FLOATING PRIMARY ACTION BUTTONS [Fertig ✓] & [Abbrechen ✕] (When drawing walls / plot) */}
       {isDrawingActive && (
         <div
           className={`fixed bottom-12 ${
@@ -179,13 +159,12 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
         </div>
       )}
 
-      {/* 4. SLENDER FLOATING QUICK TOUCH CHIPS BAR (Bottom-Left / Right) */}
-      {!isFocusMode && (
-        <div
-          className={`fixed bottom-3 ${
-            isLeftHanded ? 'right-4' : 'left-4'
-          } z-30 flex flex-wrap items-center gap-1.5 p-1 bg-stone-900/80 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl max-w-[85vw]`}
-        >
+      {/* 3. SLENDER FLOATING QUICK TOUCH CHIPS BAR (Bottom-Left / Right) */}
+      <div
+        className={`fixed bottom-3 ${
+          isLeftHanded ? 'right-4' : 'left-4'
+        } z-30 flex flex-wrap items-center gap-1.5 p-1 bg-stone-900/80 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl max-w-[85vw]`}
+      >
           {/* Multi-Select Toggle */}
           <button
             onClick={onToggleMultiSelect}
@@ -274,7 +253,6 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             <span>123</span>
           </button>
         </div>
-      )}
 
       {/* 5. VIRTUAL TOUCH CAD NUMPAD (Effortless touch dimension entry without OS keyboard) */}
       {showNumpad && (

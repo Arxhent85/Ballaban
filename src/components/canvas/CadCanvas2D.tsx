@@ -136,7 +136,7 @@ interface CadCanvas2DProps {
   onUndo?: () => void;
   onRedo?: () => void;
   onZoomFit?: () => void;
-  onToggleFocusMode?: () => void;
+  onToggleFullscreen?: () => void;
   onShowClipboardSheet?: () => void;
   pencilMode?: PencilMode;
   precisionMode?: PrecisionMode;
@@ -207,7 +207,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   onUndo,
   onRedo,
   onZoomFit,
-  onToggleFocusMode,
+  onToggleFullscreen,
   onShowClipboardSheet,
   pencilMode = 'pencilDrawsFingerNavigates',
   precisionMode = 'offsetCrosshairWithLoupe',
@@ -3512,7 +3512,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             onRedo?.();
           }
         } else if (g.fingerCount === 4) {
-          onToggleFocusMode?.();
+          onToggleFullscreen?.();
         }
       }
       multiTouchGestureRef.current = null;

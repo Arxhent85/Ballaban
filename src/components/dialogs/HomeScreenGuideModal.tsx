@@ -45,7 +45,7 @@ export const HomeScreenGuideModal: React.FC<HomeScreenGuideModalProps> = ({
             </div>
             <div>
               <h2 className="font-bold text-base text-stone-900 dark:text-white">
-                Fokusmodus aktiv • Ohne Safari-Leisten starten
+                Vollbild-Tipp • Ohne Safari-Leisten starten
               </h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
                 Für 100 % freie Zeichenfläche auf dem iPad

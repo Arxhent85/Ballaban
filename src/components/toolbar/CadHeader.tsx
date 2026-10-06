@@ -78,7 +78,6 @@ interface CadHeaderProps {
   onDeleteFloor: (floorId: string) => void;
   onRenameProject: (name: string) => void;
   onZoomFit?: () => void;
-  isFocusMode?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onOpenGestureHelp?: () => void;
@@ -113,7 +112,6 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   onDeleteFloor,
   onRenameProject,
   onZoomFit,
-  isFocusMode = false,
   isFullscreen = false,
   onToggleFullscreen,
   onOpenGestureHelp,
@@ -147,14 +145,16 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
     }
   };
 
-  const isFullscreenActive = isFullscreen || isFocusMode;
+  const isFullscreenActive = isFullscreen;
 
   return (
     <header
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingLeft: 'max(env(safe-area-inset-left, 0px), 0.5rem)',
-        paddingRight: 'max(env(safe-area-inset-right, 0px), 5.5rem)',
+        paddingLeft: isFullscreenActive
+          ? 'max(env(safe-area-inset-left, 0px), 4.5rem)'
+          : 'max(env(safe-area-inset-left, 0px), 0.5rem)',
+        paddingRight: 'max(env(safe-area-inset-right, 0px), 6.5rem)',
       }}
       className="h-12 md:h-13 border-b border-stone-200 dark:border-stone-800 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md px-2 sm:px-3 flex items-center justify-between z-30 select-none shrink-0 text-stone-800 dark:text-stone-100 transition-colors"
     >
@@ -559,11 +559,11 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
 
         <div className="h-4 w-px bg-stone-200 dark:bg-stone-800 mx-0.5" />
 
-        {/* VOLLBILD / FOKUSMODUS: IMMER SICHTBAR & NIE ABGESCHNITTEN */}
+        {/* VOLLBILD: IMMER SICHTBAR & NIE ABGESCHNITTEN */}
         {onToggleFullscreen && (
           <button
             onClick={onToggleFullscreen}
-            title={isFullscreenActive ? 'Vollbild / Fokusmodus beenden (Esc)' : 'Vollbild / Fokusmodus aktivieren (100% Zeichenfläche)'}
+            title={isFullscreenActive ? 'Vollbild beenden (Esc)' : 'Vollbild aktivieren (Browserleiste ausblenden)'}
             className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer font-medium text-xs ${
               isFullscreenActive
                 ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-500 text-amber-700 dark:text-amber-300 font-bold shadow-xs'

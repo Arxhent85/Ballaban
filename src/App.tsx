@@ -164,7 +164,6 @@ export default function App() {
 
   // Tablet, Touch & Apple Pencil UI State
   const isTablet = useMemo(() => isTouchDevice(), []);
-  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [pencilMode, setPencilMode] = useState<PencilMode>('finger_draws_too');
   const [precisionMode, setPrecisionMode] = useState<PrecisionMode>('normal');
   const [touchSettings, setTouchSettings] = useState<TouchGestureSettings>(() => {
@@ -204,16 +203,6 @@ export default function App() {
   });
   const [showHomeScreenGuide, setShowHomeScreenGuide] = useState<boolean>(false);
 
-  // Automatically exit any native video/fullscreen on iOS/iPadOS to eliminate the intrusive native "X" overlay
-  useEffect(() => {
-    if (isIOSorIPadDevice() && (document.fullscreenElement || (document as any).webkitFullscreenElement)) {
-      try {
-        if (document.exitFullscreen) document.exitFullscreen();
-        else if ((document as any).webkitExitFullscreen) (document as any).webkitExitFullscreen();
-      } catch {}
-    }
-  }, []);
-
   useEffect(() => {
     const handleFullscreenChange = () => {
       const active = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
@@ -234,29 +223,6 @@ export default function App() {
         else if ((document as any).webkitExitFullscreen) await (document as any).webkitExitFullscreen();
       } catch {}
       setIsFullscreen(false);
-      setIsFocusMode(false);
-      return;
-    }
-
-    if (isFocusMode) {
-      setIsFocusMode(false);
-      return;
-    }
-
-    // On iOS/iPadOS Safari, HTML5 requestFullscreen() injects an intrusive native "X" overlay
-    // button in the top-left corner that blocks drawing tools.
-    // Instead, on iPad we use clean CSS Focus Mode (or PWA standalone), giving 100% free workspace
-    // without any system "X" overlay!
-    if (isIOSorIPadDevice()) {
-      setIsFocusMode(true);
-      const isStandalone = (window.navigator as any).standalone || window.matchMedia('(display-mode: standalone)').matches;
-      let dismissed = false;
-      try {
-        dismissed = localStorage.getItem('cad_dismiss_homescreen_guide_v1') === 'true';
-      } catch {}
-      if (!isStandalone && !dismissed) {
-        setShowHomeScreenGuide(true);
-      }
       return;
     }
 
@@ -275,7 +241,6 @@ export default function App() {
     }
 
     if (!nativeSuccess) {
-      setIsFocusMode(true);
       const isStandalone = (window.navigator as any).standalone || window.matchMedia('(display-mode: standalone)').matches;
       let dismissed = false;
       try {
@@ -285,7 +250,7 @@ export default function App() {
         setShowHomeScreenGuide(true);
       }
     }
-  }, [isFocusMode]);
+  }, []);
 
   const handleSaveDefaultsWalls = useCallback(() => {
     updateProject({
@@ -1614,137 +1579,130 @@ export default function App() {
   return (
     <div className={`w-screen h-screen flex flex-col overflow-hidden ${isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-white text-slate-800'}`}>
       {/* 1. TOP HEADER & MENUS */}
-      {!isFocusMode && (
-        <CadHeader
-          project={project}
-          activeFloor={activeFloor}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          language={language}
-          onLanguageChange={setLanguage}
-          isDark={isDark}
-          onToggleTheme={() => setIsDark(!isDark)}
-          canUndo={historyIndex > 0}
-          canRedo={historyIndex < history.length - 1}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onNewProject={handleResetEmptyProject}
-          onResetProjectPrompt={() => setShowClearConfirm(true)}
-          onOpenProject={(file) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              try {
-                const parsed = JSON.parse(e.target?.result as string);
-                if (parsed.floors) {
-                  updateProject(parsed);
-                  handleZoomFit();
-                }
-              } catch {
-                alert('Ungültige CAD-Datei');
+      <CadHeader
+        project={project}
+        activeFloor={activeFloor}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        language={language}
+        onLanguageChange={setLanguage}
+        isDark={isDark}
+        onToggleTheme={() => setIsDark(!isDark)}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onNewProject={handleResetEmptyProject}
+        onResetProjectPrompt={() => setShowClearConfirm(true)}
+        onOpenProject={(file) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const parsed = JSON.parse(e.target?.result as string);
+              if (parsed.floors) {
+                updateProject(parsed);
+                handleZoomFit();
               }
-            };
-            reader.readAsText(file);
-          }}
-          onSaveProject={() => {
-            const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(project, null, 2));
-            const dl = document.createElement('a');
-            dl.href = dataStr;
-            dl.download = `${project.name.replace(/\s+/g, '_')}.cad`;
-            dl.click();
-          }}
-          onOpenExportDialog={() => setShowExport(true)}
-          onOpenWizard={() => setShowWizard(true)}
-          onOpenTemplates={() => setShowTemplates(true)}
-          onOpenHelp={() => setShowHelp(true)}
-          onOpenSettings={() => setShowSettings(true)}
-          onOpenHistory={() => setShowHistory(true)}
-          onSwitchFloor={(fId) => setProject({ ...project, activeFloorId: fId })}
-          onAddFloor={() => {
-            const cnt = project.floors.length + 1;
-            const newFl: Floor = {
-              id: 'floor_' + Date.now(),
-              name: `${cnt}. Obergeschoss`,
-              storyHeight: 2.75,
-              floorElevation: cnt * 2.8,
-              slabThickness: 0.2,
-              walls: [],
-              doors: [],
-              windows: [],
-              stairs: [],
-              columns: [],
-              roofs: [],
-              rooms: [],
-              furniture: [],
-              electrical: [],
-              dimensions: [],
-              annotations: [],
-              shapes: [],
-            };
-            updateProject({
-              ...project,
-              activeFloorId: newFl.id,
-              floors: [...project.floors, newFl],
-            });
-          }}
-          onDeleteFloor={(fId) => {
-            if (project.floors.length <= 1) return;
-            const rem = project.floors.filter((f) => f.id !== fId);
-            updateProject({ ...project, activeFloorId: rem[0].id, floors: rem });
-          }}
-          onRenameProject={(newName) => updateProject({ ...project, name: newName })}
-          onOpenRoofModal={() => setShowRoofModal(true)}
-          onZoomFit={handleZoomFit}
-          isFocusMode={isFocusMode}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={handleToggleFullscreen}
-          onOpenGestureHelp={() => setShowGestureHelp(true)}
-        />
-      )}
+            } catch {
+              alert('Ungültige CAD-Datei');
+            }
+          };
+          reader.readAsText(file);
+        }}
+        onSaveProject={() => {
+          const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(project, null, 2));
+          const dl = document.createElement('a');
+          dl.href = dataStr;
+          dl.download = `${project.name.replace(/\s+/g, '_')}.cad`;
+          dl.click();
+        }}
+        onOpenExportDialog={() => setShowExport(true)}
+        onOpenWizard={() => setShowWizard(true)}
+        onOpenTemplates={() => setShowTemplates(true)}
+        onOpenHelp={() => setShowHelp(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenHistory={() => setShowHistory(true)}
+        onSwitchFloor={(fId) => setProject({ ...project, activeFloorId: fId })}
+        onAddFloor={() => {
+          const cnt = project.floors.length + 1;
+          const newFl: Floor = {
+            id: 'floor_' + Date.now(),
+            name: `${cnt}. Obergeschoss`,
+            storyHeight: 2.75,
+            floorElevation: cnt * 2.8,
+            slabThickness: 0.2,
+            walls: [],
+            doors: [],
+            windows: [],
+            stairs: [],
+            columns: [],
+            roofs: [],
+            rooms: [],
+            furniture: [],
+            electrical: [],
+            dimensions: [],
+            annotations: [],
+            shapes: [],
+          };
+          updateProject({
+            ...project,
+            activeFloorId: newFl.id,
+            floors: [...project.floors, newFl],
+          });
+        }}
+        onDeleteFloor={(fId) => {
+          if (project.floors.length <= 1) return;
+          const rem = project.floors.filter((f) => f.id !== fId);
+          updateProject({ ...project, activeFloorId: rem[0].id, floors: rem });
+        }}
+        onRenameProject={(newName) => updateProject({ ...project, name: newName })}
+        onOpenRoofModal={() => setShowRoofModal(true)}
+        onZoomFit={handleZoomFit}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={handleToggleFullscreen}
+        onOpenGestureHelp={() => setShowGestureHelp(true)}
+      />
 
       {/* 2. MAIN WORKSPACE */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Left Toolbar */}
-        {!isFocusMode && (
-          <CadToolbar
-            activeTool={activeTool}
-            onSelectTool={setActiveTool}
-            language={language}
-            onOpenFurnitureCatalog={() => setShowFurnitureCatalog(true)}
-            onOpenWallNumericModal={() => setShowWallNumeric(true)}
-            onOpenRoofModal={() => setShowRoofModal(true)}
-            leftHandedMode={leftHandedMode}
-          />
-        )}
+        <CadToolbar
+          activeTool={activeTool}
+          onSelectTool={setActiveTool}
+          language={language}
+          onOpenFurnitureCatalog={() => setShowFurnitureCatalog(true)}
+          onOpenWallNumericModal={() => setShowWallNumeric(true)}
+          onOpenRoofModal={() => setShowRoofModal(true)}
+          leftHandedMode={leftHandedMode}
+        />
 
         {/* Tool Options Flyout (TEIL 3: Wall, Door, Window Options Docked Beside Toolbar) */}
-        {!isFocusMode && (
-          <CadToolOptionsFlyout
-            activeTool={activeTool}
-            wallMode={wallMode}
-            onWallModeChange={setWallMode}
-            wallThicknessM={wallThicknessM}
-            onWallThicknessChange={setWallThicknessM}
-            wallStartHeight={wallStartHeight}
-            onWallStartHeightChange={setWallStartHeight}
-            wallEndHeight={wallEndHeight}
-            onWallEndHeightChange={setWallEndHeight}
-            isLockWallHeights={isLockWallHeights}
-            onLockWallHeightsChange={setIsLockWallHeights}
-            onSaveAsDefaultWalls={handleSaveDefaultsWalls}
-            doorWidthM={doorWidthM}
-            onDoorWidthChange={setDoorWidthM}
-            doorHinge={doorHinge}
-            onDoorHingeChange={setDoorHinge}
-            windowWidthM={windowWidthM}
-            onWindowWidthChange={setWindowWidthM}
-            windowSillHeightM={windowSillHeightM}
-            onWindowSillHeightChange={setWindowSillHeightM}
-            isDrawingActive={isDrawingActive}
-            leftHandedMode={leftHandedMode}
-            isPortrait={window.innerHeight > window.innerWidth}
-            language={language}
-          />
-        )}
+        <CadToolOptionsFlyout
+          activeTool={activeTool}
+          wallMode={wallMode}
+          onWallModeChange={setWallMode}
+          wallThicknessM={wallThicknessM}
+          onWallThicknessChange={setWallThicknessM}
+          wallStartHeight={wallStartHeight}
+          onWallStartHeightChange={setWallStartHeight}
+          wallEndHeight={wallEndHeight}
+          onWallEndHeightChange={setWallEndHeight}
+          isLockWallHeights={isLockWallHeights}
+          onLockWallHeightsChange={setIsLockWallHeights}
+          onSaveAsDefaultWalls={handleSaveDefaultsWalls}
+          doorWidthM={doorWidthM}
+          onDoorWidthChange={setDoorWidthM}
+          doorHinge={doorHinge}
+          onDoorHingeChange={setDoorHinge}
+          windowWidthM={windowWidthM}
+          onWindowWidthChange={setWindowWidthM}
+          windowSillHeightM={windowSillHeightM}
+          onWindowSillHeightChange={setWindowSillHeightM}
+          isDrawingActive={isDrawingActive}
+          leftHandedMode={leftHandedMode}
+          isPortrait={window.innerHeight > window.innerWidth}
+          language={language}
+        />
 
         {/* Center Viewport */}
         <main className="flex-1 h-full overflow-hidden flex relative">
@@ -1802,7 +1760,7 @@ export default function App() {
               onUndo={handleUndo}
               onRedo={handleRedo}
               onZoomFit={handleZoomFit}
-              onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
+              onToggleFullscreen={handleToggleFullscreen}
               onShowClipboardSheet={() => setShowClipboardSheet(true)}
               pencilMode={pencilMode}
               precisionMode={precisionMode}
@@ -1893,7 +1851,7 @@ export default function App() {
                   onUndo={handleUndo}
                   onRedo={handleRedo}
                   onZoomFit={handleZoomFit}
-                  onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
+                  onToggleFullscreen={handleToggleFullscreen}
                   onShowClipboardSheet={() => setShowClipboardSheet(true)}
                   pencilMode={pencilMode}
                   precisionMode={precisionMode}
@@ -2004,23 +1962,21 @@ export default function App() {
       </div>
 
       {/* 3. BOTTOM STATUS BAR */}
-      {!isFocusMode && (
-        <CadStatusBar
-          cursorPos={cursorPos}
-          hintText={hintText}
-          zoom={zoom}
-          onZoomChange={setZoom}
-          onZoomFit={handleZoomFit}
-          snapSettings={snapSettings}
-          onSnapSettingsChange={handleSnapSettingsChange}
-          unit={project.unit}
-          onUnitChange={(newUnit) => setProject({ ...project, unit: newUnit })}
-          scale={project.scale}
-          onScaleChange={(newScale) => setProject({ ...project, scale: newScale })}
-          language={language}
-          selectedCount={selection.ids.length}
-        />
-      )}
+      <CadStatusBar
+        cursorPos={cursorPos}
+        hintText={hintText}
+        zoom={zoom}
+        onZoomChange={setZoom}
+        onZoomFit={handleZoomFit}
+        snapSettings={snapSettings}
+        onSnapSettingsChange={handleSnapSettingsChange}
+        unit={project.unit}
+        onUnitChange={(newUnit) => setProject({ ...project, unit: newUnit })}
+        scale={project.scale}
+        onScaleChange={(newScale) => setProject({ ...project, scale: newScale })}
+        language={language}
+        selectedCount={selection.ids.length}
+      />
 
       {/* 4. TOUCH-FIRST FLOATING CONTROLS & CAD NUMPAD */}
       <CadTouchControls
@@ -2049,8 +2005,6 @@ export default function App() {
               : 'offset_crosshair'
           )
         }
-        isFocusMode={isFocusMode}
-        onExitFocusMode={() => setIsFocusMode(false)}
         viewRotationDeg={viewRotationDeg}
         onResetRotation={() => setViewRotationDeg(0)}
         showNumpad={showTouchNumpad}
