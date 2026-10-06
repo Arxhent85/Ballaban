@@ -54,6 +54,9 @@ import {
   checkFurnitureWallCollision,
   isPointInPolygon,
   lineIntersection,
+  SnapResult,
+  ActiveGuideLine,
+  calculateEqualSpacingRatio,
 } from '../../utils/cadMath';
 import { getT } from '../../i18n/translations';
 import {
@@ -196,6 +199,35 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const [wallChainPoints, setWallChainPoints] = useState<Point2D[]>([]);
   const [currentCursorWorld, setCurrentCursorWorld] = useState<Point2D | null>(null);
   const [snapIndicator, setSnapIndicator] = useState<{ point: Point2D; type: string } | null>(null);
+  const [smartSnap, setSmartSnap] = useState<SnapResult | null>(null);
+  const [snapCandidateIndex, setSnapCandidateIndex] = useState<number>(0);
+  const [isShiftDown, setIsShiftDown] = useState<boolean>(false);
+  const [isAltDown, setIsAltDown] = useState<boolean>(false);
+
+  // Keyboard modifiers & Tab candidate cycling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+      if (e.key === 'Tab') {
+        if (smartSnap && (smartSnap.candidatesCount || 0) > 1) {
+          e.preventDefault();
+          setSnapCandidateIndex((prev) => prev + 1);
+        }
+      }
+      if (e.key === 'Shift') setIsShiftDown(true);
+      if (e.key === 'Alt') setIsAltDown(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setIsShiftDown(false);
+      if (e.key === 'Alt') setIsAltDown(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [smartSnap]);
 
   // Wall Drawing Mode: Exterior (30 cm) vs Interior (11.5 cm)
   const [wallMode, setWallMode] = useState<'exterior' | 'interior'>('exterior');
@@ -1365,49 +1397,276 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     }
 
     // ==========================================
-    // 10. SNAP INDICATORS
+    // 10. INTELLIGENT RELATIONSHIP GUIDELINES & ADVANCED MAGNETIC SNAP
     // ==========================================
-    if (snapIndicator) {
-      const sp = worldToScreen(snapIndicator.point);
+    if (smartSnap && smartSnap.snapped) {
+      const sp = worldToScreen(smartSnap.point);
+
+      // A. Matched Wall Highlights (Luminous accent glow)
+      if (smartSnap.matchedWallIds && smartSnap.matchedWallIds.length > 0) {
+        smartSnap.matchedWallIds.forEach((mwId) => {
+          const mw = walls.find((w) => w.id === mwId);
+          if (mw) {
+            const pA = worldToScreen(mw.start);
+            const pB = worldToScreen(mw.end);
+            ctx.save();
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = Math.max(4, (mw.thickness || 0.3) * zoom + 5);
+            ctx.globalAlpha = 0.28;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(pA.x, pA.y);
+            ctx.lineTo(pB.x, pB.y);
+            ctx.stroke();
+            ctx.restore();
+          }
+        });
+      }
+
+      // B. Active Relationship Guidelines (Parallel, Perpendicular, Equal Length, Extension, Alignment, Offset)
+      if (smartSnap.guideLines && smartSnap.guideLines.length > 0) {
+        smartSnap.guideLines.forEach((gl) => {
+          const p1 = worldToScreen(gl.p1);
+          const p2 = worldToScreen(gl.p2);
+
+          ctx.save();
+          ctx.strokeStyle = gl.color || '#3b82f6';
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash(gl.dash || [6, 4]);
+
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // 1. Parallel (//) Guideline Badge
+          if (gl.type === 'parallel') {
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            ctx.font = '700 11px "Inter", sans-serif';
+            const bText = '// Parallel';
+            const bW = ctx.measureText(bText).width + 14;
+            ctx.fillStyle = isDark ? '#1e293b' : '#ffffff';
+            ctx.strokeStyle = '#2563eb';
+            ctx.lineWidth = 1.3;
+            ctx.fillRect(midX - bW / 2, midY - 20, bW, 20);
+            ctx.strokeRect(midX - bW / 2, midY - 20, bW, 20);
+            ctx.fillStyle = '#2563eb';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(bText, midX, midY - 10);
+          }
+
+          // 2. Perpendicular (⟂ / 90°) Corner Marker
+          if (gl.type === 'perpendicular') {
+            const dx = p1.x - p2.x;
+            const dy = p1.y - p2.y;
+            const len = Math.hypot(dx, dy) || 1;
+            const uX = dx / len;
+            const uY = dy / len;
+            const nX = -uY;
+            const nY = uX;
+            const sqSize = 11;
+            ctx.strokeStyle = '#16a34a';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.moveTo(p2.x + uX * sqSize, p2.y + uY * sqSize);
+            ctx.lineTo(p2.x + uX * sqSize + nX * sqSize, p2.y + uY * sqSize + nY * sqSize);
+            ctx.lineTo(p2.x + nX * sqSize, p2.y + nY * sqSize);
+            ctx.stroke();
+            ctx.fillStyle = '#16a34a';
+            ctx.beginPath();
+            ctx.arc(p2.x + (uX + nX) * (sqSize / 2), p2.y + (uY + nY) * (sqSize / 2), 1.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // 3. Equal Length (=) Tick Marks and Dimension equality badge
+          if (gl.type === 'equal_length') {
+            if (gl.tickMarks && gl.tickMarks.length >= 2) {
+              gl.tickMarks.forEach((tm) => {
+                const scTm = worldToScreen(tm);
+                ctx.strokeStyle = '#ea580c';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.moveTo(scTm.x - 3, scTm.y - 7);
+                ctx.lineTo(scTm.x - 3, scTm.y + 7);
+                ctx.moveTo(scTm.x + 3, scTm.y - 7);
+                ctx.lineTo(scTm.x + 3, scTm.y + 7);
+                ctx.stroke();
+              });
+            }
+            if (gl.label) {
+              const midX = (p1.x + p2.x) / 2;
+              const midY = (p1.y + p2.y) / 2;
+              ctx.font = '700 11px "JetBrains Mono", monospace';
+              const bW = ctx.measureText(gl.label).width + 16;
+              ctx.fillStyle = isDark ? '#1e293b' : '#ffffff';
+              ctx.strokeStyle = '#ea580c';
+              ctx.lineWidth = 1.5;
+              ctx.fillRect(midX - bW / 2, midY - 24, bW, 22);
+              ctx.strokeRect(midX - bW / 2, midY - 24, bW, 22);
+              ctx.fillStyle = '#ea580c';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(gl.label, midX, midY - 13);
+            }
+          }
+
+          // 4. Offset Guideline Badge
+          if (gl.type === 'offset' && gl.label) {
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            ctx.font = '600 10px "Inter", sans-serif';
+            const bW = ctx.measureText(gl.label).width + 12;
+            ctx.fillStyle = isDark ? '#1e293b' : '#ffffff';
+            ctx.strokeStyle = '#d97706';
+            ctx.lineWidth = 1;
+            ctx.fillRect(midX - bW / 2, midY - 18, bW, 18);
+            ctx.strokeRect(midX - bW / 2, midY - 18, bW, 18);
+            ctx.fillStyle = '#d97706';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(gl.label, midX, midY - 9);
+          }
+
+          ctx.restore();
+        });
+      }
+
+      // C. Snap Point Geometric Glyphs
+      ctx.save();
       ctx.lineWidth = 2;
 
-      if (snapIndicator.type === 'endpoint') {
-        ctx.strokeStyle = '#10b981';
-        ctx.strokeRect(sp.x - 6, sp.y - 6, 12, 12);
-      } else if (snapIndicator.type === 'midpoint') {
-        ctx.strokeStyle = '#ea580c';
-        ctx.beginPath();
-        ctx.moveTo(sp.x, sp.y - 7);
-        ctx.lineTo(sp.x + 7, sp.y);
-        ctx.lineTo(sp.x, sp.y + 7);
-        ctx.lineTo(sp.x - 7, sp.y);
-        ctx.closePath();
-        ctx.stroke();
-      } else if (snapIndicator.type === 'intersection') {
-        ctx.strokeStyle = '#0284c7';
-        ctx.beginPath();
-        ctx.moveTo(sp.x - 7, sp.y - 7);
-        ctx.lineTo(sp.x + 7, sp.y + 7);
-        ctx.moveTo(sp.x + 7, sp.y - 7);
-        ctx.lineTo(sp.x - 7, sp.y + 7);
-        ctx.stroke();
-      } else if (snapIndicator.type === 'edge') {
-        // Edge / surface snap on existing wall: amber diamond
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(sp.x, sp.y - 6);
-        ctx.lineTo(sp.x + 6, sp.y);
-        ctx.lineTo(sp.x, sp.y + 6);
-        ctx.lineTo(sp.x - 6, sp.y);
-        ctx.closePath();
-        ctx.stroke();
-      } else if (snapIndicator.type === 'grid') {
-        ctx.fillStyle = '#78716c';
-        ctx.beginPath();
-        ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
-        ctx.fill();
+      switch (smartSnap.type) {
+        case 'endpoint':
+          ctx.strokeStyle = '#10b981';
+          ctx.strokeRect(sp.x - 6, sp.y - 6, 12, 12);
+          break;
+        case 'midpoint':
+          ctx.strokeStyle = '#ea580c';
+          ctx.beginPath();
+          ctx.moveTo(sp.x, sp.y - 7);
+          ctx.lineTo(sp.x + 7, sp.y + 5);
+          ctx.lineTo(sp.x - 7, sp.y + 5);
+          ctx.closePath();
+          ctx.stroke();
+          break;
+        case 'intersection':
+        case 'extension_intersection':
+          ctx.strokeStyle = '#0284c7';
+          ctx.beginPath();
+          ctx.moveTo(sp.x - 7, sp.y - 7);
+          ctx.lineTo(sp.x + 7, sp.y + 7);
+          ctx.moveTo(sp.x + 7, sp.y - 7);
+          ctx.lineTo(sp.x - 7, sp.y + 7);
+          ctx.stroke();
+          break;
+        case 'lot':
+          ctx.strokeStyle = '#16a34a';
+          ctx.beginPath();
+          ctx.moveTo(sp.x - 6, sp.y + 6);
+          ctx.lineTo(sp.x + 6, sp.y + 6);
+          ctx.moveTo(sp.x, sp.y + 6);
+          ctx.lineTo(sp.x, sp.y - 6);
+          ctx.stroke();
+          break;
+        case 'edge':
+          ctx.strokeStyle = '#f59e0b';
+          ctx.beginPath();
+          ctx.moveTo(sp.x, sp.y - 6);
+          ctx.lineTo(sp.x + 6, sp.y);
+          ctx.lineTo(sp.x, sp.y + 6);
+          ctx.lineTo(sp.x - 6, sp.y);
+          ctx.closePath();
+          ctx.stroke();
+          break;
+        case 'division':
+          ctx.strokeStyle = '#a855f7';
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 6, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = '#a855f7';
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 2, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case 'extension':
+          ctx.strokeStyle = '#0284c7';
+          ctx.setLineDash([2, 2]);
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 6, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          break;
+        case 'room_corner':
+        case 'plot_vertex':
+          ctx.strokeStyle = '#ec4899';
+          ctx.strokeRect(sp.x - 5, sp.y - 5, 10, 10);
+          break;
+        case 'door_center':
+        case 'window_center':
+        case 'furniture_axis':
+          ctx.strokeStyle = '#8b5cf6';
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 5, 0, Math.PI * 2);
+          ctx.stroke();
+          break;
+        case 'grid':
+          ctx.fillStyle = '#78716c';
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        default:
+          ctx.strokeStyle = '#3b82f6';
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 5, 0, Math.PI * 2);
+          ctx.stroke();
+          break;
       }
+
+      // D. Floating Smart Snap Info Badge
+      if (smartSnap.label) {
+        ctx.font = '600 11px "Inter", sans-serif';
+        let badgeLabel = smartSnap.label;
+        if (smartSnap.candidatesCount && smartSnap.candidatesCount > 1) {
+          badgeLabel += ` [Tab: ${(smartSnap.activeCandidateIndex || 0) + 1}/${smartSnap.candidatesCount}]`;
+        }
+
+        const textW = ctx.measureText(badgeLabel).width;
+        const bW = textW + 16;
+        const bH = 22;
+        const bX = sp.x + 12;
+        const bY = sp.y - 24;
+
+        ctx.shadowColor = isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.18)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 2;
+
+        ctx.fillStyle = isDark ? '#0f172a' : '#ffffff';
+        ctx.strokeStyle = isDark ? '#334155' : '#cbd5e1';
+        ctx.lineWidth = 1;
+        if (typeof ctx.roundRect === 'function') {
+          ctx.beginPath();
+          ctx.roundRect(bX, bY, bW, bH, 5);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.fillRect(bX, bY, bW, bH);
+          ctx.strokeRect(bX, bY, bW, bH);
+        }
+
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+
+        ctx.fillStyle = isDark ? '#f8fafc' : '#0f172a';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeLabel, bX + 8, bY + bH / 2);
+      }
+      ctx.restore();
     }
 
     // Split Tool Preview (Schere / Wand trennen)
@@ -1779,7 +2038,19 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       return;
     }
 
-    const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom);
+    const extraSnapCtx = {
+      doors,
+      windows,
+      furniture,
+      rooms,
+      plot,
+      candidateIndex: snapCandidateIndex,
+      isAltPressed: e.altKey || isAltDown,
+      isAngleLocked: e.shiftKey || isShiftDown,
+      ignoredIds: [],
+      currentTool: activeTool,
+    };
+    const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom, extraSnapCtx);
     const targetPt = snap.point;
 
     setPointerDownPos(targetPt);
@@ -2281,10 +2552,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     if (activeTool === 'door') {
       const near = findWallNearPoint(rawWorld, 0.4);
       if (near) {
+        // Equal spacing & equidistant snap!
+        const eq = calculateEqualSpacingRatio(
+          near.wall,
+          near.ratio,
+          defaults?.doorWidth || 0.885,
+          doors,
+          windows,
+          zoom,
+          snapSettings.snapRadiusPx || 18
+        );
+        const finalRatio = eq.snapped ? eq.ratio : near.ratio;
+
         const newDoor: Door = {
           id: 'd_' + Date.now(),
           wallId: near.wall.id,
-          position: near.ratio,
+          position: finalRatio,
           width: defaults?.doorWidth || 0.885,
           height: defaults?.doorHeight || 2.05,
           lintelHeight: defaults?.doorLintel || 2.05,
@@ -2304,10 +2587,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     if (activeTool === 'window') {
       const near = findWallNearPoint(rawWorld, 0.4);
       if (near) {
+        // Equal spacing & equidistant snap!
+        const eq = calculateEqualSpacingRatio(
+          near.wall,
+          near.ratio,
+          defaults?.windowWidth || 1.20,
+          doors,
+          windows,
+          zoom,
+          snapSettings.snapRadiusPx || 18
+        );
+        const finalRatio = eq.snapped ? eq.ratio : near.ratio;
+
         const newWin: Window = {
           id: 'win_' + Date.now(),
           wallId: near.wall.id,
-          position: near.ratio,
+          position: finalRatio,
           width: defaults?.windowWidth || 1.20,
           height: defaults?.windowHeight || 1.25,
           parapetHeight: defaults?.windowParapet || 0.90,
@@ -2553,8 +2848,21 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     setIsHoveringSelection(hoveringSelected);
 
     // Snapping calculation
-    const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom);
+    const extraSnapCtx = {
+      doors,
+      windows,
+      furniture,
+      rooms,
+      plot,
+      candidateIndex: snapCandidateIndex,
+      isAltPressed: e.altKey || isAltDown,
+      isAngleLocked: e.shiftKey || isShiftDown,
+      ignoredIds: draggingHandle ? [draggingHandle.wallId] : isDraggingSelection ? (draggedIdsRef.current.length > 0 ? draggedIdsRef.current : selection.ids) : [],
+      currentTool: activeTool,
+    };
+    const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom, extraSnapCtx);
     setCurrentCursorWorld(snap.point);
+    setSmartSnap(snap.snapped ? snap : null);
     if (snap.snapped) {
       setSnapIndicator({ point: snap.point, type: snap.type });
     } else {
@@ -2604,7 +2912,19 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     const rect = canvas.getBoundingClientRect();
     const screenPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     const rawWorld = screenToWorld(screenPt);
-    const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom);
+    const extraUpSnapCtx = {
+      doors,
+      windows,
+      furniture,
+      rooms,
+      plot,
+      candidateIndex: snapCandidateIndex,
+      isAltPressed: e.altKey || isAltDown,
+      isAngleLocked: e.shiftKey || isShiftDown,
+      ignoredIds: [],
+      currentTool: activeTool,
+    };
+    const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom, extraUpSnapCtx);
     const targetPt = snap.point;
 
     setIsPanning(false);

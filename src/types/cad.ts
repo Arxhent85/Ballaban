@@ -363,13 +363,118 @@ export interface CadProject {
 }
 
 export interface SnapSettings {
+  enabled: boolean; // Master switch for snapping
   grid: boolean;
   gridSize: number; // meters e.g. 0.10, 0.25, 0.50
   wallEndpoints: boolean;
   wallMidpoints: boolean;
   intersections: boolean;
+  perpendicular: boolean; // Lotpunkt (Fußpunkt senkrecht auf Wand/Linie)
+  extensions: boolean; // Fluchtend / Verlängerungslinien
+  parallel: boolean; // Parallele Hilfslinie (//)
+  rightAngle: boolean; // Rechtwinklig (90° / 45° relativ zu Wänden)
+  equalLength: boolean; // Gleiche Wandlänge (=)
+  equalSpacing: boolean; // Gleiche Abstände zwischen Elementen
+  alignment: boolean; // Fluchtende Ausrichtung an Kanten/Zentren
+  offset: boolean; // Versatz-Fang (fester Parallelabstand)
+  offsetDistance?: number; // e.g. 2.50m or 3.00m
+  divisionPoints: boolean; // Drittel- und Viertelpunkte
+  snapRadiusPx: number; // Fangradius in Pixeln (default 18, slider 8..40)
+  angleStepDeg: number; // Winkelschritt in Grad (default 15)
   ortho: boolean;
   step15Deg: boolean;
+}
+
+export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
+  enabled: true,
+  grid: true,
+  gridSize: 0.25,
+  wallEndpoints: true,
+  wallMidpoints: true,
+  intersections: true,
+  perpendicular: true,
+  extensions: true,
+  parallel: true,
+  rightAngle: true,
+  equalLength: true,
+  equalSpacing: true,
+  alignment: true,
+  offset: true,
+  offsetDistance: 2.50,
+  divisionPoints: true,
+  snapRadiusPx: 18,
+  angleStepDeg: 15,
+  ortho: false,
+  step15Deg: true,
+};
+
+export type SnapPointType =
+  | 'none'
+  | 'grid'
+  | 'endpoint'
+  | 'midpoint'
+  | 'intersection'
+  | 'lot' // Lotpunkt (perpendicular foot)
+  | 'edge' // Auf Kante / Achse
+  | 'division' // Drittel / Viertel
+  | 'extension' // Fluchtend auf Verlängerung
+  | 'extension_intersection'
+  | 'room_corner'
+  | 'door_center'
+  | 'window_center'
+  | 'furniture_axis'
+  | 'plot_vertex'
+  | 'plot_edge'
+  | 'parallel' // Parallele Richtung (//)
+  | 'right_angle' // Rechtwinklig (90°) zu Wand
+  | 'equal_length' // Gleiche Wandlänge (=)
+  | 'equal_spacing' // Gleicher Abstand
+  | 'alignment' // Horizontale/vertikale Fluchtlinie
+  | 'offset' // Paralleler Versatz
+  | 'ortho'
+  | 'angle15';
+
+export interface ActiveGuideLine {
+  id: string;
+  type: 'parallel' | 'perpendicular' | 'extension' | 'alignment' | 'equal_length' | 'equal_spacing' | 'offset';
+  p1: Point2D;
+  p2: Point2D;
+  label?: string;
+  symbol?: string; // '//', '⟂', '=', '90°'
+  color?: string;
+  dash?: number[];
+  sourceWallIds?: string[];
+  matchedLength?: number;
+  tickMarks?: Point2D[];
+  equalSpacingInfo?: {
+    segments: { p1: Point2D; p2: Point2D; dist: number }[];
+  };
+}
+
+export interface SmartSnapCandidate {
+  point: Point2D;
+  type: SnapPointType;
+  distancePx: number;
+  priority: number; // 1: point, 2: lot/extension, 3: angle/guide, 4: grid
+  label: string;
+  symbol?: string;
+  targetId?: string;
+  guideLine?: ActiveGuideLine;
+  secondaryGuideLine?: ActiveGuideLine;
+  matchedWallIds?: string[];
+  matchedLength?: number;
+}
+
+export interface SmartSnapResult {
+  point: Point2D;
+  snapped: boolean;
+  type: SnapPointType;
+  label: string;
+  symbol?: string;
+  activeCandidateIndex: number;
+  candidatesCount: number;
+  guideLines: ActiveGuideLine[];
+  matchedWallIds: string[];
 }
 
 export type CadTool = 

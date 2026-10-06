@@ -18,6 +18,7 @@ import {
   CadTool,
   SelectionState,
   SnapSettings,
+  DEFAULT_SNAP_SETTINGS,
   UnitType,
   ScaleType,
   ViewMode,
@@ -95,16 +96,27 @@ export default function App() {
   const [panOffset, setPanOffset] = useState<Point2D>({ x: 50, y: 40 });
   const [cursorPos, setCursorPos] = useState<Point2D | null>(null);
 
-  // Snapping
-  const [snapSettings, setSnapSettings] = useState<SnapSettings>({
-    grid: true,
-    gridSize: 0.25, // 25 cm
-    wallEndpoints: true,
-    wallMidpoints: true,
-    intersections: true,
-    ortho: false,
-    step15Deg: false,
+  // Snapping & Smart Relationship Guides
+  const [snapSettings, setSnapSettings] = useState<SnapSettings>(() => {
+    try {
+      const saved = localStorage.getItem('cad_snap_settings_v2');
+      if (saved) {
+        return { ...DEFAULT_SNAP_SETTINGS, ...JSON.parse(saved) };
+      }
+    } catch {
+      // ignore
+    }
+    return { ...DEFAULT_SNAP_SETTINGS };
   });
+
+  const handleSnapSettingsChange = useCallback((next: SnapSettings) => {
+    setSnapSettings(next);
+    try {
+      localStorage.setItem('cad_snap_settings_v2', JSON.stringify(next));
+    } catch {
+      // quota
+    }
+  }, []);
 
   // Dialogs
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
@@ -1128,6 +1140,18 @@ export default function App() {
       if (e.key === 't' || e.key === 'T') setActiveTool('stairs');
       if (e.key === 'm' || e.key === 'M') setShowFurnitureCatalog(true);
       if (e.key === 'b' || e.key === 'B') setActiveTool('dimension');
+      if ((e.key === 's' || e.key === 'S' || e.key === 'F3') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setSnapSettings((prev) => {
+          const next = { ...prev, enabled: !prev.enabled };
+          try {
+            localStorage.setItem('cad_snap_settings_v2', JSON.stringify(next));
+          } catch {
+            // ignore
+          }
+          return next;
+        });
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         handleDeleteSelected();
@@ -1512,7 +1536,7 @@ export default function App() {
         onZoomChange={setZoom}
         onZoomFit={handleZoomFit}
         snapSettings={snapSettings}
-        onSnapSettingsChange={setSnapSettings}
+        onSnapSettingsChange={handleSnapSettingsChange}
         unit={project.unit}
         onUnitChange={(newUnit) => setProject({ ...project, unit: newUnit })}
         scale={project.scale}
@@ -1577,7 +1601,7 @@ export default function App() {
         defaults={project.defaults}
         onUpdateDefaults={handleUpdateDefaults}
         snapSettings={snapSettings}
-        onSnapSettingsChange={setSnapSettings}
+        onSnapSettingsChange={handleSnapSettingsChange}
       />
 
       <FurnitureCatalogModal

@@ -29,8 +29,11 @@ export const HelpDialog: React.FC<HelpDialogProps> = ({ isOpen, onClose, languag
     { key: 'M', desc: 'Möbel- & Ausstattungskatalog öffnen' },
     { key: 'B', desc: 'Bemaßung setzen' },
     { key: 'A', desc: 'Textbeschriftung hinzufügen' },
+    { key: 'S / F3', desc: 'Magnetisches Fangen an / aus' },
+    { key: 'Tab', desc: 'Nächsten Fangpunkt wählen (Zyklus)' },
+    { key: 'Alt', desc: 'Gedrückt halten: Fangen übergehen' },
+    { key: 'Shift', desc: 'Winkel sperren / Ortho (0°, 45°, 90°)' },
     { key: 'Leertaste', desc: 'Gedrückt halten zum Verschieben / Pan' },
-    { key: 'Shift', desc: 'Ortho-Modus erzwingen (0°, 90°, 180°, 270°)' },
     { key: 'Entf / Backspace', desc: 'Ausgewähltes Bauteil löschen' },
     { key: 'Esc', desc: 'Laufende Aktion oder Auswahl abbrechen' },
     { key: 'Strg + Z', desc: 'Letzten Schritt rückgängig machen' },
@@ -58,13 +61,14 @@ export const HelpDialog: React.FC<HelpDialogProps> = ({ isOpen, onClose, languag
           <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60 flex flex-col gap-2">
             <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
               <MousePointer className="w-4 h-4" />
-              Maus- & Touch-Gesten
+              Maus- & Fanghilfen-Gesten
             </span>
             <ul className="text-slate-300 space-y-1 list-disc list-inside text-[11px]">
-              <li><strong>Mausrad:</strong> Stufenloser Zoom auf Mausposition</li>
-              <li><strong>Mittlere Maustaste / Leertaste + Ziehen:</strong> Zeichenfläche verschieben</li>
+              <li><strong>Intelligentes Fangen:</strong> Rastet an Endpunkten, Mitten, Lotfußpunkten (⟂), Parallelen (//) und gleichen Längen ein.</li>
+              <li><strong>Tab-Taste:</strong> Schaltet bei mehreren nahen Fangpunkten zum nächsten Kandidaten um.</li>
+              <li><strong>Alt-Taste:</strong> Hält man Alt gedrückt, wird das Fangen kurzzeitig deaktiviert für freies Zeichnen.</li>
               <li><strong>Wand zeichnen:</strong> Klicke Startpunkt, tippe die Länge direkt ein und drücke Enter!</li>
-              <li><strong>Touch:</strong> 2-Finger-Geste zum Zoomen (Pinch) und Verschieben</li>
+              <li><strong>Mausrad / Pan:</strong> Stufenloser Zoom auf Mausposition; Mittlere Maustaste oder Leertaste + Ziehen zum Verschieben.</li>
             </ul>
           </div>
 

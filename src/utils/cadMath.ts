@@ -2,7 +2,24 @@
  * CAD Geometry, Snapping, Wall Junctions, and Collision Utilities
  */
 
-import { Point2D, Wall, SnapSettings, UnitType, BoundingBox2D, Door, Furniture } from '../types/cad';
+import {
+  Point2D,
+  Wall,
+  SnapSettings,
+  UnitType,
+  BoundingBox2D,
+  Door,
+  Window,
+  Furniture,
+  Room,
+  PlotBoundary,
+  ActiveGuideLine,
+  SnapPointType,
+} from '../types/cad';
+import { calculateSmartSnap, calculateEqualSpacingRatio } from './cadSnapping';
+
+export * from './cadSnapping';
+export type { ActiveGuideLine, SnapPointType };
 
 export function distance(p1: Point2D, p2: Point2D): number {
   const dx = p2.x - p1.x;
@@ -34,8 +51,14 @@ export function formatArea(m2: number): string {
 export interface SnapResult {
   point: Point2D;
   snapped: boolean;
-  type: 'none' | 'grid' | 'endpoint' | 'midpoint' | 'intersection' | 'edge' | 'ortho' | 'angle15';
+  type: SnapPointType;
   targetWallId?: string;
+  label?: string;
+  symbol?: string;
+  guideLines?: ActiveGuideLine[];
+  candidatesCount?: number;
+  activeCandidateIndex?: number;
+  matchedWallIds?: string[];
 }
 
 export function calculateSnap(
@@ -43,96 +66,50 @@ export function calculateSnap(
   origin: Point2D | null,
   walls: Wall[],
   settings: SnapSettings,
-  zoom: number
+  zoom: number,
+  extraCtx?: {
+    doors?: Door[];
+    windows?: Window[];
+    furniture?: Furniture[];
+    rooms?: Room[];
+    plot?: PlotBoundary;
+    candidateIndex?: number;
+    isAltPressed?: boolean;
+    isAngleLocked?: boolean;
+    ignoredIds?: string[];
+    currentTool?: string;
+  }
 ): SnapResult {
-  const thresholdM = 16 / zoom; // Generous snap tolerance in meters
+  const res = calculateSmartSnap({
+    target,
+    origin,
+    walls,
+    doors: extraCtx?.doors,
+    windows: extraCtx?.windows,
+    furniture: extraCtx?.furniture,
+    rooms: extraCtx?.rooms,
+    plot: extraCtx?.plot,
+    settings,
+    zoom,
+    candidateIndex: extraCtx?.candidateIndex,
+    isAltPressed: extraCtx?.isAltPressed,
+    isAngleLocked: extraCtx?.isAngleLocked,
+    ignoredIds: extraCtx?.ignoredIds,
+    currentTool: extraCtx?.currentTool,
+  });
 
-  // 1. Check Endpoint snaps (highest priority)
-  if (settings.wallEndpoints) {
-    for (const w of walls) {
-      if (distance(target, w.start) <= thresholdM) {
-        return { point: { ...w.start }, snapped: true, type: 'endpoint', targetWallId: w.id };
-      }
-      if (distance(target, w.end) <= thresholdM) {
-        return { point: { ...w.end }, snapped: true, type: 'endpoint', targetWallId: w.id };
-      }
-    }
-  }
-
-  // 2. Check Midpoint snaps
-  if (settings.wallMidpoints) {
-    for (const w of walls) {
-      const mid = { x: (w.start.x + w.end.x) / 2, y: (w.start.y + w.end.y) / 2 };
-      if (distance(target, mid) <= thresholdM) {
-        return { point: mid, snapped: true, type: 'midpoint', targetWallId: w.id };
-      }
-    }
-  }
-
-  // 3. Check Intersections between walls
-  if (settings.intersections && walls.length > 1) {
-    for (let i = 0; i < walls.length; i++) {
-      for (let j = i + 1; j < walls.length; j++) {
-        const inter = lineIntersection(walls[i].start, walls[i].end, walls[j].start, walls[j].end);
-        if (inter && distance(target, inter) <= thresholdM) {
-          return { point: inter, snapped: true, type: 'intersection' };
-        }
-      }
-    }
-  }
-
-  // 3b. Check Wall Edge / Surface Snap (T-junctions along existing walls, 0 mm gap)
-  if (walls.length > 0) {
-    for (const w of walls) {
-      const proj = projectPointOntoWall(target, w);
-      if (proj.ratio >= 0.005 && proj.ratio <= 0.995 && proj.dist <= thresholdM * 1.35) {
-        return { point: proj.point, snapped: true, type: 'edge', targetWallId: w.id };
-      }
-    }
-  }
-
-  let finalPoint = { ...target };
-  let isAngleSnapped = false;
-
-  // 4. Ortho Snap (0, 90, 180, 270)
-  if (origin && settings.ortho) {
-    const dx = Math.abs(target.x - origin.x);
-    const dy = Math.abs(target.y - origin.y);
-    if (dx > dy) {
-      finalPoint.y = origin.y;
-    } else {
-      finalPoint.x = origin.x;
-    }
-    isAngleSnapped = true;
-    return { point: finalPoint, snapped: true, type: 'ortho' };
-  }
-
-  // 5. 15-degree steps
-  if (origin && settings.step15Deg && !isAngleSnapped) {
-    const d = distance(origin, target);
-    if (d > 0.05) {
-      const currentAngle = Math.atan2(target.y - origin.y, target.x - origin.x);
-      const stepRad = (15 * Math.PI) / 180;
-      const snappedAngle = Math.round(currentAngle / stepRad) * stepRad;
-      finalPoint = {
-        x: origin.x + Math.cos(snappedAngle) * d,
-        y: origin.y + Math.sin(snappedAngle) * d,
-      };
-      return { point: finalPoint, snapped: true, type: 'angle15' };
-    }
-  }
-
-  // 6. Grid snap
-  if (settings.grid && settings.gridSize > 0) {
-    const g = settings.gridSize;
-    const gx = Math.round(finalPoint.x / g) * g;
-    const gy = Math.round(finalPoint.y / g) * g;
-    if (Math.abs(gx - finalPoint.x) <= thresholdM * 1.5 && Math.abs(gy - finalPoint.y) <= thresholdM * 1.5) {
-      return { point: { x: gx, y: gy }, snapped: true, type: 'grid' };
-    }
-  }
-
-  return { point: target, snapped: false, type: 'none' };
+  return {
+    point: res.point,
+    snapped: res.snapped,
+    type: res.type,
+    label: res.label,
+    symbol: res.symbol,
+    guideLines: res.guideLines,
+    candidatesCount: res.candidatesCount,
+    activeCandidateIndex: res.activeCandidateIndex,
+    targetWallId: res.matchedWallIds[0],
+    matchedWallIds: res.matchedWallIds,
+  };
 }
 
 export function lineIntersection(p1: Point2D, p2: Point2D, p3: Point2D, p4: Point2D): Point2D | null {
