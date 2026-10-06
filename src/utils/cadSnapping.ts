@@ -127,26 +127,38 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
     for (const w of activeWalls) {
       const dStart = distance(target, w.start);
       if (dStart <= snapRadiusM) {
+        const startH = w.height || 2.50;
         candidates.push({
           point: { ...w.start },
           type: 'endpoint',
           distancePx: dStart * zoom,
           priority: 1.0,
-          label: 'Endpunkt',
+          label: `Endpunkt (${startH.toFixed(2)}m)`,
           symbol: '■',
           targetId: w.id,
+          matchedHeights: {
+            height: startH,
+            sourceWallId: w.id,
+            label: `Eck-Höhe: ${startH.toFixed(2)}m`,
+          },
         });
       }
       const dEnd = distance(target, w.end);
       if (dEnd <= snapRadiusM) {
+        const endH = w.endHeight ?? (w.height || 2.50);
         candidates.push({
           point: { ...w.end },
           type: 'endpoint',
           distancePx: dEnd * zoom,
           priority: 1.0,
-          label: 'Endpunkt',
+          label: `Endpunkt (${endH.toFixed(2)}m)`,
           symbol: '■',
           targetId: w.id,
+          matchedHeights: {
+            height: endH,
+            sourceWallId: w.id,
+            label: `Eck-Höhe: ${endH.toFixed(2)}m`,
+          },
         });
       }
     }
@@ -475,12 +487,23 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
                 x: origin.x + Math.cos(pAng) * currentDist,
                 y: origin.y + Math.sin(pAng) * currentDist,
               };
+              const wH1 = w.height || 2.50;
+              const wH2 = w.endHeight ?? wH1;
+              const isOpp = Math.abs(normalizeAngle(pAng - wAng)) > Math.PI / 2;
+              const matchedH1 = isOpp ? wH2 : wH1;
+              const matchedH2 = isOpp ? wH1 : wH2;
+              const isSloped = Math.abs(wH2 - wH1) > 0.02;
+
+              const heightLabel = isSloped
+                ? `Höhen-Magnet: ${matchedH1.toFixed(2)}m → ${matchedH2.toFixed(2)}m (Wand gegenüber)`
+                : `Höhe: ${matchedH1.toFixed(2)}m`;
+
               const guideLine: ActiveGuideLine = {
                 id: 'parallel_' + w.id,
                 type: 'parallel',
                 p1: origin,
                 p2: snappedPt,
-                label: 'Parallel (//)',
+                label: isSloped ? `Parallel (//) • ${matchedH1.toFixed(2)}m → ${matchedH2.toFixed(2)}m` : 'Parallel (//)',
                 symbol: '//',
                 color: '#2563eb',
                 sourceWallIds: [w.id],
@@ -490,10 +513,17 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
                 type: 'parallel',
                 distancePx: diff * currentDist * zoom,
                 priority: 2.2,
-                label: 'Parallel (//)',
+                label: isSloped ? `Parallel (//) • ${heightLabel}` : 'Parallel (//)',
                 symbol: '//',
                 guideLine,
                 matchedWallIds: [w.id],
+                matchedHeights: {
+                  height: matchedH1,
+                  endHeight: matchedH2,
+                  sourceWallId: w.id,
+                  isOpposite: true,
+                  label: heightLabel,
+                },
               });
             }
           }
@@ -584,12 +614,44 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
             x: (w.start.x + w.end.x) / 2,
             y: (w.start.y + w.end.y) / 2,
           };
+
+          // Check if current direction is parallel to source wall to inherit heights
+          const curDx = snappedPt.x - origin.x;
+          const curDy = snappedPt.y - origin.y;
+          const curLen = Math.hypot(curDx, curDy) || 1;
+          const wDx = w.end.x - w.start.x;
+          const wDy = w.end.y - w.start.y;
+          const dot = (curDx * wDx + curDy * wDy) / (curLen * wLen);
+          const isPar = Math.abs(Math.abs(dot) - 1) < 0.12;
+
+          const wH1 = w.height || 2.50;
+          const wH2 = w.endHeight ?? wH1;
+          const isOpp = dot < 0;
+          const matchedH1 = isOpp ? wH2 : wH1;
+          const matchedH2 = isOpp ? wH1 : wH2;
+          const isSloped = Math.abs(wH2 - wH1) > 0.02;
+
+          let matchedHeightsInfo: MatchedHeightsInfo | undefined;
+          if (isPar) {
+            matchedHeightsInfo = {
+              height: matchedH1,
+              endHeight: matchedH2,
+              sourceWallId: w.id,
+              isOpposite: isOpp,
+              label: isSloped
+                ? `Höhe: ${matchedH1.toFixed(2)}m → ${matchedH2.toFixed(2)}m (Wand gegenüber)`
+                : `Höhe: ${matchedH1.toFixed(2)}m`,
+            };
+          }
+
           const guideLine: ActiveGuideLine = {
             id: 'eqlen_' + w.id,
             type: 'equal_length',
             p1: origin,
             p2: snappedPt,
-            label: `${wLen.toFixed(2)} m = ${wLen.toFixed(2)} m`,
+            label: isSloped && matchedHeightsInfo
+              ? `${wLen.toFixed(2)}m = ${wLen.toFixed(2)}m (${matchedH1.toFixed(2)}m → ${matchedH2.toFixed(2)}m)`
+              : `${wLen.toFixed(2)} m = ${wLen.toFixed(2)} m`,
             symbol: '=',
             color: '#ea580c',
             sourceWallIds: [w.id],
@@ -601,11 +663,14 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
             type: 'equal_length',
             distancePx: Math.abs(currentDist - wLen) * zoom,
             priority: 2.1,
-            label: `Gleiche Länge (${wLen.toFixed(2)}m = ${wLen.toFixed(2)}m)`,
+            label: isSloped && matchedHeightsInfo
+              ? `Gleiche Länge (${wLen.toFixed(2)}m) • Höhe ${matchedH1.toFixed(2)}m → ${matchedH2.toFixed(2)}m`
+              : `Gleiche Länge (${wLen.toFixed(2)}m = ${wLen.toFixed(2)}m)`,
             symbol: '=',
             guideLine,
             matchedWallIds: [w.id],
             matchedLength: wLen,
+            matchedHeights: matchedHeightsInfo,
           });
         }
       }
@@ -867,6 +932,7 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
     candidatesCount: uniqueCandidates.length,
     guideLines,
     matchedWallIds: chosen.matchedWallIds || (chosen.targetId ? [chosen.targetId] : []),
+    matchedHeights: chosen.matchedHeights,
   };
 }
 

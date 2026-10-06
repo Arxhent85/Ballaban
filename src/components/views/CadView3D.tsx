@@ -535,14 +535,50 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         return hStart + t * (hEnd - hStart);
       };
 
-      // Helper to add a 3D block to the wall group
-      const addWallBlock = (x1: number, x2: number, y1: number, y2: number) => {
+      // Helper to add a 3D trapezoidal segment to the wall group (sloped top)
+      const addWallSegment = (
+        x1: number,
+        x2: number,
+        yBottom1: number,
+        yBottom2: number,
+        yTop1: number,
+        yTop2: number
+      ) => {
         const blkLen = x2 - x1;
-        const blkHeight = y2 - y1;
-        if (blkLen <= 0.01 || blkHeight <= 0.01) return;
+        if (blkLen <= 0.01) return;
+        const h1 = yTop1 - yBottom1;
+        const h2 = yTop2 - yBottom2;
+        if (h1 <= 0.01 && h2 <= 0.01) return;
 
-        const geo = new THREE.BoxGeometry(blkLen, blkHeight, w.thickness);
-        geo.translate(x1 + blkLen / 2, y1 + blkHeight / 2, 0);
+        // If top and bottom are completely level, BoxGeometry is an optimization
+        if (Math.abs(yBottom1 - yBottom2) < 0.005 && Math.abs(yTop1 - yTop2) < 0.005) {
+          const blkHeight = yTop1 - yBottom1;
+          const geo = new THREE.BoxGeometry(blkLen, blkHeight, w.thickness);
+          geo.translate(x1 + blkLen / 2, yBottom1 + blkHeight / 2, 0);
+          const mesh = new THREE.Mesh(geo, currentWallMat);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.userData = { type: 'wall', id: w.id };
+          wallGroup.add(mesh);
+          interactiveMeshesRef.current.push(mesh);
+          return;
+        }
+
+        // True sloped trapezoidal prism along wall
+        const shape = new THREE.Shape();
+        shape.moveTo(x1, yBottom1);
+        shape.lineTo(x2, yBottom2);
+        shape.lineTo(x2, yTop2);
+        shape.lineTo(x1, yTop1);
+        shape.closePath();
+
+        const extrudeSettings = {
+          depth: w.thickness,
+          bevelEnabled: false,
+        };
+        const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+        // Center along wall thickness Z
+        geo.translate(0, 0, -w.thickness / 2);
 
         const mesh = new THREE.Mesh(geo, currentWallMat);
         mesh.castShadow = true;
@@ -557,20 +593,34 @@ export const CadView3D: React.FC<CadView3DProps> = ({
       openings.forEach((op) => {
         // Full height wall before opening
         if (op.startDist > currentX) {
-          const avgTopH = (getWallHeightAt(currentX) + getWallHeightAt(op.startDist)) / 2;
-          addWallBlock(currentX, op.startDist, 0, avgTopH);
+          addWallSegment(
+            currentX,
+            op.startDist,
+            0,
+            0,
+            getWallHeightAt(currentX),
+            getWallHeightAt(op.startDist)
+          );
         }
 
         // Parapet block under window
         if (op.type === 'window' && op.sillY > 0) {
-          addWallBlock(op.startDist, op.endDist, 0, op.sillY);
+          addWallSegment(op.startDist, op.endDist, 0, 0, op.sillY, op.sillY);
         }
 
         // Lintel block above opening
         const openingTopY = op.sillY + op.height;
-        const wallTopY = (getWallHeightAt(op.startDist) + getWallHeightAt(op.endDist)) / 2;
-        if (wallTopY > openingTopY) {
-          addWallBlock(op.startDist, op.endDist, openingTopY, wallTopY);
+        const wallTop1 = getWallHeightAt(op.startDist);
+        const wallTop2 = getWallHeightAt(op.endDist);
+        if (wallTop1 > openingTopY || wallTop2 > openingTopY) {
+          addWallSegment(
+            op.startDist,
+            op.endDist,
+            openingTopY,
+            openingTopY,
+            Math.max(openingTopY, wallTop1),
+            Math.max(openingTopY, wallTop2)
+          );
         }
 
         // Render detailed Window inside opening
@@ -653,8 +703,14 @@ export const CadView3D: React.FC<CadView3DProps> = ({
 
       // Remaining wall segment to wall end
       if (currentX < wLen) {
-        const avgTopH = (getWallHeightAt(currentX) + getWallHeightAt(wLen)) / 2;
-        addWallBlock(currentX, wLen, 0, avgTopH);
+        addWallSegment(
+          currentX,
+          wLen,
+          0,
+          0,
+          getWallHeightAt(currentX),
+          getWallHeightAt(wLen)
+        );
       }
 
       scene.add(wallGroup);

@@ -234,6 +234,33 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const [wallThicknessM, setWallThicknessM] = useState<number>(0.30);
   const [wallStartHeight, setWallStartHeight] = useState<number>(defaults?.wallHeight || 2.50);
   const [wallEndHeight, setWallEndHeight] = useState<number>(defaults?.wallHeight || 2.50);
+  const [isLockWallHeights, setIsLockWallHeights] = useState<boolean>(true);
+
+  const handleChangeStartHeight = (val: number) => {
+    setWallStartHeight(val);
+    if (isLockWallHeights) {
+      setWallEndHeight(val);
+    }
+  };
+
+  const handleChangeEndHeight = (val: number) => {
+    setWallEndHeight(val);
+    if (isLockWallHeights) {
+      setWallStartHeight(val);
+    }
+  };
+
+  const handleSwapWallHeights = () => {
+    const tmp = wallStartHeight;
+    setWallStartHeight(wallEndHeight);
+    setWallEndHeight(tmp);
+  };
+
+  const setWallHeightPreset = (hStart: number, hEnd: number) => {
+    setWallStartHeight(hStart);
+    setWallEndHeight(hEnd);
+    setIsLockWallHeights(Math.abs(hStart - hEnd) < 0.01);
+  };
 
   const handleToggleWallMode = (mode: 'exterior' | 'interior') => {
     setWallMode(mode);
@@ -1633,6 +1660,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         if (smartSnap.candidatesCount && smartSnap.candidatesCount > 1) {
           badgeLabel += ` [Tab: ${(smartSnap.activeCandidateIndex || 0) + 1}/${smartSnap.candidatesCount}]`;
         }
+        if (smartSnap.matchedHeights && !badgeLabel.includes('Höhe')) {
+          const mh = smartSnap.matchedHeights;
+          const hStr = mh.endHeight !== undefined && Math.abs(mh.endHeight - mh.height) > 0.01
+            ? `${mh.height.toFixed(2)}m → ${mh.endHeight.toFixed(2)}m`
+            : `${mh.height.toFixed(2)}m`;
+          badgeLabel += ` (📐 ${hStr})`;
+        }
 
         const textW = ctx.measureText(badgeLabel).width;
         const bW = textW + 16;
@@ -2467,13 +2501,20 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         if (dFromStart >= 0.25) {
           // Check if clicking near chain start point to close loop into a room!
           if (wallChainPoints.length >= 3 && distance(targetPt, wallChainPoints[0]) <= 0.35) {
+            const effStartHeight = (smartSnap?.matchedHeights)
+              ? smartSnap.matchedHeights.height
+              : wallStartHeight;
+            const effEndHeight = (smartSnap?.matchedHeights)
+              ? (smartSnap.matchedHeights.endHeight ?? smartSnap.matchedHeights.height)
+              : wallEndHeight;
+
             const closingWall: Wall = {
               id: 'w_' + Date.now() + Math.random().toString(36).substr(2, 4),
               start: wallStartPoint,
               end: wallChainPoints[0],
               thickness: currentWallThickness,
-              height: wallStartHeight,
-              endHeight: wallEndHeight,
+              height: effStartHeight,
+              endHeight: effEndHeight,
               isExterior: wallMode === 'exterior',
               material: wallMode === 'exterior' ? 'timber' : 'drywall',
               referenceLine: 'center',
@@ -2513,14 +2554,27 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             return;
           }
 
-          // Continue chain
+          // Continue chain with magnetic height adaptation if snapped
+          const effStartHeight = (smartSnap?.matchedHeights)
+            ? smartSnap.matchedHeights.height
+            : wallStartHeight;
+          const effEndHeight = (smartSnap?.matchedHeights)
+            ? (smartSnap.matchedHeights.endHeight ?? smartSnap.matchedHeights.height)
+            : wallEndHeight;
+
+          if (smartSnap?.matchedHeights) {
+            setWallStartHeight(effStartHeight);
+            setWallEndHeight(effEndHeight);
+            setIsLockWallHeights(Math.abs(effStartHeight - effEndHeight) < 0.01);
+          }
+
           const newWall: Wall = {
             id: 'w_' + Date.now() + Math.random().toString(36).substr(2, 4),
             start: wallStartPoint,
             end: targetPt,
             thickness: currentWallThickness,
-            height: wallStartHeight,
-            endHeight: wallEndHeight,
+            height: effStartHeight,
+            endHeight: effEndHeight,
             isExterior: wallMode === 'exterior',
             material: wallMode === 'exterior' ? 'timber' : 'drywall',
             referenceLine: 'center',
@@ -2644,22 +2698,81 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     const minY = Math.min(pA.y, pB.y);
     const maxY = Math.max(pA.y, pB.y);
 
-    const p1 = { x: minX, y: minY };
-    const p2 = { x: maxX, y: minY };
-    const p3 = { x: maxX, y: maxY };
-    const p4 = { x: minX, y: maxY };
+    const p1 = { x: minX, y: minY }; // North-West
+    const p2 = { x: maxX, y: minY }; // North-East
+    const p3 = { x: maxX, y: maxY }; // South-East
+    const p4 = { x: minX, y: maxY }; // South-West
 
     const wallThickness = currentWallThickness;
-    const wallHeight = wallStartHeight;
-    const wallEndH = wallEndHeight;
+    const isSloped = Math.abs(wallEndHeight - wallStartHeight) > 0.01;
+
+    let h1_start = wallStartHeight;
+    let h1_end = wallStartHeight;
+    let h2_start = wallStartHeight;
+    let h2_end = wallStartHeight;
+    let h3_start = wallStartHeight;
+    let h3_end = wallStartHeight;
+    let h4_start = wallStartHeight;
+    let h4_end = wallStartHeight;
+
+    if (isSloped) {
+      // Determine slope direction from user's drag vector
+      const dx = pB.x - pA.x;
+      const dy = pB.y - pA.y;
+      const isVerticalSlope = Math.abs(dy) >= Math.abs(dx);
+
+      if (isVerticalSlope) {
+        // Slope along Y axis (North-South)
+        // If dragged top-to-bottom (dy >= 0), top (minY) is start height, bottom (maxY) is end height
+        const topH = dy >= 0 ? wallStartHeight : wallEndHeight;
+        const bottomH = dy >= 0 ? wallEndHeight : wallStartHeight;
+
+        // w1 (Top / North, p1 -> p2): runs along X at minY -> constant topH
+        h1_start = topH;
+        h1_end = topH;
+
+        // w2 (Right / East, p2 -> p3): runs from minY (topH) to maxY (bottomH)
+        h2_start = topH;
+        h2_end = bottomH;
+
+        // w3 (Bottom / South, p3 -> p4): runs along X at maxY -> constant bottomH
+        h3_start = bottomH;
+        h3_end = bottomH;
+
+        // w4 (Left / West, p4 -> p1): runs from maxY (bottomH) to minY (topH)
+        h4_start = bottomH;
+        h4_end = topH;
+      } else {
+        // Slope along X axis (West-East)
+        // If dragged left-to-right (dx >= 0), left (minX) is start height, right (maxX) is end height
+        const leftH = dx >= 0 ? wallStartHeight : wallEndHeight;
+        const rightH = dx >= 0 ? wallEndHeight : wallStartHeight;
+
+        // w1 (Top / North, p1 -> p2): runs from minX (leftH) to maxX (rightH)
+        h1_start = leftH;
+        h1_end = rightH;
+
+        // w2 (Right / East, p2 -> p3): runs along Y at maxX -> constant rightH
+        h2_start = rightH;
+        h2_end = rightH;
+
+        // w3 (Bottom / South, p3 -> p4): runs from maxX (rightH) to minX (leftH)
+        h3_start = rightH;
+        h3_end = leftH;
+
+        // w4 (Left / West, p4 -> p1): runs along Y at minX -> constant leftH
+        h4_start = leftH;
+        h4_end = leftH;
+      }
+    }
 
     const w1: Wall = {
       id: 'w_r1_' + Date.now() + Math.random().toString(36).substr(2, 3),
       start: p1,
       end: p2,
       thickness: wallThickness,
-      height: wallHeight,
-      endHeight: wallEndH,
+      height: h1_start,
+      endHeight: h1_end,
       isExterior: wallMode === 'exterior',
       material: 'timber',
       referenceLine: 'center',
@@ -2669,8 +2782,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       start: p2,
       end: p3,
       thickness: wallThickness,
-      height: wallHeight,
-      endHeight: wallEndH,
+      height: h2_start,
+      endHeight: h2_end,
       isExterior: wallMode === 'exterior',
       material: 'timber',
       referenceLine: 'center',
@@ -2680,8 +2793,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       start: p3,
       end: p4,
       thickness: wallThickness,
-      height: wallHeight,
-      endHeight: wallEndH,
+      height: h3_start,
+      endHeight: h3_end,
       isExterior: wallMode === 'exterior',
       material: 'timber',
       referenceLine: 'center',
@@ -2691,8 +2804,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       start: p4,
       end: p1,
       thickness: wallThickness,
-      height: wallHeight,
-      endHeight: wallEndH,
+      height: h4_start,
+      endHeight: h4_end,
       isExterior: wallMode === 'exterior',
       material: 'timber',
       referenceLine: 'center',
@@ -2941,13 +3054,26 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       const dragDist = distance(pointerDownPos, targetPt);
       if (dragDist >= 0.4) {
         // Drag-to-draw completed!
+        const effStartHeight = (snap.matchedHeights || smartSnap?.matchedHeights)
+          ? (snap.matchedHeights?.height || smartSnap?.matchedHeights?.height || wallStartHeight)
+          : wallStartHeight;
+        const effEndHeight = (snap.matchedHeights || smartSnap?.matchedHeights)
+          ? ((snap.matchedHeights?.endHeight ?? snap.matchedHeights?.height) || (smartSnap?.matchedHeights?.endHeight ?? smartSnap?.matchedHeights?.height) || wallEndHeight)
+          : wallEndHeight;
+
+        if (snap.matchedHeights || smartSnap?.matchedHeights) {
+          setWallStartHeight(effStartHeight);
+          setWallEndHeight(effEndHeight);
+          setIsLockWallHeights(Math.abs(effStartHeight - effEndHeight) < 0.01);
+        }
+
         const newWall: Wall = {
           id: 'w_' + Date.now() + Math.random().toString(36).substr(2, 4),
           start: pointerDownPos,
           end: targetPt,
           thickness: currentWallThickness,
-          height: wallStartHeight,
-          endHeight: wallEndHeight,
+          height: effStartHeight,
+          endHeight: effEndHeight,
           isExterior: wallMode === 'exterior',
           material: wallMode === 'exterior' ? 'timber' : 'drywall',
           referenceLine: 'center',
@@ -3135,13 +3261,26 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         y: wallStartPoint.y + Math.sin(targetAng) * len,
       };
 
+      const effStartHeight = (smartSnap?.matchedHeights)
+        ? smartSnap.matchedHeights.height
+        : wallStartHeight;
+      const effEndHeight = (smartSnap?.matchedHeights)
+        ? (smartSnap.matchedHeights.endHeight ?? smartSnap.matchedHeights.height)
+        : wallEndHeight;
+
+      if (smartSnap?.matchedHeights) {
+        setWallStartHeight(effStartHeight);
+        setWallEndHeight(effEndHeight);
+        setIsLockWallHeights(Math.abs(effStartHeight - effEndHeight) < 0.01);
+      }
+
       const newWall: Wall = {
         id: 'w_' + Date.now(),
         start: wallStartPoint,
         end: endPt,
         thickness: currentWallThickness,
-        height: wallStartHeight,
-        endHeight: wallEndHeight,
+        height: effStartHeight,
+        endHeight: effEndHeight,
         isExterior: wallMode === 'exterior',
         material: wallMode === 'exterior' ? 'timber' : 'drywall',
         referenceLine: 'center',
@@ -3324,49 +3463,137 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           <div className="h-4 w-px bg-stone-700" />
 
           {/* Wall Heights: Anfangshöhe & Endhöhe */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-stone-400">Start:</span>
-            <input
-              type="number"
-              step="0.05"
-              min="1.0"
-              max="8.0"
-              value={wallStartHeight}
-              onChange={(e) => setWallStartHeight(parseFloat(e.target.value) || 2.5)}
-              className="w-14 bg-stone-950 border border-stone-700 rounded px-1.5 py-0.5 font-mono text-center font-bold text-amber-300"
-            />
-            <span className="text-[10px] text-stone-400">m</span>
+          <div className="flex items-center gap-1.5 bg-stone-950/80 px-2 py-1 rounded-lg border border-stone-800">
+            <span className="text-[10px] text-stone-400 font-semibold">Höhe:</span>
 
-            <span className="text-[10px] text-stone-400 ml-1">Ende:</span>
-            <input
-              type="number"
-              step="0.05"
-              min="1.0"
-              max="8.0"
-              value={wallEndHeight}
-              onChange={(e) => setWallEndHeight(parseFloat(e.target.value) || 2.5)}
-              className="w-14 bg-stone-950 border border-stone-700 rounded px-1.5 py-0.5 font-mono text-center font-bold text-amber-300"
-            />
-            <span className="text-[10px] text-stone-400">m</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-stone-400">Start:</span>
+              <input
+                type="number"
+                step="0.05"
+                min="1.0"
+                max="8.0"
+                value={wallStartHeight}
+                onChange={(e) => handleChangeStartHeight(parseFloat(e.target.value) || 2.5)}
+                className="w-14 bg-stone-900 border border-stone-700 rounded px-1.5 py-0.5 font-mono text-center font-bold text-amber-300"
+              />
+              <span className="text-[10px] text-stone-400">m</span>
+            </div>
 
-            {/* Quick slope helper */}
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-stone-400">Ende:</span>
+              <input
+                type="number"
+                step="0.05"
+                min="1.0"
+                max="8.0"
+                value={wallEndHeight}
+                onChange={(e) => handleChangeEndHeight(parseFloat(e.target.value) || 2.5)}
+                className="w-14 bg-stone-900 border border-stone-700 rounded px-1.5 py-0.5 font-mono text-center font-bold text-amber-300"
+              />
+              <span className="text-[10px] text-stone-400">m</span>
+            </div>
+
+            {/* Lock button */}
             <button
-              onClick={() => setWallEndHeight(Math.round((wallStartHeight + 1.0) * 100) / 100)}
-              title="Ende 1.0 m höher als Start"
-              className="px-2 py-0.5 rounded bg-stone-800 hover:bg-amber-600 hover:text-white text-[10px] font-medium text-amber-300 transition-colors cursor-pointer"
+              onClick={() => setIsLockWallHeights(!isLockWallHeights)}
+              title={isLockWallHeights ? "Höhen gekoppelt (Start = Ende). Klicken für schräge Wand / Pultdach" : "Höhen getrennt (schräge Wand). Klicken zum Koppeln"}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                isLockWallHeights
+                  ? 'bg-stone-800 text-stone-300 hover:bg-stone-700'
+                  : 'bg-amber-600/30 border border-amber-500/50 text-amber-300 hover:bg-amber-600/40'
+              }`}
             >
-              +1.0m ↗
+              {isLockWallHeights ? '🔒 Gekoppelt' : '🔓 Schräg'}
             </button>
-            {Math.abs(wallEndHeight - wallStartHeight) > 0.02 && (
+
+            {/* Swap direction button */}
+            <button
+              onClick={handleSwapWallHeights}
+              title="Start- und Endhöhe tauschen"
+              className="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 text-[10px] font-mono cursor-pointer transition-colors"
+            >
+              ⇄
+            </button>
+
+            <div className="h-3 w-px bg-stone-700" />
+
+            {/* Presets */}
+            <div className="flex items-center gap-1">
               <button
-                onClick={() => setWallEndHeight(wallStartHeight)}
-                title="Wand gerade (Anfang = Ende)"
-                className="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-[10px] text-stone-400 cursor-pointer"
+                onClick={() => setWallHeightPreset(2.50, 2.50)}
+                title="Standardhöhe 2,50 m (gerade)"
+                className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer ${
+                  wallStartHeight === 2.5 && wallEndHeight === 2.5
+                    ? 'bg-amber-600 text-white font-bold'
+                    : 'bg-stone-800 text-stone-400 hover:text-white'
+                }`}
               >
-                Gerade
+                2,50m
               </button>
+
+              <button
+                onClick={() => setWallHeightPreset(2.80, 2.80)}
+                title="Hohe Decke 2,80 m (gerade)"
+                className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer ${
+                  wallStartHeight === 2.8 && wallEndHeight === 2.8
+                    ? 'bg-amber-600 text-white font-bold'
+                    : 'bg-stone-800 text-stone-400 hover:text-white'
+                }`}
+              >
+                2,80m
+              </button>
+
+              <button
+                onClick={() => setWallHeightPreset(2.50, 4.50)}
+                title="Pultwand: 2,50 m auf 4,50 m ansteigend (+2,00m)"
+                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-pointer ${
+                  wallStartHeight === 2.5 && wallEndHeight === 4.5
+                    ? 'bg-amber-600 text-white font-bold shadow-sm'
+                    : 'bg-amber-950/60 border border-amber-600/50 text-amber-300 hover:bg-amber-900/60'
+                }`}
+              >
+                2,50m → 4,50m ↗
+              </button>
+
+              <button
+                onClick={() => setWallHeightPreset(2.50, 3.50)}
+                title="Pultwand: 2,50 m auf 3,50 m ansteigend (+1,00m)"
+                className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer ${
+                  wallStartHeight === 2.5 && wallEndHeight === 3.5
+                    ? 'bg-amber-600 text-white font-bold'
+                    : 'bg-stone-800 text-stone-400 hover:text-white'
+                }`}
+              >
+                2,50m → 3,50m ↗
+              </button>
+            </div>
+
+            {/* Steigung indicator */}
+            {Math.abs(wallEndHeight - wallStartHeight) > 0.02 && (
+              <span className="text-[10px] text-amber-400 font-mono font-medium ml-1">
+                {wallEndHeight > wallStartHeight ? '↗ +' : '↘ '}
+                {(wallEndHeight - wallStartHeight).toFixed(2)}m
+              </span>
             )}
           </div>
+
+          {/* Magnetic Height Snapping Active Alert */}
+          {smartSnap?.matchedHeights && (
+            <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/60 rounded-lg px-2.5 py-1 text-[11px] text-emerald-200">
+              <span className="animate-pulse">📐</span>
+              <span className="font-semibold">
+                {smartSnap.matchedHeights.label || 'Höhen-Magnet'}:
+              </span>
+              <span className="font-mono font-bold text-white">
+                {smartSnap.matchedHeights.height.toFixed(2)}m
+                {smartSnap.matchedHeights.endHeight !== undefined && Math.abs(smartSnap.matchedHeights.endHeight - smartSnap.matchedHeights.height) > 0.01
+                  ? ` → ${smartSnap.matchedHeights.endHeight.toFixed(2)}m`
+                  : ''}
+              </span>
+              <span className="text-[10px] text-emerald-300/80">(automatisch angepasst)</span>
+            </div>
+          )}
         </div>
       )}
 

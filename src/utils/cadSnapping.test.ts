@@ -253,4 +253,50 @@ describe('CAD Snapping & Intelligent Guidelines Engine', () => {
     expect(cand1.candidatesCount).toBeGreaterThanOrEqual(1);
     expect(cand2.snapped).toBe(true);
   });
+
+  it('10. Test Magnetische Höhenübertragung an gegenüberliegende Wand (Pultdach 2.50m -> 4.50m) und Eckhöhe', () => {
+    // Sloped wall w_slope: (2, 0) -> (8, 0), height: 2.50, endHeight: 4.50
+    const slopedWall: Wall = {
+      id: 'w_slope',
+      start: { x: 2, y: 0 },
+      end: { x: 8, y: 0 },
+      thickness: 0.3,
+      height: 2.50,
+      endHeight: 4.50,
+      isExterior: true,
+      material: 'timber',
+      referenceLine: 'center',
+    };
+
+    // 10a: Drawing parallel wall from (2, 5) heading to (8, 5)
+    // Cursor at (7.9, 5.05), parallel to w_slope
+    const parRes = calculateSmartSnap({
+      target: { x: 7.9, y: 5.05 },
+      origin: { x: 2, y: 5 },
+      settings: DEFAULT_SNAP_SETTINGS,
+      walls: [slopedWall],
+      zoom: 50,
+      currentTool: 'wall',
+    });
+
+    expect(parRes.snapped).toBe(true);
+    // Should attach matchedHeights from w_slope
+    expect(parRes.matchedHeights).toBeDefined();
+    expect(parRes.matchedHeights?.height).toBe(2.50);
+    expect(parRes.matchedHeights?.endHeight).toBe(4.50);
+
+    // 10b: Corner snap to endpoint (8, 0) which is at 4.50m
+    const cornerRes = calculateSmartSnap({
+      target: { x: 8.02, y: 0.02 },
+      settings: DEFAULT_SNAP_SETTINGS,
+      walls: [slopedWall],
+      zoom: 50,
+      currentTool: 'wall',
+    });
+
+    expect(cornerRes.snapped).toBe(true);
+    expect(cornerRes.type).toBe('endpoint');
+    expect(cornerRes.matchedHeights).toBeDefined();
+    expect(cornerRes.matchedHeights?.height).toBe(4.50);
+  });
 });

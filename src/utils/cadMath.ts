@@ -15,6 +15,7 @@ import {
   PlotBoundary,
   ActiveGuideLine,
   SnapPointType,
+  MatchedHeightsInfo,
 } from '../types/cad';
 import { calculateSmartSnap, calculateEqualSpacingRatio } from './cadSnapping';
 
@@ -59,6 +60,7 @@ export interface SnapResult {
   candidatesCount?: number;
   activeCandidateIndex?: number;
   matchedWallIds?: string[];
+  matchedHeights?: MatchedHeightsInfo;
 }
 
 export function calculateSnap(
@@ -109,6 +111,7 @@ export function calculateSnap(
     activeCandidateIndex: res.activeCandidateIndex,
     targetWallId: res.matchedWallIds[0],
     matchedWallIds: res.matchedWallIds,
+    matchedHeights: res.matchedHeights,
   };
 }
 

@@ -455,6 +455,14 @@ export interface ActiveGuideLine {
   };
 }
 
+export interface MatchedHeightsInfo {
+  height: number;
+  endHeight?: number;
+  sourceWallId?: string;
+  isOpposite?: boolean;
+  label?: string;
+}
+
 export interface SmartSnapCandidate {
   point: Point2D;
   type: SnapPointType;
@@ -467,6 +475,7 @@ export interface SmartSnapCandidate {
   secondaryGuideLine?: ActiveGuideLine;
   matchedWallIds?: string[];
   matchedLength?: number;
+  matchedHeights?: MatchedHeightsInfo;
 }
 
 export interface SmartSnapResult {
@@ -479,6 +488,7 @@ export interface SmartSnapResult {
   candidatesCount: number;
   guideLines: ActiveGuideLine[];
   matchedWallIds: string[];
+  matchedHeights?: MatchedHeightsInfo;
 }
 
 export type CadTool = 

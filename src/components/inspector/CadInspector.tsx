@@ -150,6 +150,63 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
     return calculatePlotMetrics(plot, walls, floorsCount);
   }, [plot, walls, floorsCount]);
 
+  // Find matching opposite parallel wall for height synchronization
+  const matchingOppositeWall = useMemo<{ wall: Wall; isOppositeDir: boolean; dist: number } | null>(() => {
+    if (!selectedWall) return null;
+    const dx1 = selectedWall.end.x - selectedWall.start.x;
+    const dy1 = selectedWall.end.y - selectedWall.start.y;
+    const len1 = Math.hypot(dx1, dy1) || 1;
+    const ux1 = dx1 / len1;
+    const uy1 = dy1 / len1;
+
+    let best: { wall: Wall; isOppositeDir: boolean; dist: number } | null = null;
+    let minD = Infinity;
+
+    walls.forEach((other) => {
+      if (other.id === selectedWall.id) return;
+      const dx2 = other.end.x - other.start.x;
+      const dy2 = other.end.y - other.start.y;
+      const len2 = Math.hypot(dx2, dy2) || 1;
+      const ux2 = dx2 / len2;
+      const uy2 = dy2 / len2;
+
+      const dot = ux1 * ux2 + uy1 * uy2;
+      if (Math.abs(Math.abs(dot) - 1) < 0.08) {
+        const mid1 = { x: (selectedWall.start.x + selectedWall.end.x) / 2, y: (selectedWall.start.y + selectedWall.end.y) / 2 };
+        const mid2 = { x: (other.start.x + other.end.x) / 2, y: (other.start.y + other.end.y) / 2 };
+        const dist = Math.hypot(mid1.x - mid2.x, mid1.y - mid2.y);
+        if (dist > 0.4 && dist < minD) {
+          minD = dist;
+          best = { wall: other, isOppositeDir: dot < 0, dist };
+        }
+      }
+    });
+    return best;
+  }, [selectedWall, walls]);
+
+  const handleAdaptWallToOpposite = () => {
+    if (!selectedWall || !matchingOppositeWall) return;
+    const opp = matchingOppositeWall.wall;
+    const h1 = opp.height ?? 2.50;
+    const h2 = opp.endHeight ?? h1;
+    onUpdateWall({
+      ...selectedWall,
+      height: matchingOppositeWall.isOppositeDir ? h2 : h1,
+      endHeight: matchingOppositeWall.isOppositeDir ? h1 : h2,
+    });
+  };
+
+  const handleSwapSelectedWallHeights = () => {
+    if (!selectedWall) return;
+    const currentH1 = selectedWall.height || 2.50;
+    const currentH2 = selectedWall.endHeight ?? currentH1;
+    onUpdateWall({
+      ...selectedWall,
+      height: currentH2,
+      endHeight: currentH1,
+    });
+  };
+
   return (
     <aside className="w-76 border-l border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex flex-col z-20 shrink-0 select-none overflow-hidden shadow-sm text-stone-800 dark:text-stone-200">
       {/* 4 Tabs Header */}
@@ -475,19 +532,51 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 pt-1 border-t border-stone-200 dark:border-stone-700">
-                    <button
-                      onClick={() => onUpdateWall({ ...selectedWall, endHeight: selectedWall.height })}
-                      className="flex-1 py-0.5 text-[10px] bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 rounded text-stone-700 dark:text-stone-200 cursor-pointer"
-                    >
-                      Waagerecht (gleich hoch)
-                    </button>
-                    <button
-                      onClick={() => onUpdateWall({ ...selectedWall, endHeight: (selectedWall.height || 2.5) + 1.0 })}
-                      className="flex-1 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-950 hover:bg-amber-200 text-amber-800 dark:text-amber-300 rounded font-medium cursor-pointer"
-                    >
-                      +1.0m Anstieg ↗
-                    </button>
+                  <div className="flex flex-col gap-1.5 pt-1.5 border-t border-stone-200 dark:border-stone-700">
+                    {/* Quick horizontal / slope toggles */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => onUpdateWall({ ...selectedWall, endHeight: selectedWall.height })}
+                        className="flex-1 py-1 text-[10px] bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 rounded text-stone-700 dark:text-stone-200 cursor-pointer font-medium"
+                      >
+                        Waagerecht (gerade)
+                      </button>
+                      <button
+                        onClick={handleSwapSelectedWallHeights}
+                        title="Start- und Endhöhe umkehren (Richtung tauschen)"
+                        className="px-2 py-1 text-[10px] bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 rounded text-stone-700 dark:text-stone-200 cursor-pointer font-medium"
+                      >
+                        ⇄ Umkehren
+                      </button>
+                    </div>
+
+                    {/* Presets: 2,50m -> 4,50m (user's exact example) */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => onUpdateWall({ ...selectedWall, height: 2.50, endHeight: 4.50 })}
+                        className="flex-1 py-1 text-[10px] bg-amber-100 dark:bg-amber-950/80 hover:bg-amber-200 dark:hover:bg-amber-900/80 text-amber-900 dark:text-amber-300 rounded font-semibold border border-amber-300 dark:border-amber-800 cursor-pointer"
+                      >
+                        2,50m → 4,50m (Pultwand)
+                      </button>
+                      <button
+                        onClick={() => onUpdateWall({ ...selectedWall, height: 2.50, endHeight: 3.50 })}
+                        className="flex-1 py-1 text-[10px] bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-300 rounded cursor-pointer"
+                      >
+                        2,50m → 3,50m
+                      </button>
+                    </div>
+
+                    {/* Magnetische Anpassung an gegenüberliegende Wand */}
+                    {matchingOppositeWall && (
+                      <button
+                        onClick={handleAdaptWallToOpposite}
+                        title={`Höhen der gegenüberliegenden Wand (${(matchingOppositeWall.wall.height || 2.5).toFixed(2)}m → ${(matchingOppositeWall.wall.endHeight ?? matchingOppositeWall.wall.height ?? 2.5).toFixed(2)}m) übernehmen`}
+                        className="w-full py-1.5 px-2 bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/70 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs text-center"
+                      >
+                        <span>📐</span>
+                        <span>An Wand gegenüber anpassen ({(matchingOppositeWall.wall.height || 2.5).toFixed(2)}m → {(matchingOppositeWall.wall.endHeight ?? matchingOppositeWall.wall.height ?? 2.5).toFixed(2)}m)</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
