@@ -40,6 +40,7 @@ import {
   RotateCcw,
   Home,
   Maximize,
+  Maximize2,
   Minimize,
   Tablet,
   CheckCircle2,
@@ -76,6 +77,7 @@ interface CadHeaderProps {
   onAddFloor: () => void;
   onDeleteFloor: (floorId: string) => void;
   onRenameProject: (name: string) => void;
+  onZoomFit?: () => void;
   isFocusMode?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -110,6 +112,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   onAddFloor,
   onDeleteFloor,
   onRenameProject,
+  onZoomFit,
   isFocusMode = false,
   isFullscreen = false,
   onToggleFullscreen,
@@ -147,7 +150,14 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   const isFullscreenActive = isFullscreen || isFocusMode;
 
   return (
-    <header className="h-12 md:h-13 max-h-[52px] border-b border-stone-200 dark:border-stone-800 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md px-2.5 sm:px-4 flex items-center justify-between z-30 select-none shrink-0 text-stone-800 dark:text-stone-100 transition-colors">
+    <header
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingLeft: 'max(env(safe-area-inset-left, 0px), 0.5rem)',
+        paddingRight: 'max(env(safe-area-inset-right, 0px), 5.5rem)',
+      }}
+      className="h-12 md:h-13 border-b border-stone-200 dark:border-stone-800 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md px-2 sm:px-3 flex items-center justify-between z-30 select-none shrink-0 text-stone-800 dark:text-stone-100 transition-colors"
+    >
       {/* 1. LEFT ZONE: ☰-Menü & Projektname & Speicherstatus */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {/* ☰ Hamburger Main Menu Button */}
@@ -398,6 +408,18 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
           </div>
+
+          {/* Quick Leere Seite (Neu) button */}
+          {(onResetProjectPrompt || onNewProject) && (
+            <button
+              onClick={onResetProjectPrompt || onNewProject}
+              title="Zeichenfläche leeren (Neu anfangen mit Bestätigung)"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-stone-200/90 dark:border-stone-700/90 bg-stone-50 dark:bg-stone-850 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-stone-700 dark:text-stone-300 hover:text-rose-600 dark:hover:text-rose-400 font-semibold text-xs transition-colors cursor-pointer shrink-0 ml-1"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+              <span className="hidden sm:inline">Seite leeren</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -487,31 +509,57 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
         </div>
       </div>
 
-      {/* 3. RIGHT ZONE: Rückgängig, Wiederholen, VOLLBILD (IMMER SICHTBAR!), Export */}
+      {/* 3. RIGHT ZONE: Rückgängig, Wiederholen, Einpassen, Dach, VOLLBILD, Export */}
       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
         {/* Undo / Redo */}
-        <div className="flex items-center">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={onUndo}
             disabled={!canUndo}
-            title="Rückgängig (Strg+Z / 2-Finger-Tipp)"
-            className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
+            title="Aktion rückgängig (Strg+Z / 2-Finger-Tipp)"
+            className="flex items-center gap-1 px-2 py-1.5 rounded-xl border border-stone-200/90 dark:border-stone-700/90 bg-stone-50 dark:bg-stone-800/80 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer text-xs font-semibold"
           >
-            <Undo2 className="w-4 h-4" />
+            <Undo2 className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">Rückgängig</span>
           </button>
           <button
             onClick={onRedo}
             disabled={!canRedo}
-            title="Wiederholen (Strg+Y / 3-Finger-Tipp)"
-            className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
+            title="Aktion vorwärts / wiederholen (Strg+Y / 3-Finger-Tipp)"
+            className="flex items-center gap-1 px-2 py-1.5 rounded-xl border border-stone-200/90 dark:border-stone-700/90 bg-stone-50 dark:bg-stone-800/80 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer text-xs font-semibold"
           >
-            <Redo2 className="w-4 h-4" />
+            <Redo2 className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">Vorwärts</span>
           </button>
         </div>
 
-        <div className="h-4 w-px bg-stone-200 dark:border-stone-800 mx-0.5 sm:mx-1" />
+        {/* Zoom to fit (Einpassen) */}
+        {onZoomFit && (
+          <button
+            onClick={onZoomFit}
+            title="Ganzes Haus einpassen (Zoom Fit)"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-stone-200/90 dark:border-stone-700/90 bg-stone-50 dark:bg-stone-800/80 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
+          >
+            <Maximize2 className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden lg:inline">Einpassen</span>
+          </button>
+        )}
 
-        {/* VOLLBILD / FOKUSMODUS: IMMER SICHTBAR & NIE ABGESCHNITTEN per TEIL 1 & 4 */}
+        {/* Dach-Modul Schnell-Button */}
+        {onOpenRoofModal && (
+          <button
+            onClick={onOpenRoofModal}
+            title="Dach konfigurieren (11 Dachformen & Parameter)"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-stone-200/90 dark:border-stone-700/90 bg-stone-50 dark:bg-stone-800/80 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-stone-700 dark:text-stone-200 hover:text-amber-600 dark:hover:text-amber-400 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
+          >
+            <Home className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden md:inline">Dach</span>
+          </button>
+        )}
+
+        <div className="h-4 w-px bg-stone-200 dark:bg-stone-800 mx-0.5" />
+
+        {/* VOLLBILD / FOKUSMODUS: IMMER SICHTBAR & NIE ABGESCHNITTEN */}
         {onToggleFullscreen && (
           <button
             onClick={onToggleFullscreen}
@@ -519,7 +567,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
             className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer font-medium text-xs ${
               isFullscreenActive
                 ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-500 text-amber-700 dark:text-amber-300 font-bold shadow-xs'
-                : 'border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800/80 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200'
+                : 'border-stone-200/90 dark:border-stone-700/90 bg-stone-50 dark:bg-stone-800/80 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200'
             }`}
           >
             {isFullscreenActive ? <Minimize className="w-4 h-4 text-amber-500" /> : <Maximize className="w-4 h-4 text-amber-500" />}
@@ -531,7 +579,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
         <button
           onClick={onOpenExportDialog}
           title="Pläne exportieren & drucken (PDF, PNG, SVG)"
-          className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs shadow-xs transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs shadow-xs transition-colors cursor-pointer shrink-0"
         >
           <Download className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Export</span>

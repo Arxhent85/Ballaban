@@ -441,38 +441,31 @@ export function calculateSeamlessWallRenderData(walls: Wall[]): WallRenderData[]
       if (startToOtherStart || startToOtherEnd) {
         hasStartCap = false;
 
-        // Compute miter lines
-        const line1A = pStartLeft;
-        const line1B = { x: pStartLeft.x + dir.x, y: pStartLeft.y + dir.y };
-        const line1RA = pStartRight;
-        const line1RB = { x: pStartRight.x + dir.x, y: pStartRight.y + dir.y };
+        const v1 = dir;
+        const n1 = norm; // CCW from v1
+        const v2 = startToOtherStart ? otherDir : { x: -otherDir.x, y: -otherDir.y };
+        const n2 = { x: -v2.y, y: v2.x }; // CCW from v2
+
+        const line1PosA = { x: wall.start.x + n1.x * halfT, y: wall.start.y + n1.y * halfT };
+        const line1PosB = { x: line1PosA.x + v1.x, y: line1PosA.y + v1.y };
+        const line1NegA = { x: wall.start.x - n1.x * halfT, y: wall.start.y - n1.y * halfT };
+        const line1NegB = { x: line1NegA.x + v1.x, y: line1NegA.y + v1.y };
 
         const otherV = startToOtherStart ? other.start : other.end;
-        const oDir = startToOtherStart ? otherDir : { x: -otherDir.x, y: -otherDir.y };
-        const oNorm = startToOtherStart ? otherNorm : { x: -otherNorm.x, y: -otherNorm.y };
+        const line2PosA = { x: otherV.x + n2.x * otherHalfT, y: otherV.y + n2.y * otherHalfT };
+        const line2PosB = { x: line2PosA.x + v2.x, y: line2PosA.y + v2.y };
+        const line2NegA = { x: otherV.x - n2.x * otherHalfT, y: otherV.y - n2.y * otherHalfT };
+        const line2NegB = { x: line2NegA.x + v2.x, y: line2NegA.y + v2.y };
 
-        const oLeftA = { x: otherV.x + oNorm.x * otherHalfT, y: otherV.y + oNorm.y * otherHalfT };
-        const oLeftB = { x: oLeftA.x + oDir.x, y: oLeftA.y + oDir.y };
-        const oRightA = { x: otherV.x - oNorm.x * otherHalfT, y: otherV.y - oNorm.y * otherHalfT };
-        const oRightB = { x: oRightA.x + oDir.x, y: oRightA.y + oDir.y };
-
-        // Test intersection of left/right combinations
-        const interLL = infiniteLineIntersection(line1A, line1B, oLeftA, oLeftB);
-        const interRR = infiniteLineIntersection(line1RA, line1RB, oRightA, oRightB);
-        const interLR = infiniteLineIntersection(line1A, line1B, oRightA, oRightB);
-        const interRL = infiniteLineIntersection(line1RA, line1RB, oLeftA, oLeftB);
+        const interPosNeg = infiniteLineIntersection(line1PosA, line1PosB, line2NegA, line2NegB);
+        const interNegPos = infiniteLineIntersection(line1NegA, line1NegB, line2PosA, line2PosB);
 
         const maxMiterDist = (halfT + otherHalfT) * 2.5;
-        if (interLL && distance(wall.start, interLL) <= maxMiterDist) {
-          pStartLeft = interLL;
-        } else if (interLR && distance(wall.start, interLR) <= maxMiterDist) {
-          pStartLeft = interLR;
+        if (interPosNeg && distance(wall.start, interPosNeg) <= maxMiterDist) {
+          pStartLeft = interPosNeg;
         }
-
-        if (interRR && distance(wall.start, interRR) <= maxMiterDist) {
-          pStartRight = interRR;
-        } else if (interRL && distance(wall.start, interRL) <= maxMiterDist) {
-          pStartRight = interRL;
+        if (interNegPos && distance(wall.start, interNegPos) <= maxMiterDist) {
+          pStartRight = interNegPos;
         }
       } else {
         // T-junction at start: does wall.start lie on other wall body?
@@ -490,36 +483,32 @@ export function calculateSeamlessWallRenderData(walls: Wall[]): WallRenderData[]
       if (endToOtherStart || endToOtherEnd) {
         hasEndCap = false;
 
-        const line2LA = pEndLeft;
-        const line2LB = { x: pEndLeft.x + dir.x, y: pEndLeft.y + dir.y };
-        const line2RA = pEndRight;
-        const line2RB = { x: pEndRight.x + dir.x, y: pEndRight.y + dir.y };
+        const v1 = { x: -dir.x, y: -dir.y };
+        const n1 = { x: -v1.y, y: v1.x }; // CCW from v1
+        const v2 = endToOtherStart ? otherDir : { x: -otherDir.x, y: -otherDir.y };
+        const n2 = { x: -v2.y, y: v2.x }; // CCW from v2
+
+        const line1PosA = { x: wall.end.x + n1.x * halfT, y: wall.end.y + n1.y * halfT };
+        const line1PosB = { x: line1PosA.x + v1.x, y: line1PosA.y + v1.y };
+        const line1NegA = { x: wall.end.x - n1.x * halfT, y: wall.end.y - n1.y * halfT };
+        const line1NegB = { x: line1NegA.x + v1.x, y: line1NegA.y + v1.y };
 
         const otherV = endToOtherStart ? other.start : other.end;
-        const oDir = endToOtherStart ? otherDir : { x: -otherDir.x, y: -otherDir.y };
-        const oNorm = endToOtherStart ? otherNorm : { x: -otherNorm.x, y: -otherNorm.y };
+        const line2PosA = { x: otherV.x + n2.x * otherHalfT, y: otherV.y + n2.y * otherHalfT };
+        const line2PosB = { x: line2PosA.x + v2.x, y: line2PosA.y + v2.y };
+        const line2NegA = { x: otherV.x - n2.x * otherHalfT, y: otherV.y - n2.y * otherHalfT };
+        const line2NegB = { x: line2NegA.x + v2.x, y: line2NegA.y + v2.y };
 
-        const oLeftA = { x: otherV.x + oNorm.x * otherHalfT, y: otherV.y + oNorm.y * otherHalfT };
-        const oLeftB = { x: oLeftA.x + oDir.x, y: oLeftA.y + oDir.y };
-        const oRightA = { x: otherV.x - oNorm.x * otherHalfT, y: otherV.y - oNorm.y * otherHalfT };
-        const oRightB = { x: oRightA.x + oDir.x, y: oRightA.y + oDir.y };
-
-        const interLL = infiniteLineIntersection(line2LA, line2LB, oLeftA, oLeftB);
-        const interRR = infiniteLineIntersection(line2RA, line2RB, oRightA, oRightB);
-        const interLR = infiniteLineIntersection(line2LA, line2LB, oRightA, oRightB);
-        const interRL = infiniteLineIntersection(line2RA, line2RB, oLeftA, oLeftB);
+        const interPosNeg = infiniteLineIntersection(line1PosA, line1PosB, line2NegA, line2NegB);
+        const interNegPos = infiniteLineIntersection(line1NegA, line1NegB, line2PosA, line2PosB);
 
         const maxMiterDist = (halfT + otherHalfT) * 2.5;
-        if (interLL && distance(wall.end, interLL) <= maxMiterDist) {
-          pEndLeft = interLL;
-        } else if (interLR && distance(wall.end, interLR) <= maxMiterDist) {
-          pEndLeft = interLR;
+        // At wall.end, n1 = -norm, so pEndLeft corresponds to line1Neg and pEndRight to line1Pos
+        if (interNegPos && distance(wall.end, interNegPos) <= maxMiterDist) {
+          pEndLeft = interNegPos;
         }
-
-        if (interRR && distance(wall.end, interRR) <= maxMiterDist) {
-          pEndRight = interRR;
-        } else if (interRL && distance(wall.end, interRL) <= maxMiterDist) {
-          pEndRight = interRL;
+        if (interPosNeg && distance(wall.end, interPosNeg) <= maxMiterDist) {
+          pEndRight = interPosNeg;
         }
       } else {
         // T-junction at end: does wall.end lie on other wall body?

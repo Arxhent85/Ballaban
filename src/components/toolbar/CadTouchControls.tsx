@@ -230,17 +230,17 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
           <button
             onClick={onTogglePencilMode}
             title={
-              pencilMode === 'pencil_draws_finger_pans'
-                ? 'Stift zeichnet • Finger verschiebt Ansicht'
-                : 'Finger und Stift zeichnen beide'
+              pencilMode === 'finger_draws_too'
+                ? 'Stift & Finger können beide zeichnen, auswählen und platzieren'
+                : 'Nur Stift zeichnet • 1 Finger verschiebt'
             }
             className={`h-9 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer ${
-              pencilMode === 'pencil_draws_finger_pans'
-                ? 'bg-sky-600 text-white shadow-sm'
+              pencilMode === 'finger_draws_too'
+                ? 'bg-amber-600 text-white shadow-sm'
                 : 'text-stone-300 hover:bg-stone-800/80'
             }`}
           >
-            <span>{pencilMode === 'pencil_draws_finger_pans' ? '✏️ Stift-Modus' : '👆 Touch-Modus'}</span>
+            <span>{pencilMode === 'finger_draws_too' ? '✏️👆 Stift & Finger' : '✏️ Nur Stift'}</span>
           </button>
 
           {/* Precision Loupe Toggle */}

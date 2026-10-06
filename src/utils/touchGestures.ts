@@ -57,9 +57,20 @@ export function isTouchDevice(): boolean {
 }
 
 /**
+ * Detects whether the current device is specifically an iPad or iOS device
+ */
+export function isIOSorIPadDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+/**
  * Detects whether an event is likely an accidental palm touch
  */
-export function isPalmTouch(e: React.PointerEvent | PointerEvent, hasActivePen: boolean): boolean {
+export function isPalmTouch(e: React.PointerEvent | PointerEvent, hasActivePen = false): boolean {
   if (e.pointerType === 'pen') return false;
   if (e.pointerType === 'mouse') return false;
 
@@ -71,7 +82,7 @@ export function isPalmTouch(e: React.PointerEvent | PointerEvent, hasActivePen: 
   // 2. Large contact surface typically indicates palm or side of hand
   const contactW = (e as any).width || 0;
   const contactH = (e as any).height || 0;
-  if (contactW > 38 || contactH > 38) {
+  if (contactW > 42 || contactH > 42) {
     return true;
   }
 

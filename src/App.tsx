@@ -39,7 +39,7 @@ import {
 } from './utils/templates';
 import { getT } from './i18n/translations';
 import { mergeBoundingBoxes, getWallBoundingBox, getFurnitureBoundingBox, lineIntersection, projectPointOntoWall } from './utils/cadMath';
-import { isTouchDevice } from './utils/touchGestures';
+import { isTouchDevice, isIOSorIPadDevice } from './utils/touchGestures';
 import { RotateCcw, Trash2 } from 'lucide-react';
 
 // UI components
@@ -165,7 +165,7 @@ export default function App() {
   // Tablet, Touch & Apple Pencil UI State
   const isTablet = useMemo(() => isTouchDevice(), []);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
-  const [pencilMode, setPencilMode] = useState<PencilMode>('pencil_draws_finger_pans');
+  const [pencilMode, setPencilMode] = useState<PencilMode>('finger_draws_too');
   const [precisionMode, setPrecisionMode] = useState<PrecisionMode>('normal');
   const [touchSettings, setTouchSettings] = useState<TouchGestureSettings>(() => {
     try {
@@ -204,6 +204,16 @@ export default function App() {
   });
   const [showHomeScreenGuide, setShowHomeScreenGuide] = useState<boolean>(false);
 
+  // Automatically exit any native video/fullscreen on iOS/iPadOS to eliminate the intrusive native "X" overlay
+  useEffect(() => {
+    if (isIOSorIPadDevice() && (document.fullscreenElement || (document as any).webkitFullscreenElement)) {
+      try {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if ((document as any).webkitExitFullscreen) (document as any).webkitExitFullscreen();
+      } catch {}
+    }
+  }, []);
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       const active = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
@@ -230,6 +240,23 @@ export default function App() {
 
     if (isFocusMode) {
       setIsFocusMode(false);
+      return;
+    }
+
+    // On iOS/iPadOS Safari, HTML5 requestFullscreen() injects an intrusive native "X" overlay
+    // button in the top-left corner that blocks drawing tools.
+    // Instead, on iPad we use clean CSS Focus Mode (or PWA standalone), giving 100% free workspace
+    // without any system "X" overlay!
+    if (isIOSorIPadDevice()) {
+      setIsFocusMode(true);
+      const isStandalone = (window.navigator as any).standalone || window.matchMedia('(display-mode: standalone)').matches;
+      let dismissed = false;
+      try {
+        dismissed = localStorage.getItem('cad_dismiss_homescreen_guide_v1') === 'true';
+      } catch {}
+      if (!isStandalone && !dismissed) {
+        setShowHomeScreenGuide(true);
+      }
       return;
     }
 
@@ -1666,6 +1693,7 @@ export default function App() {
           }}
           onRenameProject={(newName) => updateProject({ ...project, name: newName })}
           onOpenRoofModal={() => setShowRoofModal(true)}
+          onZoomFit={handleZoomFit}
           isFocusMode={isFocusMode}
           isFullscreen={isFullscreen}
           onToggleFullscreen={handleToggleFullscreen}

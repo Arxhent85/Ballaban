@@ -250,6 +250,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
   // Touch & Apple Pencil Gestures state
   const isTouchPointerRef = useRef(false);
+  const hasActivePenRef = useRef(false);
   const currentCursorScreenRef = useRef<{ x: number; y: number } | null>(null);
   const touchFingertipScreenRef = useRef<{ x: number; y: number } | null>(null);
   const lastSingleTapTimeRef = useRef(0);
@@ -561,6 +562,119 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const currentWallThickness = wallThicknessM || (wallMode === 'exterior'
     ? (defaults?.exteriorWallThickness || 0.30)
     : (defaults?.interiorWallThickness || 0.115));
+
+  // ==========================================
+  // NATIVE TOUCH & SAFARI GESTURE ENGINE (Smooth 2-finger pinch & pan)
+  // ==========================================
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+      for (let i = 0; i < e.touches.length; i++) {
+        const t = e.touches[i];
+        activePointersRef.current.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+      if (e.touches.length >= 2) {
+        // Abort single-finger drawing in progress cleanly
+        setWallStartPoint(null);
+        setWallChainPoints([]);
+        setRectRoomStart(null);
+        setIsPointerDown(false);
+        setPointerDownPos(null);
+        setShowNumericInput(false);
+
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const center = { x: (t0.clientX + t1.clientX) / 2, y: (t0.clientY + t1.clientY) / 2 };
+        const angle = Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX);
+        pinchStateRef.current = {
+          initialDist: dist,
+          initialZoom: zoom,
+          initialPan: { ...panOffset },
+          initialCenter: center,
+          initialAngle: angle,
+        };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+      for (let i = 0; i < e.touches.length; i++) {
+        const t = e.touches[i];
+        activePointersRef.current.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+
+      if (e.touches.length >= 2 && pinchStateRef.current) {
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const currentCenter = { x: (t0.clientX + t1.clientX) / 2, y: (t0.clientY + t1.clientY) / 2 };
+        const { initialDist, initialZoom, initialPan, initialCenter, initialAngle } = pinchStateRef.current;
+
+        if (initialDist > 10 && newDist > 10) {
+          const zoomRatio = newDist / initialDist;
+          const targetZoom = Math.min(180, Math.max(15, initialZoom * zoomRatio));
+
+          const rect = canvas.getBoundingClientRect();
+          const centerInCanvas = { x: initialCenter.x - rect.left, y: initialCenter.y - rect.top };
+          const worldFocal = {
+            x: (centerInCanvas.x - initialPan.x) / initialZoom,
+            y: (centerInCanvas.y - initialPan.y) / initialZoom,
+          };
+          const panDeltaX = currentCenter.x - initialCenter.x;
+          const panDeltaY = currentCenter.y - initialCenter.y;
+
+          const newPanX = centerInCanvas.x - worldFocal.x * targetZoom + panDeltaX;
+          const newPanY = centerInCanvas.y - worldFocal.y * targetZoom + panDeltaY;
+
+          onZoomChange(targetZoom);
+          onPanOffsetChange({ x: newPanX, y: newPanY });
+        }
+
+        if (touchGestureSettings?.twoFingerRotate && initialAngle !== undefined && onViewRotationChange) {
+          const curAngle = Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX);
+          const dAngleRad = curAngle - initialAngle;
+          const snapRes = snapRotationAngle(dAngleRad);
+          const deg = Math.round((snapRes.angle * 180) / Math.PI);
+          onViewRotationChange(deg);
+        }
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        activePointersRef.current.delete(e.changedTouches[i].identifier);
+      }
+      if (e.touches.length < 2) {
+        pinchStateRef.current = null;
+      }
+    };
+
+    const preventDefaultGesture = (e: Event) => {
+      if (e.cancelable) e.preventDefault();
+    };
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    canvas.addEventListener('gesturestart', preventDefaultGesture, { passive: false });
+    canvas.addEventListener('gesturechange', preventDefaultGesture, { passive: false });
+    canvas.addEventListener('gestureend', preventDefaultGesture, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+      canvas.removeEventListener('touchcancel', onTouchEnd);
+      canvas.removeEventListener('gesturestart', preventDefaultGesture);
+      canvas.removeEventListener('gesturechange', preventDefaultGesture);
+      canvas.removeEventListener('gestureend', preventDefaultGesture);
+    };
+  }, [zoom, panOffset, onZoomChange, onPanOffsetChange, touchGestureSettings, onViewRotationChange]);
 
   // ==========================================
   // MAIN CANVAS RENDERING LOOP
@@ -2216,10 +2330,18 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    if (e.pointerType === 'pen') {
+      hasActivePenRef.current = true;
+    }
+
     // Palm Rejection: Ignore broad palm contact on iPad
-    if (isPalmTouch(e.nativeEvent)) {
+    if (isPalmTouch(e.nativeEvent, hasActivePenRef.current)) {
       return;
     }
+
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {}
 
     const isTouch = e.pointerType === 'touch';
     isTouchPointerRef.current = isTouch;
@@ -3164,12 +3286,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         onPanOffsetChange({ x: newPanX, y: newPanY });
       }
 
-      // Two-finger Rotation: Snaps to 0°, 90°, 180°, 270°
-      if (initialAngle !== undefined && onViewRotationChange) {
+      // Two-finger Rotation: Snaps to 0°, 90°, 180°, 270° (if enabled)
+      if (touchGestureSettings?.twoFingerRotate && initialAngle !== undefined && onViewRotationChange) {
         const curAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-        const dAngleDeg = ((curAngle - initialAngle) * 180) / Math.PI;
-        const snapped = snapRotationAngle(dAngleDeg, 6);
-        onViewRotationChange(snapped);
+        const dAngleRad = curAngle - initialAngle;
+        const snapRes = snapRotationAngle(dAngleRad);
+        const deg = Math.round((snapRes.angle * 180) / Math.PI);
+        onViewRotationChange(deg);
       }
       return;
     }
@@ -3335,6 +3458,9 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
   // Pointer Up
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === 'pen') {
+      hasActivePenRef.current = false;
+    }
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
