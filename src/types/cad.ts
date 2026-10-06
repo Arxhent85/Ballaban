@@ -534,3 +534,37 @@ export interface MarqueeBox {
 }
 
 export type InspectorTab = 'properties' | 'library' | 'layers' | 'rooms';
+
+// ==========================================
+// TABLET, TOUCH & APPLE PENCIL TYPES
+// ==========================================
+export type TouchInteractionMode = 'auto' | 'touch' | 'mouse';
+export type PencilMode = 'pencil_draws_finger_pans' | 'finger_draws_too' | 'pencilDrawsFingerNavigates';
+export type PrecisionMode = 'normal' | 'offset_crosshair' | 'trackpad' | 'offsetCrosshairWithLoupe';
+
+export interface TouchGestureSettings {
+  twoFingerRotate: boolean;
+  quickPinchToFit: boolean;
+  twoFingerTapUndo: boolean;
+  threeFingerTapRedo: boolean;
+  fourFingerTapFocus: boolean;
+  threeFingerSwipeDownClipboard: boolean;
+  cancelOnSecondFinger: boolean;
+  quickShapeEnabled: boolean;
+  pressureSensitivity: boolean;
+  palmRejection: boolean;
+}
+
+export const DEFAULT_TOUCH_GESTURE_SETTINGS: TouchGestureSettings = {
+  twoFingerRotate: true,
+  quickPinchToFit: true,
+  twoFingerTapUndo: true,
+  threeFingerTapRedo: true,
+  fourFingerTapFocus: true,
+  threeFingerSwipeDownClipboard: true,
+  cancelOnSecondFinger: true,
+  quickShapeEnabled: true,
+  pressureSensitivity: true,
+  palmRejection: true,
+};
+

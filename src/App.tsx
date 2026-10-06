@@ -27,6 +27,11 @@ import {
   BoundingBox2D,
   PlotBoundary,
   ProjectDefaults,
+  TouchInteractionMode,
+  PencilMode,
+  PrecisionMode,
+  TouchGestureSettings,
+  DEFAULT_TOUCH_GESTURE_SETTINGS,
 } from './types/cad';
 import {
   createHolidayHouse6x8Template,
@@ -34,6 +39,7 @@ import {
 } from './utils/templates';
 import { getT } from './i18n/translations';
 import { mergeBoundingBoxes, getWallBoundingBox, getFurnitureBoundingBox, lineIntersection, projectPointOntoWall } from './utils/cadMath';
+import { isTouchDevice } from './utils/touchGestures';
 import { RotateCcw, Trash2 } from 'lucide-react';
 
 // UI components
@@ -42,6 +48,7 @@ import { CadToolbar } from './components/toolbar/CadToolbar';
 import { CadStatusBar } from './components/toolbar/CadStatusBar';
 import { CadInspector } from './components/inspector/CadInspector';
 import { CadFloatingContextBar } from './components/toolbar/CadFloatingContextBar';
+import { CadTouchControls } from './components/toolbar/CadTouchControls';
 
 // Views
 import { CadCanvas2D } from './components/canvas/CadCanvas2D';
@@ -62,6 +69,7 @@ import { WallNumericModal } from './components/dialogs/WallNumericModal';
 import { HistoryModal } from './components/dialogs/HistoryModal';
 import { RoomEditModal } from './components/dialogs/RoomEditModal';
 import { RoofConfigModal } from './components/dialogs/RoofConfigModal';
+import { TouchGestureHelpModal } from './components/dialogs/TouchGestureHelpModal';
 
 export default function App() {
   // Project state: default to newly designed 6x8m Holiday House
@@ -134,6 +142,111 @@ export default function App() {
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showRoofModal, setShowRoofModal] = useState(false);
+
+  // Tablet, Touch & Apple Pencil UI State
+  const isTablet = useMemo(() => isTouchDevice(), []);
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+  const [pencilMode, setPencilMode] = useState<PencilMode>('pencil_draws_finger_pans');
+  const [precisionMode, setPrecisionMode] = useState<PrecisionMode>('normal');
+  const [touchSettings, setTouchSettings] = useState<TouchGestureSettings>(() => {
+    try {
+      const saved = localStorage.getItem('cad_touch_gesture_settings_v1');
+      if (saved) return { ...DEFAULT_TOUCH_GESTURE_SETTINGS, ...JSON.parse(saved) };
+    } catch {}
+    return { ...DEFAULT_TOUCH_GESTURE_SETTINGS };
+  });
+  const [viewRotationDeg, setViewRotationDeg] = useState<number>(0);
+  const [leftHandedMode, setLeftHandedMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cad_left_handed_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [bottomSheetDetent, setBottomSheetDetent] = useState<'peek' | 'half' | 'full'>('half');
+  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  const [showTouchNumpad, setShowTouchNumpad] = useState<boolean>(false);
+  const [numpadValue, setNumpadValue] = useState<string>('');
+  const [numpadMode, setNumpadMode] = useState<'length' | 'angle'>('length');
+  const [showGestureHelp, setShowGestureHelp] = useState<boolean>(false);
+  const [showClipboardSheet, setShowClipboardSheet] = useState<boolean>(false);
+  const [isMultiSelectActive, setIsMultiSelectActive] = useState<boolean>(false);
+  const [clipboardData, setClipboardData] = useState<{
+    walls: Wall[];
+    furniture: Furniture[];
+    rooms: Room[];
+    doors: Door[];
+    windows: Window[];
+  } | null>(null);
+
+  // Tablet Wake Lock API (keeps screen awake while drawing)
+  useEffect(() => {
+    let wakeLock: any = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && (navigator as any).wakeLock) {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch {}
+    };
+    requestWakeLock();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (wakeLock) wakeLock.release().catch(() => {});
+    };
+  }, []);
+
+  // Autosave on mobile tab switch or backgrounding
+  useEffect(() => {
+    const handleSave = () => {
+      try {
+        localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(project));
+      } catch {}
+    };
+    window.addEventListener('pagehide', handleSave);
+    window.addEventListener('beforeunload', handleSave);
+    const handleVis = () => {
+      if (document.visibilityState === 'hidden') handleSave();
+    };
+    document.addEventListener('visibilitychange', handleVis);
+    return () => {
+      window.removeEventListener('pagehide', handleSave);
+      window.removeEventListener('beforeunload', handleSave);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
+  }, [project]);
+
+  // Open drawer automatically when selecting an object on tablet
+  useEffect(() => {
+    if (isTablet && selection.ids.length > 0) {
+      setIsDrawerOpen(true);
+    }
+  }, [isTablet, selection.ids]);
+
+  // CAD Touch Numpad Handlers
+  const handleNumpadInput = useCallback((char: string) => {
+    setNumpadValue((prev) => {
+      if (char === '.' && prev.includes('.')) return prev;
+      if (prev.length >= 8) return prev;
+      return prev + char;
+    });
+  }, []);
+
+  const handleNumpadBackspace = useCallback(() => {
+    setNumpadValue((prev) => prev.slice(0, -1));
+  }, []);
+
+  const handleNumpadClear = useCallback(() => {
+    setNumpadValue('');
+  }, []);
+
+  const handleNumpadSwitchMode = useCallback(() => {
+    setNumpadMode((prev) => (prev === 'length' ? 'angle' : 'length'));
+  }, []);
 
   const t = getT(language);
 
@@ -867,6 +980,127 @@ export default function App() {
     }
   }, [selection, project, updateProject]);
 
+  // Touch Clipboard Action Handlers (Copy, Cut, Paste for 3-finger swipe sheet)
+  const handleClipboardCopy = useCallback(() => {
+    if (selection.ids.length === 0) return;
+    const idSet = new Set(selection.ids);
+    const copiedWalls = activeFloor.walls.filter((w) => idSet.has(w.id));
+    const copiedFurn = activeFloor.furniture.filter((f) => idSet.has(f.id));
+    const copiedRooms = activeFloor.rooms.filter((r) => idSet.has(r.id));
+    const copiedDoors = activeFloor.doors.filter((d) => idSet.has(d.id));
+    const copiedWindows = activeFloor.windows.filter((w) => idSet.has(w.id));
+    setClipboardData({
+      walls: copiedWalls,
+      furniture: copiedFurn,
+      rooms: copiedRooms,
+      doors: copiedDoors,
+      windows: copiedWindows,
+    });
+    setShowClipboardSheet(false);
+  }, [selection.ids, activeFloor]);
+
+  const handleClipboardCut = useCallback(() => {
+    handleClipboardCopy();
+    handleDeleteSelected();
+    setShowClipboardSheet(false);
+  }, [handleClipboardCopy, handleDeleteSelected]);
+
+  const handleClipboardPaste = useCallback(() => {
+    if (!clipboardData) return;
+    const offset = 0.5;
+    const newWallIds = new Map<string, string>();
+    const newWalls: Wall[] = clipboardData.walls.map((w) => {
+      const newId = 'w_paste_' + Date.now() + Math.random().toString(36).substring(2, 6);
+      newWallIds.set(w.id, newId);
+      return {
+        ...w,
+        id: newId,
+        start: { x: w.start.x + offset, y: w.start.y + offset },
+        end: { x: w.end.x + offset, y: w.end.y + offset },
+      };
+    });
+    const newFurn: Furniture[] = clipboardData.furniture.map((f) => ({
+      ...f,
+      id: 'f_paste_' + Date.now() + Math.random().toString(36).substring(2, 6),
+      x: f.x + offset,
+      y: f.y + offset,
+    }));
+    const newRooms: Room[] = clipboardData.rooms.map((r) => ({
+      ...r,
+      id: 'r_paste_' + Date.now() + Math.random().toString(36).substring(2, 6),
+      polygon: r.polygon.map((p) => ({ x: p.x + offset, y: p.y + offset })),
+    }));
+    const newDoors: Door[] = clipboardData.doors.map((d) => ({
+      ...d,
+      id: 'd_paste_' + Date.now() + Math.random().toString(36).substring(2, 6),
+      wallId: newWallIds.get(d.wallId) || d.wallId,
+    }));
+    const newWindows: Window[] = clipboardData.windows.map((win) => ({
+      ...win,
+      id: 'win_paste_' + Date.now() + Math.random().toString(36).substring(2, 6),
+      wallId: newWallIds.get(win.wallId) || win.wallId,
+    }));
+
+    updateActiveFloor((fl) => ({
+      ...fl,
+      walls: [...fl.walls, ...newWalls],
+      furniture: [...fl.furniture, ...newFurn],
+      rooms: [...fl.rooms, ...newRooms],
+      doors: [...fl.doors, ...newDoors],
+      windows: [...fl.windows, ...newWindows],
+    }));
+
+    const allNewIds = [
+      ...newWalls.map((w) => w.id),
+      ...newFurn.map((f) => f.id),
+      ...newRooms.map((r) => r.id),
+    ];
+    setSelection({
+      type: newWalls.length > 0 ? 'wall' : newFurn.length > 0 ? 'furniture' : 'mixed',
+      ids: allNewIds,
+    });
+    setShowClipboardSheet(false);
+  }, [clipboardData, updateActiveFloor]);
+
+  // Touch CAD Numpad Commit
+  const handleNumpadCommit = useCallback(() => {
+    const val = parseFloat(numpadValue);
+    if (!isNaN(val) && val > 0) {
+      if (selection.ids.length === 1 && selection.type === 'wall') {
+        const wallId = selection.ids[0];
+        updateActiveFloor((fl) => {
+          const w = fl.walls.find((item) => item.id === wallId);
+          if (!w) return fl;
+          const curLen = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y) || 1;
+          const curAngle = Math.atan2(w.end.y - w.start.y, w.end.x - w.start.x);
+
+          if (numpadMode === 'length') {
+            const newEnd = {
+              x: w.start.x + Math.cos(curAngle) * val,
+              y: w.start.y + Math.sin(curAngle) * val,
+            };
+            return {
+              ...fl,
+              walls: fl.walls.map((item) => (item.id === wallId ? { ...item, end: newEnd } : item)),
+            };
+          } else {
+            const targetRad = (val * Math.PI) / 180;
+            const newEnd = {
+              x: w.start.x + Math.cos(targetRad) * curLen,
+              y: w.start.y + Math.sin(targetRad) * curLen,
+            };
+            return {
+              ...fl,
+              walls: fl.walls.map((item) => (item.id === wallId ? { ...item, end: newEnd } : item)),
+            };
+          }
+        });
+      }
+    }
+    setNumpadValue('');
+    setShowTouchNumpad(false);
+  }, [numpadValue, selection, numpadMode, updateActiveFloor]);
+
   // Rotate Selection by angle deg (works for Plot, Walls, Furniture, Rooms, Stairs, Shapes)
   const handleRotateSelected = useCallback((deg: number) => {
     const isPlotTargeted =
@@ -1260,97 +1494,105 @@ export default function App() {
   return (
     <div className={`w-screen h-screen flex flex-col overflow-hidden ${isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-white text-slate-800'}`}>
       {/* 1. TOP HEADER & MENUS */}
-      <CadHeader
-        project={project}
-        activeFloor={activeFloor}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        language={language}
-        onLanguageChange={setLanguage}
-        isDark={isDark}
-        onToggleTheme={() => setIsDark(!isDark)}
-        canUndo={historyIndex > 0}
-        canRedo={historyIndex < history.length - 1}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        onNewProject={handleResetEmptyProject}
-        onResetProjectPrompt={() => setShowClearConfirm(true)}
-        onOpenProject={(file) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            try {
-              const parsed = JSON.parse(e.target?.result as string);
-              if (parsed.floors) {
-                updateProject(parsed);
-                handleZoomFit();
+      {!isFocusMode && (
+        <CadHeader
+          project={project}
+          activeFloor={activeFloor}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          language={language}
+          onLanguageChange={setLanguage}
+          isDark={isDark}
+          onToggleTheme={() => setIsDark(!isDark)}
+          canUndo={historyIndex > 0}
+          canRedo={historyIndex < history.length - 1}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onNewProject={handleResetEmptyProject}
+          onResetProjectPrompt={() => setShowClearConfirm(true)}
+          onOpenProject={(file) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              try {
+                const parsed = JSON.parse(e.target?.result as string);
+                if (parsed.floors) {
+                  updateProject(parsed);
+                  handleZoomFit();
+                }
+              } catch {
+                alert('Ungültige CAD-Datei');
               }
-            } catch {
-              alert('Ungültige CAD-Datei');
-            }
-          };
-          reader.readAsText(file);
-        }}
-        onSaveProject={() => {
-          const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(project, null, 2));
-          const dl = document.createElement('a');
-          dl.href = dataStr;
-          dl.download = `${project.name.replace(/\s+/g, '_')}.cad`;
-          dl.click();
-        }}
-        onOpenExportDialog={() => setShowExport(true)}
-        onOpenWizard={() => setShowWizard(true)}
-        onOpenTemplates={() => setShowTemplates(true)}
-        onOpenHelp={() => setShowHelp(true)}
-        onOpenSettings={() => setShowSettings(true)}
-        onOpenHistory={() => setShowHistory(true)}
-        onSwitchFloor={(fId) => setProject({ ...project, activeFloorId: fId })}
-        onAddFloor={() => {
-          const cnt = project.floors.length + 1;
-          const newFl: Floor = {
-            id: 'floor_' + Date.now(),
-            name: `${cnt}. Obergeschoss`,
-            storyHeight: 2.75,
-            floorElevation: cnt * 2.8,
-            slabThickness: 0.2,
-            walls: [],
-            doors: [],
-            windows: [],
-            stairs: [],
-            columns: [],
-            roofs: [],
-            rooms: [],
-            furniture: [],
-            electrical: [],
-            dimensions: [],
-            annotations: [],
-            shapes: [],
-          };
-          updateProject({
-            ...project,
-            activeFloorId: newFl.id,
-            floors: [...project.floors, newFl],
-          });
-        }}
-        onDeleteFloor={(fId) => {
-          if (project.floors.length <= 1) return;
-          const rem = project.floors.filter((f) => f.id !== fId);
-          updateProject({ ...project, activeFloorId: rem[0].id, floors: rem });
-        }}
-        onRenameProject={(newName) => updateProject({ ...project, name: newName })}
-        onOpenRoofModal={() => setShowRoofModal(true)}
-      />
+            };
+            reader.readAsText(file);
+          }}
+          onSaveProject={() => {
+            const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(project, null, 2));
+            const dl = document.createElement('a');
+            dl.href = dataStr;
+            dl.download = `${project.name.replace(/\s+/g, '_')}.cad`;
+            dl.click();
+          }}
+          onOpenExportDialog={() => setShowExport(true)}
+          onOpenWizard={() => setShowWizard(true)}
+          onOpenTemplates={() => setShowTemplates(true)}
+          onOpenHelp={() => setShowHelp(true)}
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenHistory={() => setShowHistory(true)}
+          onSwitchFloor={(fId) => setProject({ ...project, activeFloorId: fId })}
+          onAddFloor={() => {
+            const cnt = project.floors.length + 1;
+            const newFl: Floor = {
+              id: 'floor_' + Date.now(),
+              name: `${cnt}. Obergeschoss`,
+              storyHeight: 2.75,
+              floorElevation: cnt * 2.8,
+              slabThickness: 0.2,
+              walls: [],
+              doors: [],
+              windows: [],
+              stairs: [],
+              columns: [],
+              roofs: [],
+              rooms: [],
+              furniture: [],
+              electrical: [],
+              dimensions: [],
+              annotations: [],
+              shapes: [],
+            };
+            updateProject({
+              ...project,
+              activeFloorId: newFl.id,
+              floors: [...project.floors, newFl],
+            });
+          }}
+          onDeleteFloor={(fId) => {
+            if (project.floors.length <= 1) return;
+            const rem = project.floors.filter((f) => f.id !== fId);
+            updateProject({ ...project, activeFloorId: rem[0].id, floors: rem });
+          }}
+          onRenameProject={(newName) => updateProject({ ...project, name: newName })}
+          onOpenRoofModal={() => setShowRoofModal(true)}
+          isFocusMode={isFocusMode}
+          onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
+          onOpenGestureHelp={() => setShowGestureHelp(true)}
+        />
+      )}
 
       {/* 2. MAIN WORKSPACE */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Left Toolbar */}
-        <CadToolbar
-          activeTool={activeTool}
-          onSelectTool={setActiveTool}
-          language={language}
-          onOpenFurnitureCatalog={() => setShowFurnitureCatalog(true)}
-          onOpenWallNumericModal={() => setShowWallNumeric(true)}
-          onOpenRoofModal={() => setShowRoofModal(true)}
-        />
+        {!isFocusMode && (
+          <CadToolbar
+            activeTool={activeTool}
+            onSelectTool={setActiveTool}
+            language={language}
+            onOpenFurnitureCatalog={() => setShowFurnitureCatalog(true)}
+            onOpenWallNumericModal={() => setShowWallNumeric(true)}
+            onOpenRoofModal={() => setShowRoofModal(true)}
+            leftHandedMode={leftHandedMode}
+          />
+        )}
 
         {/* Center Viewport */}
         <main className="flex-1 h-full overflow-hidden flex relative">
@@ -1405,6 +1647,17 @@ export default function App() {
               onAddWallsAndRoom={handleAddWallsAndRoom}
               onSplitWall={handleSplitWall}
               onSplitSelectedWall={handleSplitSelectedWall}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              onZoomFit={handleZoomFit}
+              onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
+              onShowClipboardSheet={() => setShowClipboardSheet(true)}
+              pencilMode={pencilMode}
+              precisionMode={precisionMode}
+              touchGestureSettings={touchSettings}
+              viewRotationDeg={viewRotationDeg}
+              onViewRotationChange={setViewRotationDeg}
+              isMultiSelectActive={isMultiSelectActive}
             />
           )}
 
@@ -1474,6 +1727,17 @@ export default function App() {
                   onAddWallsAndRoom={handleAddWallsAndRoom}
                   onSplitWall={handleSplitWall}
                   onSplitSelectedWall={handleSplitSelectedWall}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  onZoomFit={handleZoomFit}
+                  onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
+                  onShowClipboardSheet={() => setShowClipboardSheet(true)}
+                  pencilMode={pencilMode}
+                  precisionMode={precisionMode}
+                  touchGestureSettings={touchSettings}
+                  viewRotationDeg={viewRotationDeg}
+                  onViewRotationChange={setViewRotationDeg}
+                  isMultiSelectActive={isMultiSelectActive}
                 />
               </div>
               <div className="w-1/2 h-full">
@@ -1557,27 +1821,89 @@ export default function App() {
           onUpdatePlot={handleUpdatePlot}
           floorsCount={project.floors.length}
           onOpenRoofModal={() => setShowRoofModal(true)}
+          isDrawerMode={isTablet}
+          isOpenDrawer={isDrawerOpen}
+          onCloseDrawer={() => setIsDrawerOpen(false)}
+          bottomSheetDetent={bottomSheetDetent}
+          onBottomSheetDetentChange={setBottomSheetDetent}
         />
       </div>
 
       {/* 3. BOTTOM STATUS BAR */}
-      <CadStatusBar
-        cursorPos={cursorPos}
-        hintText={hintText}
-        zoom={zoom}
-        onZoomChange={setZoom}
-        onZoomFit={handleZoomFit}
-        snapSettings={snapSettings}
-        onSnapSettingsChange={handleSnapSettingsChange}
-        unit={project.unit}
-        onUnitChange={(newUnit) => setProject({ ...project, unit: newUnit })}
-        scale={project.scale}
-        onScaleChange={(newScale) => setProject({ ...project, scale: newScale })}
-        language={language}
-        selectedCount={selection.ids.length}
+      {!isFocusMode && (
+        <CadStatusBar
+          cursorPos={cursorPos}
+          hintText={hintText}
+          zoom={zoom}
+          onZoomChange={setZoom}
+          onZoomFit={handleZoomFit}
+          snapSettings={snapSettings}
+          onSnapSettingsChange={handleSnapSettingsChange}
+          unit={project.unit}
+          onUnitChange={(newUnit) => setProject({ ...project, unit: newUnit })}
+          scale={project.scale}
+          onScaleChange={(newScale) => setProject({ ...project, scale: newScale })}
+          language={language}
+          selectedCount={selection.ids.length}
+        />
+      )}
+
+      {/* 4. TOUCH-FIRST FLOATING CONTROLS & CAD NUMPAD */}
+      <CadTouchControls
+        isDrawingActive={activeTool !== 'select' && activeTool !== 'pan'}
+        onFinishDrawing={() => setActiveTool('select')}
+        onCancelDrawing={() => setActiveTool('select')}
+        isMultiSelectMode={isMultiSelectActive}
+        onToggleMultiSelect={() => setIsMultiSelectActive((prev) => !prev)}
+        isOrthoLocked={snapSettings.ortho}
+        onToggleOrtho={() => handleSnapSettingsChange({ ...snapSettings, ortho: !snapSettings.ortho })}
+        isSnapEnabled={snapSettings.enabled}
+        onToggleSnap={() => handleSnapSettingsChange({ ...snapSettings, enabled: !snapSettings.enabled })}
+        pencilMode={pencilMode}
+        onTogglePencilMode={() =>
+          setPencilMode((prev) =>
+            prev === 'pencil_draws_finger_pans' || prev === 'pencilDrawsFingerNavigates'
+              ? 'finger_draws_too'
+              : 'pencil_draws_finger_pans'
+          )
+        }
+        precisionMode={precisionMode}
+        onTogglePrecisionMode={() =>
+          setPrecisionMode((prev) =>
+            prev === 'offset_crosshair' || prev === 'offsetCrosshairWithLoupe'
+              ? 'normal'
+              : 'offset_crosshair'
+          )
+        }
+        isFocusMode={isFocusMode}
+        onExitFocusMode={() => setIsFocusMode(false)}
+        viewRotationDeg={viewRotationDeg}
+        onResetRotation={() => setViewRotationDeg(0)}
+        showNumpad={showTouchNumpad}
+        onToggleNumpad={() => setShowTouchNumpad((prev) => !prev)}
+        numpadValue={numpadValue}
+        numpadMode={numpadMode}
+        onNumpadInput={handleNumpadInput}
+        onNumpadBackspace={handleNumpadBackspace}
+        onNumpadClear={handleNumpadClear}
+        onNumpadSwitchMode={handleNumpadSwitchMode}
+        onNumpadCommit={handleNumpadCommit}
+        showClipboardSheet={showClipboardSheet}
+        onCloseClipboardSheet={() => setShowClipboardSheet(false)}
+        onCopy={handleClipboardCopy}
+        onCut={handleClipboardCut}
+        onPaste={handleClipboardPaste}
+        onDuplicate={handleDuplicateSelected}
+        onDelete={handleDeleteSelected}
+        hasSelection={selection.ids.length > 0}
+        isLeftHanded={leftHandedMode}
       />
 
       {/* MODALS */}
+      <TouchGestureHelpModal
+        isOpen={showGestureHelp}
+        onClose={() => setShowGestureHelp(false)}
+      />
       <WelcomeDialog
         isOpen={showWelcome}
         onClose={() => {

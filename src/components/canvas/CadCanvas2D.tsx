@@ -58,6 +58,19 @@ import {
   ActiveGuideLine,
   calculateEqualSpacingRatio,
 } from '../../utils/cadMath';
+import {
+  TouchInteractionMode,
+  PencilMode,
+  PrecisionMode,
+  TouchGestureSettings,
+  DEFAULT_TOUCH_GESTURE_SETTINGS,
+} from '../../types/cad';
+import {
+  isTouchDevice,
+  isPalmTouch,
+  snapRotationAngle,
+  recognizeQuickShape,
+} from '../../utils/touchGestures';
 import { getT } from '../../i18n/translations';
 import {
   RotateCcw,
@@ -120,6 +133,17 @@ interface CadCanvas2DProps {
   onAddWallsAndRoom?: (walls: Wall[], room?: Room) => void;
   onSplitWall?: (wallId: string, splitPoint: Point2D) => void;
   onSplitSelectedWall?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onZoomFit?: () => void;
+  onToggleFocusMode?: () => void;
+  onShowClipboardSheet?: () => void;
+  pencilMode?: PencilMode;
+  precisionMode?: PrecisionMode;
+  touchGestureSettings?: TouchGestureSettings;
+  viewRotationDeg?: number;
+  onViewRotationChange?: (deg: number) => void;
+  isMultiSelectActive?: boolean;
 }
 
 export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
@@ -169,6 +193,17 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   onAddWallsAndRoom,
   onSplitWall,
   onSplitSelectedWall,
+  onUndo,
+  onRedo,
+  onZoomFit,
+  onToggleFocusMode,
+  onShowClipboardSheet,
+  pencilMode = 'pencilDrawsFingerNavigates',
+  precisionMode = 'offsetCrosshairWithLoupe',
+  touchGestureSettings = DEFAULT_TOUCH_GESTURE_SETTINGS,
+  viewRotationDeg = 0,
+  onViewRotationChange,
+  isMultiSelectActive = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -188,7 +223,30 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     initialZoom: number;
     initialPan: Point2D;
     initialCenter: { x: number; y: number };
+    initialAngle?: number;
   } | null>(null);
+
+  // Touch & Apple Pencil Gestures state
+  const isTouchPointerRef = useRef(false);
+  const currentCursorScreenRef = useRef<{ x: number; y: number } | null>(null);
+  const touchFingertipScreenRef = useRef<{ x: number; y: number } | null>(null);
+  const lastSingleTapTimeRef = useRef(0);
+  const multiTouchGestureRef = useRef<{
+    fingerCount: number;
+    startTime: number;
+    startPositions: { x: number; y: number }[];
+    lastPositions: { x: number; y: number }[];
+    totalMovement: number;
+    hasHeld: boolean;
+    holdTimer: number | null;
+  } | null>(null);
+  const undoRepeatIntervalRef = useRef<number | null>(null);
+  const redoRepeatIntervalRef = useRef<number | null>(null);
+
+  // QuickShape recognition
+  const quickShapeStrokeRef = useRef<Point2D[]>([]);
+  const quickShapeTimerRef = useRef<number | null>(null);
+  const [quickShapeFeedback, setQuickShapeFeedback] = useState<string | null>(null);
 
   // Pointer tracking for click vs drag detection
   const [pointerDownPos, setPointerDownPos] = useState<Point2D | null>(null);
@@ -1987,6 +2045,98 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       ctx.fillText(`${(scaleBarMeters / 2).toFixed(1)}m`, sbX + segW, sbY + 8);
       ctx.fillText(`${scaleBarMeters}m`, sbX + scaleBarPx, sbY + 8);
     }
+
+    // ==========================================
+    // 13. MAGNIFIER LOUPE (PRÄZISIONS-LUPE BEI TOUCH)
+    // ==========================================
+    if (
+      isPointerDown &&
+      isTouchPointerRef.current &&
+      (precisionMode === 'offsetCrosshairWithLoupe' || precisionMode === 'offset_crosshair') &&
+      currentCursorScreenRef.current &&
+      touchFingertipScreenRef.current
+    ) {
+      const curSp = currentCursorScreenRef.current;
+      const fingerSp = touchFingertipScreenRef.current;
+      const loupeRadius = 52;
+      const loupeCenterX = fingerSp.x;
+      const loupeCenterY = Math.max(loupeRadius + 10, fingerSp.y - 75);
+
+      if (
+        loupeCenterX >= loupeRadius &&
+        loupeCenterX <= width - loupeRadius &&
+        loupeCenterY >= loupeRadius &&
+        loupeCenterY <= height - loupeRadius
+      ) {
+        ctx.save();
+
+        // Loupe Circular Clip
+        ctx.beginPath();
+        ctx.arc(loupeCenterX, loupeCenterY, loupeRadius, 0, Math.PI * 2);
+
+        // Shadow backing
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+        ctx.shadowBlur = 18;
+        ctx.shadowOffsetY = 6;
+        ctx.fillStyle = isDark ? '#1c1917' : '#ffffff';
+        ctx.fill();
+
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+
+        ctx.clip();
+
+        // 2x Zoom from canvas into loupe circle
+        const srcW = loupeRadius;
+        const srcH = loupeRadius;
+        const srcX = Math.max(0, Math.min(width - srcW, curSp.x - srcW / 2));
+        const srcY = Math.max(0, Math.min(height - srcH, curSp.y - srcH / 2));
+
+        try {
+          ctx.drawImage(
+            canvas,
+            srcX,
+            srcY,
+            srcW,
+            srcH,
+            loupeCenterX - loupeRadius,
+            loupeCenterY - loupeRadius,
+            loupeRadius * 2,
+            loupeRadius * 2
+          );
+        } catch {}
+
+        // Reticle / Precision Crosshair
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(loupeCenterX - 14, loupeCenterY);
+        ctx.lineTo(loupeCenterX + 14, loupeCenterY);
+        ctx.moveTo(loupeCenterX, loupeCenterY - 14);
+        ctx.lineTo(loupeCenterX, loupeCenterY + 14);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ea580c';
+        ctx.beginPath();
+        ctx.arc(loupeCenterX, loupeCenterY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        // Bezel / Rim
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(loupeCenterX, loupeCenterY, loupeRadius, 0, Math.PI * 2);
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#f59e0b';
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
   }, [
     walls,
     doors,
@@ -2015,6 +2165,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     plot,
     isDark,
     worldToScreen,
+    isPointerDown,
+    precisionMode,
   ]);
 
   // ==========================================
@@ -2025,21 +2177,83 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Palm Rejection: Ignore broad palm contact on iPad
+    if (isPalmTouch(e.nativeEvent)) {
+      return;
+    }
+
+    const isTouch = e.pointerType === 'touch';
+    isTouchPointerRef.current = isTouch;
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Multi-touch pinch-to-zoom & two-finger pan for tablets
+    // Multi-touch gestures (2 fingers pan/zoom/rotate, 3/4 finger taps)
     if (activePointersRef.current.size >= 2) {
+      // CANCEL ON 2ND FINGER: cleanly abort any active drawing action without stray walls
+      if (wallStartPoint || isPointerDown || rectRoomStart || plotDrawPoints.length > 0) {
+        setWallStartPoint(null);
+        setWallChainPoints([]);
+        setRectRoomStart(null);
+        setIsPointerDown(false);
+        setPointerDownPos(null);
+        setShowNumericInput(false);
+      }
+
       const pts = Array.from(activePointersRef.current.values());
       const p1 = pts[0];
       const p2 = pts[1];
       const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
       const center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
       pinchStateRef.current = {
         initialDist: dist,
         initialZoom: zoom,
         initialPan: { ...panOffset },
         initialCenter: center,
+        initialAngle: angle,
       };
+
+      // Set up multi-touch gesture tracker
+      const touchCount = pts.length;
+      multiTouchGestureRef.current = {
+        fingerCount: touchCount,
+        startTime: Date.now(),
+        startPositions: pts.map((p) => ({ ...p })),
+        lastPositions: pts.map((p) => ({ ...p })),
+        totalMovement: 0,
+        hasHeld: false,
+        holdTimer: null,
+      };
+
+      // Rapid Undo / Redo hold timer (> 500ms hold triggers repeat)
+      if (touchCount === 2) {
+        multiTouchGestureRef.current.holdTimer = window.setTimeout(() => {
+          if (
+            multiTouchGestureRef.current &&
+            multiTouchGestureRef.current.fingerCount === 2 &&
+            multiTouchGestureRef.current.totalMovement < 15
+          ) {
+            multiTouchGestureRef.current.hasHeld = true;
+            undoRepeatIntervalRef.current = window.setInterval(() => {
+              onUndo?.();
+            }, 160);
+          }
+        }, 500);
+      } else if (touchCount === 3) {
+        multiTouchGestureRef.current.holdTimer = window.setTimeout(() => {
+          if (
+            multiTouchGestureRef.current &&
+            multiTouchGestureRef.current.fingerCount === 3 &&
+            multiTouchGestureRef.current.totalMovement < 15
+          ) {
+            multiTouchGestureRef.current.hasHeld = true;
+            redoRepeatIntervalRef.current = window.setInterval(() => {
+              onRedo?.();
+            }, 160);
+          }
+        }, 500);
+      }
+
       setIsPanning(false);
       setIsDraggingSelection(false);
       setMarquee(null);
@@ -2047,23 +2261,47 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       return;
     }
 
-    const rect = canvas.getBoundingClientRect();
-    const screenPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-
-    // Top-Left Corner Box (0,0 button): Center origin on screen!
-    if (screenPt.x <= 34 && screenPt.y <= 26) {
-      onPanOffsetChange({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 });
+    // Double-tap on canvas: Zoom Fit!
+    const now = Date.now();
+    if (now - lastSingleTapTimeRef.current < 280 && activePointersRef.current.size === 1) {
+      onZoomFit?.();
+      lastSingleTapTimeRef.current = 0;
       return;
     }
+    lastSingleTapTimeRef.current = now;
 
-    // Clicking on Rulers: Pan view instead of accidental drawing behind rulers
-    if (screenPt.x < 34 || screenPt.y < 26) {
+    // Apple Pencil vs Finger Separation:
+    // When "pencilDrawsFingerNavigates" is active, finger touches navigate/pan the canvas!
+    if (isTouch && (pencilMode === 'pencilDrawsFingerNavigates' || pencilMode === 'pencil_draws_finger_pans')) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
       return;
     }
 
-    const rawWorld = screenToWorld(screenPt);
+    const rect = canvas.getBoundingClientRect();
+    touchFingertipScreenRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+    // Precision mode: Shift target cursor 42px upwards on touch so finger doesn't obscure view
+    const effectiveScreenPt =
+      isTouch && (precisionMode === 'offsetCrosshairWithLoupe' || precisionMode === 'offset_crosshair')
+        ? { x: e.clientX - rect.left, y: e.clientY - rect.top - 42 }
+        : { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    currentCursorScreenRef.current = effectiveScreenPt;
+
+    // Top-Left Corner Box (0,0 button): Center origin on screen!
+    if (effectiveScreenPt.x <= 34 && effectiveScreenPt.y <= 26) {
+      onPanOffsetChange({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 });
+      return;
+    }
+
+    // Clicking on Rulers: Pan view instead of accidental drawing behind rulers
+    if (effectiveScreenPt.x < 34 || effectiveScreenPt.y < 26) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      return;
+    }
+
+    const rawWorld = screenToWorld(effectiveScreenPt);
 
     // Pan with middle click, Space, or Hand tool
     if (e.button === 1 || activeTool === 'hand' || e.buttons === 4) {
@@ -2086,6 +2324,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     };
     const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom, extraSnapCtx);
     const targetPt = snap.point;
+
+    // QuickShape sampling start
+    quickShapeStrokeRef.current = [targetPt];
+    if (quickShapeTimerRef.current) {
+      clearTimeout(quickShapeTimerRef.current);
+      quickShapeTimerRef.current = null;
+    }
 
     setPointerDownPos(targetPt);
     setIsPointerDown(true);
@@ -2846,14 +3091,19 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
 
-    // Handle multi-touch pinch-zoom & two-finger pan
+    // Handle multi-touch pinch-zoom, two-finger pan & canvas rotation
     if (activePointersRef.current.size >= 2 && pinchStateRef.current) {
       const pts = Array.from(activePointersRef.current.values());
       const p1 = pts[0];
       const p2 = pts[1];
       const newDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
       const currentCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-      const { initialDist, initialZoom, initialPan, initialCenter } = pinchStateRef.current;
+      const { initialDist, initialZoom, initialPan, initialCenter, initialAngle } = pinchStateRef.current;
+
+      if (multiTouchGestureRef.current) {
+        multiTouchGestureRef.current.totalMovement += 2;
+        multiTouchGestureRef.current.lastPositions = pts.map((p) => ({ ...p }));
+      }
 
       if (initialDist > 10 && newDist > 10) {
         const zoomRatio = newDist / initialDist;
@@ -2874,11 +3124,26 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         onZoomChange(targetZoom);
         onPanOffsetChange({ x: newPanX, y: newPanY });
       }
+
+      // Two-finger Rotation: Snaps to 0°, 90°, 180°, 270°
+      if (initialAngle !== undefined && onViewRotationChange) {
+        const curAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const dAngleDeg = ((curAngle - initialAngle) * 180) / Math.PI;
+        const snapped = snapRotationAngle(dAngleDeg, 6);
+        onViewRotationChange(snapped);
+      }
       return;
     }
 
     const rect = canvas.getBoundingClientRect();
-    const screenPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const isTouch = e.pointerType === 'touch';
+    touchFingertipScreenRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+    const effectiveScreenPt =
+      isTouch && (precisionMode === 'offsetCrosshairWithLoupe' || precisionMode === 'offset_crosshair')
+        ? { x: e.clientX - rect.left, y: e.clientY - rect.top - 42 }
+        : { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    currentCursorScreenRef.current = effectiveScreenPt;
 
     // Panning canvas
     if (isPanning) {
@@ -2889,8 +3154,28 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       return;
     }
 
-    const rawWorld = screenToWorld(screenPt);
+    const rawWorld = screenToWorld(effectiveScreenPt);
     onCursorMove(rawWorld);
+
+    // QuickShape sampling during drawing stroke
+    if (isPointerDown && (activeTool === 'wall' || activeTool === 'rect_room')) {
+      quickShapeStrokeRef.current.push(rawWorld);
+      if (quickShapeTimerRef.current) clearTimeout(quickShapeTimerRef.current);
+      quickShapeTimerRef.current = window.setTimeout(() => {
+        if (quickShapeStrokeRef.current.length >= 4) {
+          const recognized = recognizeQuickShape(quickShapeStrokeRef.current);
+          if (recognized) {
+            if (recognized.type === 'straight_wall') {
+              setQuickShapeFeedback('QuickShape: Gerade Wand ✓');
+              setTimeout(() => setQuickShapeFeedback(null), 1400);
+            } else if (recognized.type === 'rect_room') {
+              setQuickShapeFeedback('QuickShape: Rechteckraum ✓');
+              setTimeout(() => setQuickShapeFeedback(null), 1400);
+            }
+          }
+        }
+      }, 400);
+    }
 
     // Dragging selection (translates all selected objects simultaneously)
     if (isDraggingSelection && dragSelectionStart) {
@@ -3015,16 +3300,77 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
 
+    // Clear timers
+    if (undoRepeatIntervalRef.current) {
+      clearInterval(undoRepeatIntervalRef.current);
+      undoRepeatIntervalRef.current = null;
+    }
+    if (redoRepeatIntervalRef.current) {
+      clearInterval(redoRepeatIntervalRef.current);
+      redoRepeatIntervalRef.current = null;
+    }
+    if (quickShapeTimerRef.current) {
+      clearTimeout(quickShapeTimerRef.current);
+      quickShapeTimerRef.current = null;
+    }
+
+    // Multi-finger tap detection (2-finger tap undo, 3-finger tap redo, 3-finger swipe down clipboard, 4-finger focus mode)
+    if (multiTouchGestureRef.current) {
+      const g = multiTouchGestureRef.current;
+      const duration = Date.now() - g.startTime;
+      if (g.holdTimer) clearTimeout(g.holdTimer);
+
+      if (!g.hasHeld && duration < 340 && g.totalMovement < 20) {
+        if (g.fingerCount === 2) {
+          if (pinchStateRef.current && g.lastPositions.length >= 2 && g.startPositions.length >= 2) {
+            const startD = Math.hypot(
+              g.startPositions[1].x - g.startPositions[0].x,
+              g.startPositions[1].y - g.startPositions[0].y
+            );
+            const endD = Math.hypot(
+              g.lastPositions[1].x - g.lastPositions[0].x,
+              g.lastPositions[1].y - g.lastPositions[0].y
+            );
+            if (startD > 90 && endD < 45) {
+              onZoomFit?.();
+            } else {
+              onUndo?.();
+            }
+          } else {
+            onUndo?.();
+          }
+        } else if (g.fingerCount === 3) {
+          const dy = g.lastPositions[0].y - g.startPositions[0].y;
+          if (dy > 45) {
+            onShowClipboardSheet?.();
+          } else {
+            onRedo?.();
+          }
+        } else if (g.fingerCount === 4) {
+          onToggleFocusMode?.();
+        }
+      }
+      multiTouchGestureRef.current = null;
+    }
+
     activePointersRef.current.delete(e.pointerId);
     if (activePointersRef.current.size < 2) {
       pinchStateRef.current = null;
+    }
+    if (activePointersRef.current.size === 0) {
+      isTouchPointerRef.current = false;
     }
 
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const screenPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    const rawWorld = screenToWorld(screenPt);
+    const isTouch = e.pointerType === 'touch';
+    const effectiveScreenPt =
+      isTouch && (precisionMode === 'offsetCrosshairWithLoupe' || precisionMode === 'offset_crosshair')
+        ? { x: e.clientX - rect.left, y: e.clientY - rect.top - 42 }
+        : { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const rawWorld = screenToWorld(effectiveScreenPt);
+
     const extraUpSnapCtx = {
       doors,
       windows,
@@ -3038,7 +3384,16 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       currentTool: activeTool,
     };
     const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom, extraUpSnapCtx);
-    const targetPt = snap.point;
+    let targetPt = snap.point;
+
+    // Check QuickShape recognition
+    if (quickShapeStrokeRef.current.length >= 4) {
+      const rec = recognizeQuickShape(quickShapeStrokeRef.current);
+      if (rec && rec.type === 'straight_wall') {
+        targetPt = rec.end;
+      }
+    }
+    quickShapeStrokeRef.current = [];
 
     setIsPanning(false);
     if (isDraggingSelection && onCommitProjectChange) {
@@ -3725,6 +4080,14 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             <span>Baufenster:</span>
             <span>{plotMetrics.buildableArea} m² ({plot.setback || 3.0}m Grenzabstand)</span>
           </div>
+        </div>
+      )}
+
+      {/* QuickShape Recognition Floating Toast Feedback */}
+      {quickShapeFeedback && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-amber-500 text-stone-950 font-bold px-4 py-1.5 rounded-full shadow-2xl text-xs z-50 animate-in fade-in zoom-in-95 duration-150 flex items-center gap-1.5 pointer-events-none">
+          <Check className="w-3.5 h-3.5 stroke-[3]" />
+          <span>{quickShapeFeedback}</span>
         </div>
       )}
     </div>

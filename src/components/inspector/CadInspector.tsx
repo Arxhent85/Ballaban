@@ -80,7 +80,50 @@ interface CadInspectorProps {
   onUpdatePlot?: (plot: PlotBoundary) => void;
   floorsCount?: number;
   onOpenRoofModal?: () => void;
+  isDrawerMode?: boolean;
+  isOpenDrawer?: boolean;
+  onCloseDrawer?: () => void;
+  bottomSheetDetent?: 'peek' | 'half' | 'full';
+  onBottomSheetDetentChange?: (detent: 'peek' | 'half' | 'full') => void;
 }
+
+export const TouchStepperInput: React.FC<{
+  value: number;
+  step: number;
+  min?: number;
+  max?: number;
+  unitLabel?: string;
+  onChange: (val: number) => void;
+}> = ({ value, step, min = 0, max = 100, unitLabel = 'm', onChange }) => {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => onChange(Math.max(min, Math.round((value - step) * 100) / 100))}
+        className="w-7 h-7 rounded-md bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 flex items-center justify-center font-bold text-sm text-stone-700 dark:text-stone-200 select-none cursor-pointer"
+        title={`- ${step}${unitLabel}`}
+      >
+        -
+      </button>
+      <input
+        type="number"
+        step={step}
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value) || min)}
+        className="w-16 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded px-1.5 py-0.5 text-right font-mono font-semibold text-xs"
+      />
+      <span className="text-stone-400 font-mono text-xs">{unitLabel}</span>
+      <button
+        onClick={() => onChange(Math.min(max, Math.round((value + step) * 100) / 100))}
+        className="w-7 h-7 rounded-md bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 flex items-center justify-center font-bold text-sm text-stone-700 dark:text-stone-200 select-none cursor-pointer"
+        title={`+ ${step}${unitLabel}`}
+      >
+        +
+      </button>
+    </div>
+  );
+};
 
 export const CadInspector: React.FC<CadInspectorProps> = ({
   selection,
@@ -112,6 +155,11 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
   onUpdatePlot,
   floorsCount = 1,
   onOpenRoofModal,
+  isDrawerMode = false,
+  isOpenDrawer = true,
+  onCloseDrawer,
+  bottomSheetDetent = 'half',
+  onBottomSheetDetentChange,
 }) => {
   const t = getT(language);
   const [activeTab, setActiveTab] = useState<InspectorTab>('properties');
@@ -207,8 +255,70 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
     });
   };
 
+  if (isDrawerMode && !isOpenDrawer) return null;
+
   return (
-    <aside className="w-76 border-l border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex flex-col z-20 shrink-0 select-none overflow-hidden shadow-sm text-stone-800 dark:text-stone-200">
+    <aside
+      className={
+        isDrawerMode
+          ? `fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-stone-900 border-t border-stone-200 dark:border-stone-800 shadow-2xl rounded-t-2xl flex flex-col select-none transition-all duration-200 safe-bottom overflow-hidden text-stone-800 dark:text-stone-200 ${
+              bottomSheetDetent === 'peek'
+                ? 'h-24'
+                : bottomSheetDetent === 'half'
+                ? 'h-[48vh]'
+                : 'h-[85vh]'
+            }`
+          : 'w-76 border-l border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex flex-col z-20 shrink-0 select-none overflow-hidden shadow-sm text-stone-800 dark:text-stone-200'
+      }
+    >
+      {/* Tablet Bottom Sheet Header with Detent Pills */}
+      {isDrawerMode && (
+        <div className="flex items-center justify-between px-4 py-2 border-b border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-850 shrink-0 select-none">
+          <div
+            className="w-12 h-1.5 bg-stone-300 dark:bg-stone-600 rounded-full mx-auto cursor-pointer"
+            onClick={() => {
+              const next = bottomSheetDetent === 'peek' ? 'half' : bottomSheetDetent === 'half' ? 'full' : 'peek';
+              onBottomSheetDetentChange?.(next);
+            }}
+          />
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => onBottomSheetDetentChange?.('peek')}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
+                bottomSheetDetent === 'peek' ? 'bg-amber-500 text-white' : 'text-stone-500 hover:text-stone-800'
+              }`}
+            >
+              Klein
+            </button>
+            <button
+              onClick={() => onBottomSheetDetentChange?.('half')}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
+                bottomSheetDetent === 'half' ? 'bg-amber-500 text-white' : 'text-stone-500 hover:text-stone-800'
+              }`}
+            >
+              Halb
+            </button>
+            <button
+              onClick={() => onBottomSheetDetentChange?.('full')}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
+                bottomSheetDetent === 'full' ? 'bg-amber-500 text-white' : 'text-stone-500 hover:text-stone-800'
+              }`}
+            >
+              Voll
+            </button>
+            {onCloseDrawer && (
+              <button
+                onClick={onCloseDrawer}
+                className="p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 font-bold ml-1 cursor-pointer"
+                title="Schließen"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 4 Tabs Header */}
       <div className="flex border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/60 p-1">
         <button
@@ -472,21 +582,17 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                   </span>
                 </div>
 
-                {/* Wall Thickness Custom Input */}
+                {/* Wall Thickness Custom Input with Touch Stepper */}
                 <div className="flex items-center justify-between">
                   <span className="text-stone-500">Individuelle Stärke:</span>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.05"
-                      max="1.0"
-                      value={selectedWall.thickness}
-                      onChange={(e) => onUpdateWall({ ...selectedWall, thickness: parseFloat(e.target.value) || 0.1 })}
-                      className="w-18 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono font-semibold"
-                    />
-                    <span className="text-stone-400 font-mono">m</span>
-                  </div>
+                  <TouchStepperInput
+                    value={selectedWall.thickness}
+                    step={0.01}
+                    min={0.05}
+                    max={1.0}
+                    unitLabel="m"
+                    onChange={(val) => onUpdateWall({ ...selectedWall, thickness: val })}
+                  />
                 </div>
 
                 {/* Frei wählbare Wandhöhen: Anfangshöhe & Endhöhe */}
@@ -502,34 +608,26 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
 
                   <div className="flex items-center justify-between">
                     <span className="text-stone-500">Start (Anfang):</span>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        step="0.05"
-                        min="1.0"
-                        max="8.0"
-                        value={selectedWall.height || 2.50}
-                        onChange={(e) => onUpdateWall({ ...selectedWall, height: parseFloat(e.target.value) || 2.5 })}
-                        className="w-18 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono font-semibold"
-                      />
-                      <span className="text-stone-400 font-mono">m</span>
-                    </div>
+                    <TouchStepperInput
+                      value={selectedWall.height || 2.50}
+                      step={0.05}
+                      min={1.0}
+                      max={8.0}
+                      unitLabel="m"
+                      onChange={(val) => onUpdateWall({ ...selectedWall, height: val })}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <span className="text-stone-500">Ende (Endhöhe):</span>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        step="0.05"
-                        min="1.0"
-                        max="8.0"
-                        value={selectedWall.endHeight ?? selectedWall.height ?? 2.50}
-                        onChange={(e) => onUpdateWall({ ...selectedWall, endHeight: parseFloat(e.target.value) || 2.5 })}
-                        className="w-18 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono font-semibold"
-                      />
-                      <span className="text-stone-400 font-mono">m</span>
-                    </div>
+                    <TouchStepperInput
+                      value={selectedWall.endHeight ?? selectedWall.height ?? 2.50}
+                      step={0.05}
+                      min={1.0}
+                      max={8.0}
+                      unitLabel="m"
+                      onChange={(val) => onUpdateWall({ ...selectedWall, endHeight: val })}
+                    />
                   </div>
 
                   <div className="flex flex-col gap-1.5 pt-1.5 border-t border-stone-200 dark:border-stone-700">

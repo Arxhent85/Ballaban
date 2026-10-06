@@ -49,6 +49,7 @@ interface CadToolbarProps {
   onOpenFurnitureCatalog: () => void;
   onOpenWallNumericModal: () => void;
   onOpenRoofModal?: () => void;
+  leftHandedMode?: boolean;
 }
 
 export const CadToolbar: React.FC<CadToolbarProps> = ({
@@ -58,25 +59,35 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
   onOpenFurnitureCatalog,
   onOpenWallNumericModal,
   onOpenRoofModal,
+  leftHandedMode = false,
 }) => {
   const t = getT(language);
   const [showWallSubmenu, setShowWallSubmenu] = useState(false);
   const [showShapesSubmenu, setShowShapesSubmenu] = useState(false);
 
+  const btnClass = (isActive: boolean) =>
+    `w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer select-none ${
+      isActive
+        ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
+        : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
+    }`;
+
+  const iconClass = 'w-5 h-5 md:w-4 md:h-4';
+
   return (
-    <aside className="w-13 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col items-center py-2 z-20 shrink-0 select-none shadow-sm">
-      <div className="flex flex-col gap-1 w-full px-1.5">
+    <aside
+      className={`w-14 md:w-13 ${
+        leftHandedMode ? 'border-l order-last' : 'border-r'
+      } border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col items-center py-2 z-20 shrink-0 select-none shadow-sm transition-all`}
+    >
+      <div className="flex flex-col gap-1.5 md:gap-1 w-full px-1.5 items-center">
         {/* GROUP 1: Selection & Pan */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('select')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'select'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'select')}
           >
-            <MousePointer className="w-4 h-4" />
+            <MousePointer className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Auswahl</span>
@@ -87,13 +98,9 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('hand')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'hand'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'hand')}
           >
-            <Hand className="w-4 h-4" />
+            <Hand className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Verschieben (Pan)</span>
@@ -101,19 +108,15 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           </div>
         </div>
 
-        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1" />
+        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
 
         {/* GROUP 2: Wall & Room */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('wall')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'wall' || activeTool === 'rect_room'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'wall' || activeTool === 'rect_room')}
           >
-            <PenTool className="w-4 h-4" />
+            <PenTool className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Wand zeichnen</span>
@@ -124,13 +127,9 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('rect_room')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'rect_room'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'rect_room')}
           >
-            <Square className="w-4 h-4" />
+            <Square className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Rechteckraum (4 Wände)</span>
@@ -141,13 +140,9 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('split')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'split'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'split')}
           >
-            <Scissors className="w-4 h-4" />
+            <Scissors className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Wand trennen (Schere)</span>
@@ -158,13 +153,13 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('plot')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+            className={
               activeTool === 'plot'
-                ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-500/40 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+                ? 'w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center bg-amber-600 text-white shadow-sm ring-2 ring-amber-500/40 font-semibold cursor-pointer'
+                : btnClass(false)
+            }
           >
-            <Compass className="w-4 h-4" />
+            <Compass className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Grundstück & Baugrenzen</span>
@@ -175,9 +170,9 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onOpenRoofModal?.()}
-            className="w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800"
+            className={btnClass(false)}
           >
-            <Home className="w-4 h-4" />
+            <Home className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Dach-Modul & Einstellungen</span>
@@ -185,19 +180,15 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           </div>
         </div>
 
-        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1" />
+        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
 
         {/* GROUP 3: Doors, Windows, Stairs */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('door')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'door'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'door')}
           >
-            <DoorOpen className="w-4 h-4" />
+            <DoorOpen className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Tür einsetzen</span>
@@ -208,13 +199,9 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('window')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'window'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'window')}
           >
-            <AppWindow className="w-4 h-4" />
+            <AppWindow className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Fenster einsetzen</span>
@@ -225,13 +212,9 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('stairs')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'stairs'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'stairs')}
           >
-            <StairsIcon className="w-4 h-4" />
+            <StairsIcon className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Treppe</span>
@@ -239,7 +222,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           </div>
         </div>
 
-        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1" />
+        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
 
         {/* GROUP 4: Furniture & Catalog */}
         <div className="relative group flex items-center justify-center">
@@ -248,13 +231,9 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
               onSelectTool('furniture');
               onOpenFurnitureCatalog();
             }}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'furniture'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'furniture')}
           >
-            <Armchair className="w-4 h-4" />
+            <Armchair className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Möbel-Bibliothek</span>
@@ -262,19 +241,15 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           </div>
         </div>
 
-        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1" />
+        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
 
         {/* GROUP 5: Dimensions, Text, Shapes */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('dimension')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'dimension'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'dimension')}
           >
-            <Ruler className="w-4 h-4" />
+            <Ruler className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Bemaßung</span>
@@ -285,13 +260,9 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('text')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-              activeTool === 'text'
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-            }`}
+            className={btnClass(activeTool === 'text')}
           >
-            <Type className="w-4 h-4" />
+            <Type className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Textbeschriftung</span>
@@ -299,19 +270,19 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           </div>
         </div>
 
-        <div className="h-px bg-slate-200 dark:bg-slate-800 my-1 mx-1" />
+        <div className="h-px bg-slate-200 dark:bg-slate-800 my-1 mx-1 w-full" />
 
         {/* GROUP 6: Eraser */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('eraser')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+            className={`w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer ${
               activeTool === 'eraser'
                 ? 'bg-red-600 text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30'
             }`}
           >
-            <Eraser className="w-4 h-4" />
+            <Eraser className={iconClass} />
           </button>
           <div className="absolute left-12 px-2 py-1 bg-slate-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Löschen / Radierer</span>

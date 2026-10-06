@@ -30,6 +30,9 @@ import {
   SplitSquareVertical,
   RotateCcw,
   Home,
+  Maximize,
+  Minimize,
+  Tablet,
 } from 'lucide-react';
 import { ViewMode, Language, CadProject, Floor } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -62,6 +65,9 @@ interface CadHeaderProps {
   onAddFloor: () => void;
   onDeleteFloor: (floorId: string) => void;
   onRenameProject: (name: string) => void;
+  isFocusMode?: boolean;
+  onToggleFocusMode?: () => void;
+  onOpenGestureHelp?: () => void;
 }
 
 export const CadHeader: React.FC<CadHeaderProps> = ({
@@ -92,6 +98,9 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   onAddFloor,
   onDeleteFloor,
   onRenameProject,
+  isFocusMode = false,
+  onToggleFocusMode,
+  onOpenGestureHelp,
 }) => {
   const t = getT(language);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -550,6 +559,17 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           <Settings className="w-4 h-4" />
         </button>
 
+        {/* Gesten & Tablet Guide */}
+        {onOpenGestureHelp && (
+          <button
+            onClick={onOpenGestureHelp}
+            title="iPad Touch-Gesten, Apple Pencil & Home-Bildschirm Anleitung"
+            className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+          >
+            <Tablet className="w-4 h-4 text-amber-500" />
+          </button>
+        )}
+
         {/* Help */}
         <button
           onClick={onOpenHelp}
@@ -558,6 +578,21 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
         >
           <HelpCircle className="w-4 h-4" />
         </button>
+
+        {/* Fullscreen / Fokusmodus */}
+        {onToggleFocusMode && (
+          <button
+            onClick={onToggleFocusMode}
+            title={isFocusMode ? 'Fokusmodus beenden' : 'Vollbild / Fokusmodus (iPad & Tablet)'}
+            className={`p-1.5 rounded-md transition-colors ${
+              isFocusMode
+                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 font-bold'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            {isFocusMode ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+          </button>
+        )}
 
         {/* Dark / Light Toggle */}
         <button

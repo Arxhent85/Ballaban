@@ -106,6 +106,14 @@ export const CadView3D: React.FC<CadView3DProps> = ({
   const pinchInitialDistRef = useRef<number | null>(null);
   const pinchInitialRadiusRef = useRef<number>(18);
 
+  // Virtual Joysticks for 3D Walkthrough on Touch / iPad
+  const joystickLeftRef = useRef({ x: 0, y: 0 });
+  const joystickRightRef = useRef({ x: 0, y: 0 });
+  const [joystickLeftPos, setJoystickLeftPos] = useState({ x: 0, y: 0 });
+  const [joystickRightPos, setJoystickRightPos] = useState({ x: 0, y: 0 });
+  const [isLeftJoystickActive, setIsLeftJoystickActive] = useState(false);
+  const [isRightJoystickActive, setIsRightJoystickActive] = useState(false);
+
   // Walkthrough state
   const keysDownRef = useRef<{ [k: string]: boolean }>({});
   const fpPitchRef = useRef(0);
@@ -915,6 +923,21 @@ export const CadView3D: React.FC<CadView3DProps> = ({
           fpPosRef.current.addScaledVector(right, moveSpeed);
         }
 
+        // Virtual Touch Joystick input (Movement & Strafe)
+        if (joystickLeftRef.current.x !== 0 || joystickLeftRef.current.y !== 0) {
+          fpPosRef.current.addScaledVector(forward, -joystickLeftRef.current.y * moveSpeed);
+          fpPosRef.current.addScaledVector(right, joystickLeftRef.current.x * moveSpeed);
+        }
+
+        // Virtual Touch Joystick input (Look Pitch & Yaw)
+        if (joystickRightRef.current.x !== 0 || joystickRightRef.current.y !== 0) {
+          fpYawRef.current -= joystickRightRef.current.x * 0.035;
+          fpPitchRef.current = Math.max(
+            -Math.PI / 2.5,
+            Math.min(Math.PI / 2.5, fpPitchRef.current - joystickRightRef.current.y * 0.035)
+          );
+        }
+
         fpPosRef.current.y = eyeHeight;
         cameraRef.current.position.copy(fpPosRef.current);
 
@@ -987,9 +1010,35 @@ export const CadView3D: React.FC<CadView3DProps> = ({
 
     let dragDistance = 0;
 
+    const activePointers3D = new Map<number, { x: number; y: number }>();
+    let lastTapTime = 0;
+    let initialPinchDist = 0;
+    let initialRadius = 18;
+
     const handlePointerDown = (e: PointerEvent) => {
+      activePointers3D.set(e.pointerId, { x: e.clientX, y: e.clientY });
       dragDistance = 0;
       prevMouseRef.current = { x: e.clientX, y: e.clientY };
+
+      // Double-tap on touch/mouse to automatically fit 3D model
+      const now = Date.now();
+      if (now - lastTapTime < 280) {
+        fitCameraToBounds();
+        lastTapTime = 0;
+        return;
+      }
+      lastTapTime = now;
+
+      // Two-finger gesture (pan & pinch-zoom)
+      if (activePointers3D.size >= 2) {
+        const pts = Array.from(activePointers3D.values());
+        initialPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        initialRadius = orbitAnglesRef.current.radius;
+        isPanningRef.current = true;
+        isDraggingRef.current = false;
+        return;
+      }
+
       if (e.button === 2 || e.shiftKey || e.button === 1) {
         isPanningRef.current = true;
       } else {
@@ -998,6 +1047,30 @@ export const CadView3D: React.FC<CadView3DProps> = ({
     };
 
     const handlePointerMove = (e: PointerEvent) => {
+      if (activePointers3D.has(e.pointerId)) {
+        activePointers3D.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+
+      // Two-finger pinch-zoom and pan on tablets
+      if (activePointers3D.size >= 2) {
+        const pts = Array.from(activePointers3D.values());
+        const curDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        if (initialPinchDist > 5 && curDist > 5) {
+          const ratio = initialPinchDist / curDist;
+          orbitAnglesRef.current.radius = Math.max(3, Math.min(65, initialRadius * ratio));
+        }
+
+        const dx = e.clientX - prevMouseRef.current.x;
+        const dy = e.clientY - prevMouseRef.current.y;
+        prevMouseRef.current = { x: e.clientX, y: e.clientY };
+
+        const factor = orbitAnglesRef.current.radius * 0.0015;
+        const right = new THREE.Vector3(Math.cos(orbitAnglesRef.current.theta), 0, -Math.sin(orbitAnglesRef.current.theta));
+        cameraTargetRef.current.addScaledVector(right, -dx * factor);
+        cameraTargetRef.current.y += dy * factor;
+        return;
+      }
+
       if (!isDraggingRef.current && !isPanningRef.current) return;
 
       const dx = e.clientX - prevMouseRef.current.x;
@@ -1023,9 +1096,12 @@ export const CadView3D: React.FC<CadView3DProps> = ({
     };
 
     const handlePointerUp = (e: PointerEvent) => {
+      activePointers3D.delete(e.pointerId);
       const wasClick = dragDistance < 5;
-      isDraggingRef.current = false;
-      isPanningRef.current = false;
+      if (activePointers3D.size === 0) {
+        isDraggingRef.current = false;
+        isPanningRef.current = false;
+      }
 
       // 3D Raycasting Click Selection
       if (wasClick && onSelect && cameraRef.current && sceneRef.current) {
@@ -1425,6 +1501,135 @@ export const CadView3D: React.FC<CadView3DProps> = ({
           </button>
         </div>
       </div>
+
+      {/* VIRTUAL TOUCH JOYSTICKS FOR FIRST-PERSON WALKTHROUGH ON TABLETS */}
+      {navMode === 'firstPerson' && (
+        <div className="absolute bottom-20 left-4 right-4 z-40 flex items-center justify-between pointer-events-none select-none">
+          {/* Left Joystick: Movement & Strafe */}
+          <div
+            className="w-28 h-28 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/20 relative flex items-center justify-center pointer-events-auto touch-none shadow-2xl"
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setIsLeftJoystickActive(true);
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+              const dx = (e.clientX - cx) / (rect.width / 2);
+              const dy = (e.clientY - cy) / (rect.height / 2);
+              const dist = Math.hypot(dx, dy);
+              const clampDist = Math.min(1, dist);
+              const ang = Math.atan2(dy, dx);
+              const nx = Math.cos(ang) * clampDist;
+              const ny = Math.sin(ang) * clampDist;
+              joystickLeftRef.current = { x: nx, y: ny };
+              setJoystickLeftPos({ x: nx * 36, y: ny * 36 });
+            }}
+            onPointerMove={(e) => {
+              if (!isLeftJoystickActive) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+              const dx = (e.clientX - cx) / (rect.width / 2);
+              const dy = (e.clientY - cy) / (rect.height / 2);
+              const dist = Math.hypot(dx, dy);
+              const clampDist = Math.min(1, dist);
+              const ang = Math.atan2(dy, dx);
+              const nx = Math.cos(ang) * clampDist;
+              const ny = Math.sin(ang) * clampDist;
+              joystickLeftRef.current = { x: nx, y: ny };
+              setJoystickLeftPos({ x: nx * 36, y: ny * 36 });
+            }}
+            onPointerUp={(e) => {
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {}
+              setIsLeftJoystickActive(false);
+              joystickLeftRef.current = { x: 0, y: 0 };
+              setJoystickLeftPos({ x: 0, y: 0 });
+            }}
+            onPointerCancel={() => {
+              setIsLeftJoystickActive(false);
+              joystickLeftRef.current = { x: 0, y: 0 };
+              setJoystickLeftPos({ x: 0, y: 0 });
+            }}
+          >
+            <div className="absolute text-[9px] font-bold text-white/50 tracking-wider pointer-events-none">
+              GEHEN
+            </div>
+            {/* Knob */}
+            <div
+              className="w-12 h-12 rounded-full bg-amber-500/80 border-2 border-white/60 shadow-lg transition-transform duration-75 flex items-center justify-center text-white text-[10px] font-bold"
+              style={{
+                transform: `translate(${joystickLeftPos.x}px, ${joystickLeftPos.y}px)`,
+              }}
+            >
+              ▲
+            </div>
+          </div>
+
+          {/* Right Joystick: Look Pitch & Yaw */}
+          <div
+            className="w-28 h-28 rounded-full bg-slate-900/60 backdrop-blur-md border border-white/20 relative flex items-center justify-center pointer-events-auto touch-none shadow-2xl"
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setIsRightJoystickActive(true);
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+              const dx = (e.clientX - cx) / (rect.width / 2);
+              const dy = (e.clientY - cy) / (rect.height / 2);
+              const dist = Math.hypot(dx, dy);
+              const clampDist = Math.min(1, dist);
+              const ang = Math.atan2(dy, dx);
+              const nx = Math.cos(ang) * clampDist;
+              const ny = Math.sin(ang) * clampDist;
+              joystickRightRef.current = { x: nx, y: ny };
+              setJoystickRightPos({ x: nx * 36, y: ny * 36 });
+            }}
+            onPointerMove={(e) => {
+              if (!isRightJoystickActive) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+              const dx = (e.clientX - cx) / (rect.width / 2);
+              const dy = (e.clientY - cy) / (rect.height / 2);
+              const dist = Math.hypot(dx, dy);
+              const clampDist = Math.min(1, dist);
+              const ang = Math.atan2(dy, dx);
+              const nx = Math.cos(ang) * clampDist;
+              const ny = Math.sin(ang) * clampDist;
+              joystickRightRef.current = { x: nx, y: ny };
+              setJoystickRightPos({ x: nx * 36, y: ny * 36 });
+            }}
+            onPointerUp={(e) => {
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {}
+              setIsRightJoystickActive(false);
+              joystickRightRef.current = { x: 0, y: 0 };
+              setJoystickRightPos({ x: 0, y: 0 });
+            }}
+            onPointerCancel={() => {
+              setIsRightJoystickActive(false);
+              joystickRightRef.current = { x: 0, y: 0 };
+              setJoystickRightPos({ x: 0, y: 0 });
+            }}
+          >
+            <div className="absolute text-[9px] font-bold text-white/50 tracking-wider pointer-events-none">
+              BLICK
+            </div>
+            {/* Knob */}
+            <div
+              className="w-12 h-12 rounded-full bg-blue-500/80 border-2 border-white/60 shadow-lg transition-transform duration-75 flex items-center justify-center text-white text-[10px] font-bold"
+              style={{
+                transform: `translate(${joystickRightPos.x}px, ${joystickRightPos.y}px)`,
+              }}
+            >
+              ●
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* WebGL Error fallback message */}
       {webglError && (
