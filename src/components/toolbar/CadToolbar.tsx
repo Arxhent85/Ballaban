@@ -8,6 +8,7 @@ import {
   Hand,
   PenTool,
   Square,
+  Scissors,
   Binary,
   DoorOpen,
   AppWindow,
@@ -131,6 +132,23 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
             <span>Rechteckraum (4 Wände)</span>
             <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">R</kbd>
+          </div>
+        </div>
+
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => onSelectTool('split')}
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+              activeTool === 'split'
+                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
+                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
+            }`}
+          >
+            <Scissors className="w-4 h-4" />
+          </button>
+          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
+            <span>Wand trennen (Schere)</span>
+            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">C</kbd>
           </div>
         </div>
 

@@ -53,6 +53,7 @@ import {
   calculatePolygonInwardOffset,
   checkFurnitureWallCollision,
   isPointInPolygon,
+  lineIntersection,
 } from '../../utils/cadMath';
 import { getT } from '../../i18n/translations';
 import {
@@ -64,6 +65,7 @@ import {
   Check,
   X,
   MousePointer,
+  Scissors,
 } from 'lucide-react';
 
 interface CadCanvas2DProps {
@@ -112,6 +114,9 @@ interface CadCanvas2DProps {
   onRotateSelected?: (deg: number) => void;
   onFlipHorizontal?: () => void;
   onSelectTool?: (tool: CadTool) => void;
+  onAddWallsAndRoom?: (walls: Wall[], room?: Room) => void;
+  onSplitWall?: (wallId: string, splitPoint: Point2D) => void;
+  onSplitSelectedWall?: () => void;
 }
 
 export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
@@ -158,6 +163,9 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   onRotateSelected,
   onFlipHorizontal,
   onSelectTool,
+  onAddWallsAndRoom,
+  onSplitWall,
+  onSplitSelectedWall,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -713,48 +721,94 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           ctx.closePath();
 
           const isSelectedRoom = selection.ids.includes(r.id);
-          ctx.fillStyle = isSelectedRoom
-            ? 'rgba(245, 158, 11, 0.22)'
-            : isDark
-            ? 'rgba(39, 39, 42, 0.4)'
-            : 'rgba(250, 250, 249, 0.85)';
-          if (!isSelectedRoom && r.floorFinish === 'tiles') {
-            ctx.fillStyle = isDark ? 'rgba(20, 184, 166, 0.12)' : 'rgba(240, 253, 250, 0.85)';
-          } else if (!isSelectedRoom && (r.floorFinish === 'parquet' || r.floorFinish === 'wood_plank')) {
-            ctx.fillStyle = isDark ? 'rgba(180, 83, 9, 0.12)' : 'rgba(254, 252, 232, 0.85)';
+
+          // Clear, distinct architectural floor fills with noticeable color & contrast
+          let fillColor = isDark ? 'rgba(59, 130, 246, 0.18)' : 'rgba(219, 234, 254, 0.65)'; // default soft blue
+          let strokeColor = isDark ? 'rgba(96, 165, 250, 0.5)' : 'rgba(59, 130, 246, 0.5)';
+
+          if (r.floorFinish === 'tiles') {
+            fillColor = isDark ? 'rgba(20, 184, 166, 0.20)' : 'rgba(204, 251, 241, 0.75)'; // crisp mint
+            strokeColor = isDark ? 'rgba(45, 212, 191, 0.6)' : 'rgba(13, 148, 136, 0.55)';
+          } else if (r.floorFinish === 'parquet' || r.floorFinish === 'wood_plank') {
+            fillColor = isDark ? 'rgba(217, 119, 6, 0.20)' : 'rgba(254, 240, 138, 0.65)'; // warm honey wood
+            strokeColor = isDark ? 'rgba(245, 158, 11, 0.6)' : 'rgba(217, 119, 6, 0.6)';
+          } else if (r.floorFinish === 'carpet') {
+            fillColor = isDark ? 'rgba(168, 85, 247, 0.18)' : 'rgba(243, 232, 255, 0.7)'; // soft lavender
+            strokeColor = isDark ? 'rgba(192, 132, 252, 0.6)' : 'rgba(147, 51, 234, 0.55)';
+          } else if (r.category === 'kitchen' || r.category === 'bath') {
+            fillColor = isDark ? 'rgba(6, 182, 212, 0.20)' : 'rgba(207, 250, 254, 0.75)'; // aqua
+            strokeColor = isDark ? 'rgba(34, 211, 238, 0.6)' : 'rgba(8, 145, 178, 0.55)';
+          } else if (r.category === 'sleeping') {
+            fillColor = isDark ? 'rgba(99, 102, 241, 0.18)' : 'rgba(224, 231, 255, 0.7)'; // soft indigo
+            strokeColor = isDark ? 'rgba(129, 140, 248, 0.6)' : 'rgba(79, 70, 229, 0.55)';
+          } else if (r.category === 'outdoor') {
+            fillColor = isDark ? 'rgba(34, 197, 94, 0.18)' : 'rgba(220, 252, 231, 0.7)'; // fresh garden green
+            strokeColor = isDark ? 'rgba(74, 222, 128, 0.6)' : 'rgba(22, 163, 74, 0.55)';
           }
-          ctx.fill();
 
           if (isSelectedRoom) {
-            ctx.strokeStyle = '#ea580c';
-            ctx.lineWidth = 2.5;
+            fillColor = isDark ? 'rgba(245, 158, 11, 0.32)' : 'rgba(251, 191, 36, 0.45)';
+            strokeColor = '#ea580c';
+          }
+
+          ctx.fillStyle = fillColor;
+          ctx.fill();
+
+          // Room boundary contour stroke: clearly defined
+          ctx.strokeStyle = isSelectedRoom ? '#ea580c' : strokeColor;
+          ctx.lineWidth = isSelectedRoom ? 2.5 : 1.5;
+          if (isSelectedRoom) {
             ctx.setLineDash([6, 4]);
-            ctx.stroke();
+          } else {
             ctx.setLineDash([]);
           }
+          ctx.stroke();
+          ctx.setLineDash([]);
 
           // Room Stamp Centered
           const cx = r.polygon.reduce((acc, p) => acc + p.x, 0) / r.polygon.length;
           const cy = r.polygon.reduce((acc, p) => acc + p.y, 0) / r.polygon.length;
           const sc = worldToScreen({ x: cx, y: cy });
 
-          ctx.font = '600 12px "Inter", sans-serif';
+          ctx.font = '700 12px "Inter", sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
 
           const titleWidth = ctx.measureText(r.name).width;
-          const badgeW = Math.max(titleWidth + 18, 92);
-          ctx.fillStyle = isDark ? 'rgba(24, 24, 27, 0.9)' : 'rgba(255, 255, 255, 0.95)';
-          ctx.strokeStyle = isDark ? '#3f3f46' : '#e7e5e4';
-          ctx.lineWidth = 1;
-          ctx.fillRect(sc.x - badgeW / 2, sc.y - 15, badgeW, 30);
-          ctx.strokeRect(sc.x - badgeW / 2, sc.y - 15, badgeW, 30);
+          const badgeW = Math.max(titleWidth + 24, 110);
+          const badgeH = 34;
 
-          ctx.fillStyle = isDark ? '#fafaf9' : '#1c1917';
-          ctx.fillText(r.name, sc.x, sc.y - 4);
+          // Shadow for room stamp badge
+          ctx.shadowColor = isDark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.15)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetY = 2;
 
-          ctx.font = '500 11px "JetBrains Mono", monospace';
-          ctx.fillStyle = '#ea580c';
+          ctx.fillStyle = isDark ? '#1e293b' : '#ffffff';
+          ctx.strokeStyle = isSelectedRoom ? '#ea580c' : (isDark ? '#475569' : '#cbd5e1');
+          ctx.lineWidth = isSelectedRoom ? 2 : 1.2;
+          
+          ctx.beginPath();
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(sc.x - badgeW / 2, sc.y - badgeH / 2, badgeW, badgeH, 6);
+          } else {
+            ctx.rect(sc.x - badgeW / 2, sc.y - badgeH / 2, badgeW, badgeH);
+          }
+          ctx.fill();
+          ctx.stroke();
+
+          // Reset shadow
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetY = 0;
+
+          // Room name
+          ctx.fillStyle = isDark ? '#f8fafc' : '#0f172a';
+          ctx.font = '700 12px "Inter", sans-serif';
+          ctx.fillText(r.name, sc.x, sc.y - 6);
+
+          // Room area & height with high contrast
+          ctx.font = '600 11px "JetBrains Mono", monospace';
+          ctx.fillStyle = isDark ? '#38bdf8' : '#0369a1';
           ctx.fillText(`${r.areaM2.toFixed(1)} m² (h=${(r.height || 2.5).toFixed(2)}m)`, sc.x, sc.y + 8);
         }
       });
@@ -1337,11 +1391,50 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         ctx.moveTo(sp.x + 7, sp.y - 7);
         ctx.lineTo(sp.x - 7, sp.y + 7);
         ctx.stroke();
+      } else if (snapIndicator.type === 'edge') {
+        // Edge / surface snap on existing wall: amber diamond
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sp.x, sp.y - 6);
+        ctx.lineTo(sp.x + 6, sp.y);
+        ctx.lineTo(sp.x, sp.y + 6);
+        ctx.lineTo(sp.x - 6, sp.y);
+        ctx.closePath();
+        ctx.stroke();
       } else if (snapIndicator.type === 'grid') {
         ctx.fillStyle = '#78716c';
         ctx.beginPath();
         ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+
+    // Split Tool Preview (Schere / Wand trennen)
+    if (activeTool === 'split' && currentCursorWorld) {
+      const nearWall = findWallNearPoint(currentCursorWorld, 0.4);
+      if (nearWall) {
+        const pSc = worldToScreen(nearWall.proj);
+        const norm = getWallNormal(nearWall.wall);
+        const cutLen = Math.max(16, (nearWall.wall.thickness || 0.3) * zoom * 1.5);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([4, 2]);
+        ctx.beginPath();
+        ctx.moveTo(pSc.x - norm.x * (cutLen / 2), pSc.y - norm.y * (cutLen / 2));
+        ctx.lineTo(pSc.x + norm.x * (cutLen / 2), pSc.y + norm.y * (cutLen / 2));
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(pSc.x, pSc.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = '600 11px "Inter", sans-serif';
+        ctx.fillStyle = isDark ? '#ffffff' : '#0f172a';
+        ctx.textAlign = 'center';
+        ctx.fillText('Hier trennen (Klick)', pSc.x, pSc.y - 14);
       }
     }
 
@@ -1730,6 +1823,15 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
 
+    // TOOL: SPLIT (Wand trennen an geklickter Position)
+    if (activeTool === 'split') {
+      const nearWall = findWallNearPoint(rawWorld, Math.max(0.4, 25 / zoom));
+      if (nearWall && onSplitWall) {
+        onSplitWall(nearWall.wall.id, nearWall.proj);
+      }
+      return;
+    }
+
     // TOOL: ERASER (Radiert / Löscht das angeklickte Element mit einem Klick)
     if (activeTool === 'eraser') {
       // 1. Doors & Windows first
@@ -1766,9 +1868,69 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         return;
       }
 
-      // 3. Walls
+      // 3. Walls (Smart segment trimming if intersected by cross walls, else deletes entire wall)
       const nearWall = findWallNearPoint(rawWorld, Math.max(0.35, 20 / zoom));
       if (nearWall) {
+        const wall = nearWall.wall;
+        const pts: { t: number; pt: Point2D }[] = [];
+        const wallVec = { x: wall.end.x - wall.start.x, y: wall.end.y - wall.start.y };
+        const wallLenSq = wallVec.x * wallVec.x + wallVec.y * wallVec.y;
+
+        if (wallLenSq > 0.001) {
+          walls.forEach((otherW) => {
+            if (otherW.id === wall.id) return;
+            const inter = lineIntersection(wall.start, wall.end, otherW.start, otherW.end);
+            if (inter) {
+              const t = ((inter.x - wall.start.x) * wallVec.x + (inter.y - wall.start.y) * wallVec.y) / wallLenSq;
+              if (t > 0.04 && t < 0.96) {
+                pts.push({ t, pt: inter });
+              }
+            }
+          });
+        }
+
+        if (pts.length > 0) {
+          pts.sort((a, b) => a.t - b.t);
+          const uniqueSplitPoints = pts.filter((p, i, arr) => i === 0 || p.t - arr[i - 1].t > 0.04);
+
+          if (uniqueSplitPoints.length > 0) {
+            const clickT = Math.max(0, Math.min(1, nearWall.ratio));
+            const segments: { startT: number; endT: number; startPt: Point2D; endPt: Point2D }[] = [];
+
+            let curT = 0;
+            let curPt = wall.start;
+            for (const sp of uniqueSplitPoints) {
+              segments.push({ startT: curT, endT: sp.t, startPt: curPt, endPt: sp.pt });
+              curT = sp.t;
+              curPt = sp.pt;
+            }
+            segments.push({ startT: curT, endT: 1, startPt: curPt, endPt: wall.end });
+
+            const clickedSegIdx = segments.findIndex((seg) => clickT >= seg.startT && clickT <= seg.endT);
+            if (clickedSegIdx !== -1) {
+              const remainingSegments = segments.filter((_, idx) => idx !== clickedSegIdx);
+              if (remainingSegments.length > 0) {
+                const firstSeg = remainingSegments[0];
+                onUpdateWall({
+                  ...wall,
+                  start: firstSeg.startPt,
+                  end: firstSeg.endPt,
+                });
+                for (let i = 1; i < remainingSegments.length; i++) {
+                  const seg = remainingSegments[i];
+                  onAddWall({
+                    ...wall,
+                    id: 'w_' + Date.now() + Math.random().toString(36).substr(2, 4) + '_' + i,
+                    start: seg.startPt,
+                    end: seg.endPt,
+                  });
+                }
+                return;
+              }
+            }
+          }
+        }
+
         if (onDeleteSelected) onDeleteSelected([nearWall.wall.id]);
         return;
       }
@@ -2023,32 +2185,6 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       return;
     }
 
-    // In Wall creation mode: if not currently drawing a wall, clicking on existing elements selects them!
-    if (activeTool === 'wall' && !wallStartPoint) {
-      const nearWall = findWallNearPoint(rawWorld, Math.max(0.35, 20 / zoom));
-      const clickedFurn = furniture.find(
-        (f) =>
-          Math.abs(rawWorld.x - f.x) <= f.width / 2 + Math.max(0.18, 14 / zoom) &&
-          Math.abs(rawWorld.y - f.y) <= f.depth / 2 + Math.max(0.18, 14 / zoom)
-      );
-      if (nearWall) {
-        onSelect({ type: 'wall', ids: [nearWall.wall.id] });
-        draggedIdsRef.current = [nearWall.wall.id];
-        setIsDraggingSelection(true);
-        setDragSelectionStart(rawWorld);
-        if (onSelectTool) onSelectTool('select');
-        return;
-      }
-      if (clickedFurn) {
-        onSelect({ type: 'furniture', ids: [clickedFurn.id] });
-        draggedIdsRef.current = [clickedFurn.id];
-        setIsDraggingSelection(true);
-        setDragSelectionStart(rawWorld);
-        if (onSelectTool) onSelectTool('select');
-        return;
-      }
-    }
-
     // TOOL: WALL DRAWING (CHAIN & DRAG)
     if (activeTool === 'wall') {
       if (!wallStartPoint) {
@@ -2071,30 +2207,33 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
               material: wallMode === 'exterior' ? 'timber' : 'drywall',
               referenceLine: 'center',
             };
-            onAddWall(closingWall);
 
             // Automatically detect and create closed room
-            if (onAddRoom) {
-              const fullLoop = [...wallChainPoints, wallChainPoints[0]];
-              let area = 0;
-              for (let i = 0; i < fullLoop.length - 1; i++) {
-                area += fullLoop[i].x * fullLoop[i + 1].y - fullLoop[i + 1].x * fullLoop[i].y;
-              }
-              area = Math.abs(area) / 2;
+            const fullLoop = [...wallChainPoints, wallChainPoints[0]];
+            let area = 0;
+            for (let i = 0; i < fullLoop.length - 1; i++) {
+              area += fullLoop[i].x * fullLoop[i + 1].y - fullLoop[i + 1].x * fullLoop[i].y;
+            }
+            area = Math.abs(area) / 2;
 
-              const newRoom: Room = {
-                id: 'rm_' + Date.now(),
-                name: 'Raum ' + (rooms.length + 1),
-                category: 'living',
-                polygon: fullLoop.slice(0, fullLoop.length - 1),
-                areaM2: Math.round(area * 10) / 10,
-                perimeterM: Math.round(dFromStart * 10) / 10,
-                height: defaults?.roomHeight || 2.50,
-                floorFinish: 'parquet',
-                color: '#ea580c',
-                targetLivingArea: true,
-              };
-              onAddRoom(newRoom);
+            const newRoom: Room = {
+              id: 'rm_' + Date.now(),
+              name: 'Raum ' + (rooms.length + 1),
+              category: 'living',
+              polygon: fullLoop.slice(0, fullLoop.length - 1),
+              areaM2: Math.round(area * 10) / 10,
+              perimeterM: Math.round(dFromStart * 10) / 10,
+              height: defaults?.roomHeight || 2.50,
+              floorFinish: 'parquet',
+              color: '#ea580c',
+              targetLivingArea: true,
+            };
+
+            if (onAddWallsAndRoom) {
+              onAddWallsAndRoom([closingWall], newRoom);
+            } else {
+              onAddWall(closingWall);
+              if (onAddRoom) onAddRoom(newRoom);
             }
 
             setWallStartPoint(null);
@@ -2264,27 +2403,29 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       referenceLine: 'center',
     };
 
-    onAddWall(w1);
-    onAddWall(w2);
-    onAddWall(w3);
-    onAddWall(w4);
+    const area = (maxX - minX) * (maxY - minY);
+    const perim = 2 * ((maxX - minX) + (maxY - minY));
+    const room: Room = {
+      id: 'rm_' + Date.now(),
+      name: 'Raum ' + (rooms.length + 1),
+      category: 'living',
+      polygon: [p1, p2, p3, p4],
+      areaM2: Math.round(area * 10) / 10,
+      perimeterM: Math.round(perim * 10) / 10,
+      height: defaults?.roomHeight || 2.50,
+      floorFinish: 'parquet',
+      color: '#ea580c',
+      targetLivingArea: true,
+    };
 
-    if (onAddRoom) {
-      const area = (maxX - minX) * (maxY - minY);
-      const perim = 2 * ((maxX - minX) + (maxY - minY));
-      const room: Room = {
-        id: 'rm_' + Date.now(),
-        name: 'Raum ' + (rooms.length + 1),
-        category: 'living',
-        polygon: [p1, p2, p3, p4],
-        areaM2: Math.round(area * 10) / 10,
-        perimeterM: Math.round(perim * 10) / 10,
-        height: defaults?.roomHeight || 2.50,
-        floorFinish: 'parquet',
-        color: '#ea580c',
-        targetLivingArea: true,
-      };
-      onAddRoom(room);
+    if (onAddWallsAndRoom) {
+      onAddWallsAndRoom([w1, w2, w3, w4], room);
+    } else {
+      onAddWall(w1);
+      onAddWall(w2);
+      onAddWall(w3);
+      onAddWall(w4);
+      if (onAddRoom) onAddRoom(room);
     }
   };
 
@@ -2722,7 +2863,11 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
       {/* CANVAS SELECTION ACTION BAR (Pinned at top of canvas, guaranteed visible) */}
       {selection.ids.length > 0 && (
-        <div className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border border-stone-200 dark:border-stone-800 rounded-xl px-3 py-1.5 shadow-2xl flex items-center gap-2 z-40 animate-in fade-in zoom-in-95 duration-150 select-none">
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute top-3.5 left-1/2 -translate-x-1/2 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border border-stone-200 dark:border-stone-800 rounded-xl px-3 py-1.5 shadow-2xl flex items-center gap-2 z-40 animate-in fade-in zoom-in-95 duration-150 select-none"
+        >
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 font-semibold text-xs whitespace-nowrap">
             <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
             <span>
@@ -2757,6 +2902,18 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             >
               <Copy className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               <span className="hidden sm:inline">Duplizieren</span>
+            </button>
+          )}
+
+          {/* Split wall if single wall selected */}
+          {selection.type === 'wall' && selection.ids.length === 1 && onSplitSelectedWall && (
+            <button
+              onClick={onSplitSelectedWall}
+              title="Wand in zwei Abschnitte teilen (C)"
+              className="px-2 py-1 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Scissors className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="hidden sm:inline">Teilen (C)</span>
             </button>
           )}
 

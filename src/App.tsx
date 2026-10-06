@@ -32,7 +32,7 @@ import {
   createEmptyProject,
 } from './utils/templates';
 import { getT } from './i18n/translations';
-import { mergeBoundingBoxes, getWallBoundingBox, getFurnitureBoundingBox } from './utils/cadMath';
+import { mergeBoundingBoxes, getWallBoundingBox, getFurnitureBoundingBox, lineIntersection, projectPointOntoWall } from './utils/cadMath';
 import { RotateCcw, Trash2 } from 'lucide-react';
 
 // UI components
@@ -483,12 +483,137 @@ export default function App() {
   const handleUpdatePlot = (newPlot: PlotBoundary) => {
     updateProject({ ...project, plot: newPlot });
   };
-  const handleUpdateDefaults = (newDefaults: ProjectDefaults) => {
-    updateProject({ ...project, defaults: newDefaults });
-  };
+  // Atomically add multiple walls and optional room (prevents React closure overwrite)
+  const handleAddWallsAndRoom = useCallback((newWalls: Wall[], room?: Room) => {
+    updateActiveFloor((f) => ({
+      ...f,
+      walls: [...f.walls, ...newWalls],
+      rooms: room ? [...f.rooms, room] : f.rooms,
+    }));
+  }, [updateActiveFloor]);
 
-  // Delete Selection (Single, Multi, or specific target IDs)
-  const handleDeleteSelected = (idsToDelete?: string[]) => {
+  // Split a wall into two wall segments at splitPoint
+  const handleSplitWall = useCallback((wallId: string, splitPoint: Point2D) => {
+    updateActiveFloor((f) => {
+      const targetWall = f.walls.find((w) => w.id === wallId);
+      if (!targetWall) return f;
+
+      const wLen = Math.hypot(targetWall.end.x - targetWall.start.x, targetWall.end.y - targetWall.start.y);
+      if (wLen < 0.1) return f;
+
+      const dSplit = Math.hypot(splitPoint.x - targetWall.start.x, splitPoint.y - targetWall.start.y);
+      const splitRatio = Math.max(0.05, Math.min(0.95, dSplit / wLen));
+
+      const w1Id = 'w_s1_' + Date.now();
+      const w2Id = 'w_s2_' + (Date.now() + 1);
+
+      const w1: Wall = {
+        ...targetWall,
+        id: w1Id,
+        start: { ...targetWall.start },
+        end: { ...splitPoint },
+      };
+
+      const w2: Wall = {
+        ...targetWall,
+        id: w2Id,
+        start: { ...splitPoint },
+        end: { ...targetWall.end },
+      };
+
+      // Reassign doors on this wall
+      const updatedDoors = f.doors.map((d) => {
+        if (d.wallId !== wallId) return d;
+        if (d.position <= splitRatio) {
+          return {
+            ...d,
+            wallId: w1Id,
+            position: Math.max(0.05, Math.min(0.95, d.position / splitRatio)),
+          };
+        } else {
+          return {
+            ...d,
+            wallId: w2Id,
+            position: Math.max(0.05, Math.min(0.95, (d.position - splitRatio) / (1 - splitRatio))),
+          };
+        }
+      });
+
+      // Reassign windows on this wall
+      const updatedWindows = f.windows.map((win) => {
+        if (win.wallId !== wallId) return win;
+        if (win.position <= splitRatio) {
+          return {
+            ...win,
+            wallId: w1Id,
+            position: Math.max(0.05, Math.min(0.95, win.position / splitRatio)),
+          };
+        } else {
+          return {
+            ...win,
+            wallId: w2Id,
+            position: Math.max(0.05, Math.min(0.95, (win.position - splitRatio) / (1 - splitRatio))),
+          };
+        }
+      });
+
+      const updatedWalls = f.walls.flatMap((w) => (w.id === wallId ? [w1, w2] : [w]));
+
+      return {
+        ...f,
+        walls: updatedWalls,
+        doors: updatedDoors,
+        windows: updatedWindows,
+      };
+    });
+  }, [updateActiveFloor]);
+
+  // Split selected wall at intersection or midpoint
+  const handleSplitSelectedWall = useCallback(() => {
+    if (selection.ids.length !== 1 || selection.type !== 'wall') return;
+    const targetWall = activeFloor.walls.find((w) => w.id === selection.ids[0]);
+    if (!targetWall) return;
+
+    let splitPt: Point2D | null = null;
+    for (const other of activeFloor.walls) {
+      if (other.id === targetWall.id) continue;
+      const inter = lineIntersection(targetWall.start, targetWall.end, other.start, other.end);
+      if (inter) {
+        splitPt = inter;
+        break;
+      }
+      const projStart = projectPointOntoWall(other.start, targetWall);
+      if (projStart.dist < 0.08 && projStart.ratio > 0.05 && projStart.ratio < 0.95) {
+        splitPt = projStart.point;
+        break;
+      }
+      const projEnd = projectPointOntoWall(other.end, targetWall);
+      if (projEnd.dist < 0.08 && projEnd.ratio > 0.05 && projEnd.ratio < 0.95) {
+        splitPt = projEnd.point;
+        break;
+      }
+    }
+
+    if (!splitPt) {
+      splitPt = {
+        x: (targetWall.start.x + targetWall.end.x) / 2,
+        y: (targetWall.start.y + targetWall.end.y) / 2,
+      };
+    }
+
+    handleSplitWall(targetWall.id, splitPt);
+  }, [selection, activeFloor, handleSplitWall]);
+
+  // Update project defaults
+  const handleUpdateDefaults = useCallback((newDefaults: ProjectDefaults) => {
+    updateProject({
+      ...project,
+      defaults: newDefaults,
+    });
+  }, [project, updateProject]);
+
+  // Delete Selection (Single, Multi, Plot, Walls, Furniture, Rooms, etc.)
+  const handleDeleteSelected = useCallback((idsToDelete?: string[]) => {
     const targetIds = idsToDelete && idsToDelete.length > 0 ? idsToDelete : selection.ids;
     const isPlotTargeted =
       targetIds.includes('plot') ||
@@ -498,121 +623,477 @@ export default function App() {
     if (targetIds.length === 0 && !isPlotTargeted && selection.type === 'none') return;
     const idSet = new Set(targetIds);
 
-    // If plot or plot points are selected, clear and disable plot completely
-    if (isPlotTargeted) {
-      if (project.plot) {
-        handleUpdatePlot({
-          ...project.plot,
-          points: undefined,
+    let nextPlot = project.plot ? { ...project.plot } : undefined;
+    if (isPlotTargeted && nextPlot) {
+      const singlePtId = targetIds.find((id) => id.startsWith('plot_pt_'));
+      if (singlePtId && nextPlot.points && nextPlot.points.length > 3) {
+        const ptIdx = parseInt(singlePtId.replace('plot_pt_', ''), 10);
+        if (!isNaN(ptIdx)) {
+          nextPlot.points = nextPlot.points.filter((_, idx) => idx !== ptIdx);
+        }
+      } else {
+        // Complete plot deletion / disable
+        nextPlot = {
+          ...nextPlot,
           enabled: false,
+          points: undefined,
           width: 20.0,
           depth: 30.0,
-        });
+        };
       }
     }
 
-    updateActiveFloor((f) => ({
-      ...f,
-      walls: f.walls.filter((w) => !idSet.has(w.id)),
-      doors: f.doors.filter((d) => !idSet.has(d.id) && !idSet.has(d.wallId)),
-      windows: f.windows.filter((win) => !idSet.has(win.id) && !idSet.has(win.wallId)),
-      furniture: f.furniture.filter((item) => !idSet.has(item.id)),
-      dimensions: f.dimensions.filter((dim) => !idSet.has(dim.id)),
-      stairs: f.stairs.filter((st) => !idSet.has(st.id)),
-      rooms: f.rooms.filter((rm) => !idSet.has(rm.id)),
-    }));
-    setSelection({ type: 'none', ids: [] });
-  };
+    const nextFloors = project.floors.map((fl) => {
+      if (fl.id !== activeFloor.id) return fl;
+      return {
+        ...fl,
+        walls: fl.walls.filter((w) => !idSet.has(w.id)),
+        doors: fl.doors.filter((d) => !idSet.has(d.id) && !idSet.has(d.wallId)),
+        windows: fl.windows.filter((win) => !idSet.has(win.id) && !idSet.has(win.wallId)),
+        furniture: fl.furniture.filter((item) => !idSet.has(item.id)),
+        dimensions: fl.dimensions.filter((dim) => !idSet.has(dim.id)),
+        stairs: fl.stairs.filter((st) => !idSet.has(st.id)),
+        rooms: fl.rooms.filter((rm) => !idSet.has(rm.id)),
+        shapes: (fl.shapes || []).filter((sh) => !idSet.has(sh.id)),
+        annotations: (fl.annotations || []).filter((an) => !idSet.has(an.id)),
+        columns: (fl.columns || []).filter((col) => !idSet.has(col.id)),
+        roofs: (fl.roofs || []).filter((rf) => !idSet.has(rf.id)),
+        electrical: (fl.electrical || []).filter((el) => !idSet.has(el.id)),
+      };
+    });
 
-  // Duplicate Selection
-  const handleDuplicateSelected = () => {
-    if (selection.ids.length === 0) return;
+    updateProject({
+      ...project,
+      plot: nextPlot,
+      floors: nextFloors,
+    });
+    setSelection({ type: 'none', ids: [] });
+  }, [selection, project, activeFloor, updateProject]);
+
+  // Duplicate Selection (Plot to boundary walls, Walls, Furniture, Rooms, Stairs, Shapes)
+  const handleDuplicateSelected = useCallback(() => {
+    const isPlotTargeted =
+      selection.ids.includes('plot') ||
+      selection.type === 'plot' ||
+      selection.ids.some((id) => id.startsWith('plot_pt_'));
+
+    if (selection.ids.length === 0 && !isPlotTargeted) return;
     const offset = 0.5;
     const idSet = new Set(selection.ids);
     const newIds: string[] = [];
 
-    updateActiveFloor((f) => {
-      const nextWalls = [...f.walls];
-      const nextFurn = [...f.furniture];
+    const activeFl = project.floors.find((f) => f.id === project.activeFloorId) || project.floors[0];
+    const nextWalls = [...activeFl.walls];
+    const nextFurn = [...activeFl.furniture];
+    const nextDoors = [...activeFl.doors];
+    const nextWindows = [...activeFl.windows];
+    const nextRooms = [...activeFl.rooms];
+    const nextStairs = [...activeFl.stairs];
+    const nextShapes = [...(activeFl.shapes || [])];
 
-      f.walls.forEach((w) => {
-        if (idSet.has(w.id)) {
-          const newW: Wall = {
-            ...w,
-            id: 'w_' + Date.now() + Math.random().toString(36).substr(2, 4),
-            start: { x: w.start.x + offset, y: w.start.y + offset },
-            end: { x: w.end.x + offset, y: w.end.y + offset },
-          };
-          nextWalls.push(newW);
-          newIds.push(newW.id);
-        }
-      });
+    // 1. If Plot is duplicated, generate exterior walls along the plot boundary!
+    if (isPlotTargeted && project.plot && project.plot.enabled) {
+      const pts =
+        project.plot.points && project.plot.points.length >= 3
+          ? project.plot.points
+          : [
+              { x: project.plot.x, y: project.plot.y },
+              { x: project.plot.x + project.plot.width, y: project.plot.y },
+              { x: project.plot.x + project.plot.width, y: project.plot.y + project.plot.depth },
+              { x: project.plot.x, y: project.plot.y + project.plot.depth },
+            ];
 
-      f.furniture.forEach((item) => {
-        if (idSet.has(item.id)) {
-          const newF: Furniture = {
-            ...item,
-            id: 'furn_' + Date.now() + Math.random().toString(36).substr(2, 4),
-            x: item.x + offset,
-            y: item.y + offset,
-          };
-          nextFurn.push(newF);
-          newIds.push(newF.id);
-        }
-      });
+      for (let i = 0; i < pts.length; i++) {
+        const p1 = pts[i];
+        const p2 = pts[(i + 1) % pts.length];
+        const newWallId = 'w_ext_' + Date.now() + '_' + i;
+        nextWalls.push({
+          id: newWallId,
+          start: { x: p1.x, y: p1.y },
+          end: { x: p2.x, y: p2.y },
+          thickness: project.defaults?.exteriorWallThickness || 0.30,
+          height: project.defaults?.wallHeight || 2.60,
+          isExterior: true,
+          material: 'timber',
+          referenceLine: 'center',
+        });
+        newIds.push(newWallId);
+      }
+    }
 
+    // 2. Duplicate Walls (and replicate doors & windows that were on those walls)
+    const wallIdMap = new Map<string, string>();
+    activeFl.walls.forEach((w) => {
+      if (idSet.has(w.id)) {
+        const newWId = 'w_' + Date.now() + Math.random().toString(36).substring(2, 6);
+        wallIdMap.set(w.id, newWId);
+        nextWalls.push({
+          ...w,
+          id: newWId,
+          start: { x: w.start.x + offset, y: w.start.y + offset },
+          end: { x: w.end.x + offset, y: w.end.y + offset },
+        });
+        newIds.push(newWId);
+      }
+    });
+
+    activeFl.doors.forEach((d) => {
+      const clonedWallId = wallIdMap.get(d.wallId);
+      if (clonedWallId) {
+        const newDId = 'door_' + Date.now() + Math.random().toString(36).substring(2, 6);
+        nextDoors.push({
+          ...d,
+          id: newDId,
+          wallId: clonedWallId,
+        });
+      }
+    });
+
+    activeFl.windows.forEach((win) => {
+      const clonedWallId = wallIdMap.get(win.wallId);
+      if (clonedWallId) {
+        const newWinId = 'win_' + Date.now() + Math.random().toString(36).substring(2, 6);
+        nextWindows.push({
+          ...win,
+          id: newWinId,
+          wallId: clonedWallId,
+        });
+      }
+    });
+
+    // 3. Duplicate Furniture
+    activeFl.furniture.forEach((item) => {
+      if (idSet.has(item.id)) {
+        const newFId = 'furn_' + Date.now() + Math.random().toString(36).substring(2, 6);
+        nextFurn.push({
+          ...item,
+          id: newFId,
+          x: item.x + offset,
+          y: item.y + offset,
+        });
+        newIds.push(newFId);
+      }
+    });
+
+    // 4. Duplicate Rooms
+    activeFl.rooms.forEach((rm) => {
+      if (idSet.has(rm.id)) {
+        const newRId = 'room_' + Date.now() + Math.random().toString(36).substring(2, 6);
+        nextRooms.push({
+          ...rm,
+          id: newRId,
+          name: rm.name + ' (Kopie)',
+          polygon: rm.polygon.map((p) => ({ x: p.x + offset, y: p.y + offset })),
+        });
+        newIds.push(newRId);
+      }
+    });
+
+    // 5. Duplicate Stairs
+    activeFl.stairs.forEach((st) => {
+      if (idSet.has(st.id)) {
+        const newStId = 'stair_' + Date.now() + Math.random().toString(36).substring(2, 6);
+        nextStairs.push({
+          ...st,
+          id: newStId,
+          x: st.x + offset,
+          y: st.y + offset,
+        });
+        newIds.push(newStId);
+      }
+    });
+
+    // 6. Duplicate Shapes
+    activeFl.shapes?.forEach((sh) => {
+      if (idSet.has(sh.id)) {
+        const newShId = 'shape_' + Date.now() + Math.random().toString(36).substring(2, 6);
+        nextShapes.push({
+          ...sh,
+          id: newShId,
+          points: (sh.points || []).map((p) => ({ x: p.x + offset, y: p.y + offset })),
+        });
+        newIds.push(newShId);
+      }
+    });
+
+    const nextFloors = project.floors.map((fl) => {
+      if (fl.id !== activeFl.id) return fl;
       return {
-        ...f,
+        ...fl,
         walls: nextWalls,
         furniture: nextFurn,
+        doors: nextDoors,
+        windows: nextWindows,
+        rooms: nextRooms,
+        stairs: nextStairs,
+        shapes: nextShapes,
       };
     });
 
+    updateProject({
+      ...project,
+      floors: nextFloors,
+    });
+
     if (newIds.length > 0) {
-      setSelection({ type: newIds.length > 1 ? 'mixed' : 'wall', ids: newIds });
+      setSelection({
+        type: newIds.length > 1 ? 'mixed' : 'wall',
+        ids: newIds,
+      });
     }
-  };
+  }, [selection, project, updateProject]);
 
-  // Rotate Selection
-  const handleRotateSelected = (deg: number) => {
-    if (selection.ids.length === 0) return;
+  // Rotate Selection by angle deg (works for Plot, Walls, Furniture, Rooms, Stairs, Shapes)
+  const handleRotateSelected = useCallback((deg: number) => {
+    const isPlotTargeted =
+      selection.ids.includes('plot') ||
+      selection.type === 'plot' ||
+      selection.ids.some((id) => id.startsWith('plot_pt_'));
+
+    if (selection.ids.length === 0 && !isPlotTargeted) return;
     const idSet = new Set(selection.ids);
 
-    updateActiveFloor((f) => ({
-      ...f,
-      furniture: f.furniture.map((item) => {
-        if (idSet.has(item.id)) {
-          return { ...item, rotation: (item.rotation + deg) % 360 };
-        }
-        return item;
-      }),
-    }));
-  };
+    // Center of rotation
+    let cx = 0;
+    let cy = 0;
+    if (selectionBoundingBox) {
+      cx = (selectionBoundingBox.minX + selectionBoundingBox.maxX) / 2;
+      cy = (selectionBoundingBox.minY + selectionBoundingBox.maxY) / 2;
+    } else if (isPlotTargeted && project.plot) {
+      cx = project.plot.x + project.plot.width / 2;
+      cy = project.plot.y + project.plot.depth / 2;
+    }
 
-  // Horizontal Mirror
-  const handleFlipHorizontal = () => {
-    if (selection.ids.length === 0) return;
-    const idSet = new Set(selection.ids);
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
 
-    updateActiveFloor((f) => ({
-      ...f,
-      doors: f.doors.map((d) => {
-        if (idSet.has(d.id)) {
+    const rotatePt = (p: Point2D): Point2D => {
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      return {
+        x: Math.round((cx + dx * cos - dy * sin) * 1000) / 1000,
+        y: Math.round((cy + dx * sin + dy * cos) * 1000) / 1000,
+      };
+    };
+
+    let nextPlot = project.plot ? { ...project.plot } : undefined;
+    if (isPlotTargeted && nextPlot && nextPlot.enabled) {
+      if (nextPlot.points && nextPlot.points.length >= 3) {
+        nextPlot = {
+          ...nextPlot,
+          points: nextPlot.points.map((p) => rotatePt(p)),
+        };
+      } else {
+        const rectPts = [
+          { x: nextPlot.x, y: nextPlot.y },
+          { x: nextPlot.x + nextPlot.width, y: nextPlot.y },
+          { x: nextPlot.x + nextPlot.width, y: nextPlot.y + nextPlot.depth },
+          { x: nextPlot.x, y: nextPlot.y + nextPlot.depth },
+        ];
+        nextPlot = {
+          ...nextPlot,
+          points: rectPts.map((p) => rotatePt(p)),
+        };
+      }
+    }
+
+    const nextFloors = project.floors.map((fl) => {
+      if (fl.id !== activeFloor.id) return fl;
+      return {
+        ...fl,
+        walls: fl.walls.map((w) =>
+          idSet.has(w.id)
+            ? {
+                ...w,
+                start: rotatePt(w.start),
+                end: rotatePt(w.end),
+              }
+            : w
+        ),
+        furniture: fl.furniture.map((item) => {
+          if (!idSet.has(item.id)) return item;
+          if (selection.ids.length === 1 && !isPlotTargeted) {
+            return { ...item, rotation: (item.rotation + deg) % 360 };
+          }
+          const np = rotatePt({ x: item.x, y: item.y });
           return {
-            ...d,
-            swingDirection: d.swingDirection === 'left' ? 'right' : 'left',
+            ...item,
+            x: np.x,
+            y: np.y,
+            rotation: (item.rotation + deg) % 360,
           };
-        }
-        return d;
-      }),
-      furniture: f.furniture.map((item) => {
-        if (idSet.has(item.id)) {
-          return { ...item, rotation: (item.rotation + 180) % 360 };
-        }
-        return item;
-      }),
-    }));
-  };
+        }),
+        rooms: fl.rooms.map((rm) =>
+          idSet.has(rm.id)
+            ? {
+                ...rm,
+                polygon: rm.polygon.map((p) => rotatePt(p)),
+              }
+            : rm
+        ),
+        stairs: fl.stairs.map((st) => {
+          if (!idSet.has(st.id)) return st;
+          const rotatedPos = rotatePt({ x: st.x, y: st.y });
+          return {
+            ...st,
+            x: Math.round(rotatedPos.x * 1000) / 1000,
+            y: Math.round(rotatedPos.y * 1000) / 1000,
+            rotation: (st.rotation + deg) % 360,
+          };
+        }),
+        dimensions: fl.dimensions.map((dim) =>
+          idSet.has(dim.id)
+            ? {
+                ...dim,
+                start: rotatePt(dim.start),
+                end: rotatePt(dim.end),
+              }
+            : dim
+        ),
+        shapes: (fl.shapes || []).map((sh) =>
+          idSet.has(sh.id)
+            ? {
+                ...sh,
+                points: (sh.points || []).map((p) => rotatePt(p)),
+              }
+            : sh
+        ),
+      };
+    });
+
+    updateProject({
+      ...project,
+      plot: nextPlot,
+      floors: nextFloors,
+    });
+  }, [selection, selectionBoundingBox, project, activeFloor, updateProject]);
+
+  // Horizontal Mirror (Plot, Walls, Furniture, Rooms, Doors, Stairs, Shapes)
+  const handleFlipHorizontal = useCallback(() => {
+    const isPlotTargeted =
+      selection.ids.includes('plot') ||
+      selection.type === 'plot' ||
+      selection.ids.some((id) => id.startsWith('plot_pt_'));
+
+    if (selection.ids.length === 0 && !isPlotTargeted) return;
+    const idSet = new Set(selection.ids);
+
+    let cx = 0;
+    if (selectionBoundingBox) {
+      cx = (selectionBoundingBox.minX + selectionBoundingBox.maxX) / 2;
+    } else if (isPlotTargeted && project.plot) {
+      cx = project.plot.x + project.plot.width / 2;
+    }
+
+    const flipPt = (p: Point2D): Point2D => ({
+      x: Math.round((2 * cx - p.x) * 1000) / 1000,
+      y: p.y,
+    });
+
+    let nextPlot = project.plot ? { ...project.plot } : undefined;
+    if (isPlotTargeted && nextPlot && nextPlot.enabled) {
+      if (nextPlot.points && nextPlot.points.length >= 3) {
+        nextPlot = {
+          ...nextPlot,
+          points: nextPlot.points.map((p) => flipPt(p)),
+        };
+      } else {
+        const rectPts = [
+          { x: nextPlot.x, y: nextPlot.y },
+          { x: nextPlot.x + nextPlot.width, y: nextPlot.y },
+          { x: nextPlot.x + nextPlot.width, y: nextPlot.y + nextPlot.depth },
+          { x: nextPlot.x, y: nextPlot.y + nextPlot.depth },
+        ];
+        nextPlot = {
+          ...nextPlot,
+          points: rectPts.map((p) => flipPt(p)),
+        };
+      }
+    }
+
+    const nextFloors = project.floors.map((fl) => {
+      if (fl.id !== activeFloor.id) return fl;
+      return {
+        ...fl,
+        walls: fl.walls.map((w) =>
+          idSet.has(w.id)
+            ? {
+                ...w,
+                start: flipPt(w.start),
+                end: flipPt(w.end),
+              }
+            : w
+        ),
+        doors: fl.doors.map((d) => {
+          if (idSet.has(d.id) || idSet.has(d.wallId)) {
+            const flippedSwing: 'left' | 'right' = d.swingDirection === 'left' ? 'right' : 'left';
+            return {
+              ...d,
+              swingDirection: flippedSwing,
+              position: 1 - d.position,
+            };
+          }
+          return d;
+        }),
+        furniture: fl.furniture.map((item) => {
+          if (!idSet.has(item.id)) return item;
+          if (selection.ids.length === 1 && !isPlotTargeted) {
+            return {
+              ...item,
+              rotation: (360 - item.rotation) % 360,
+            };
+          }
+          return {
+            ...item,
+            x: Math.round((2 * cx - item.x) * 1000) / 1000,
+            rotation: (360 - item.rotation) % 360,
+          };
+        }),
+        rooms: fl.rooms.map((rm) =>
+          idSet.has(rm.id)
+            ? {
+                ...rm,
+                polygon: rm.polygon.map((p) => flipPt(p)),
+              }
+            : rm
+        ),
+        stairs: fl.stairs.map((st) => {
+          if (!idSet.has(st.id)) return st;
+          const flippedPos = flipPt({ x: st.x, y: st.y });
+          return {
+            ...st,
+            x: Math.round(flippedPos.x * 1000) / 1000,
+            y: Math.round(flippedPos.y * 1000) / 1000,
+            rotation: (360 - st.rotation) % 360,
+          };
+        }),
+        dimensions: fl.dimensions.map((dim) =>
+          idSet.has(dim.id)
+            ? {
+                ...dim,
+                start: flipPt(dim.start),
+                end: flipPt(dim.end),
+              }
+            : dim
+        ),
+        shapes: (fl.shapes || []).map((sh) =>
+          idSet.has(sh.id)
+            ? {
+                ...sh,
+                points: (sh.points || []).map((p) => flipPt(p)),
+              }
+            : sh
+        ),
+      };
+    });
+
+    updateProject({
+      ...project,
+      plot: nextPlot,
+      floors: nextFloors,
+    });
+  }, [selection, selectionBoundingBox, project, activeFloor, updateProject]);
 
   // Keyboard Shortcuts (including multi-selection arrow nudging)
   useEffect(() => {
@@ -624,7 +1105,22 @@ export default function App() {
       if (e.key === 'v' || e.key === 'V') setActiveTool('select');
       if (e.key === 'h' || e.key === 'H') setActiveTool('hand');
       if (e.key === 'w' || e.key === 'W') setActiveTool('wall');
-      if (e.key === 'r' || e.key === 'R') setActiveTool('rect_room');
+      if (e.key === 'r' || e.key === 'R') {
+        if (selection.ids.length > 0) {
+          e.preventDefault();
+          handleRotateSelected(90);
+        } else {
+          setActiveTool('rect_room');
+        }
+      }
+      if (e.key === 'c' || e.key === 'C') {
+        if (selection.ids.length === 1 && selection.type === 'wall') {
+          e.preventDefault();
+          handleSplitSelectedWall();
+        } else {
+          setActiveTool('split');
+        }
+      }
       if (e.key === 'g' || e.key === 'G') setActiveTool('plot');
       if (e.key === 'd' && !e.ctrlKey && !e.metaKey) setActiveTool('door');
       if (e.key === 'D' && !e.ctrlKey && !e.metaKey) setActiveTool('door');
@@ -632,7 +1128,10 @@ export default function App() {
       if (e.key === 't' || e.key === 'T') setActiveTool('stairs');
       if (e.key === 'm' || e.key === 'M') setShowFurnitureCatalog(true);
       if (e.key === 'b' || e.key === 'B') setActiveTool('dimension');
-      if (e.key === 'Delete' || e.key === 'Backspace') handleDeleteSelected();
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        handleDeleteSelected();
+      }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
         handleDuplicateSelected();
@@ -864,6 +1363,9 @@ export default function App() {
               onRotateSelected={handleRotateSelected}
               onFlipHorizontal={handleFlipHorizontal}
               onSelectTool={setActiveTool}
+              onAddWallsAndRoom={handleAddWallsAndRoom}
+              onSplitWall={handleSplitWall}
+              onSplitSelectedWall={handleSplitSelectedWall}
             />
           )}
 
@@ -922,6 +1424,9 @@ export default function App() {
                   onRotateSelected={handleRotateSelected}
                   onFlipHorizontal={handleFlipHorizontal}
                   onSelectTool={setActiveTool}
+                  onAddWallsAndRoom={handleAddWallsAndRoom}
+                  onSplitWall={handleSplitWall}
+                  onSplitSelectedWall={handleSplitSelectedWall}
                 />
               </div>
               <div className="w-1/2 h-full">
@@ -954,6 +1459,7 @@ export default function App() {
             onRotate90={() => handleRotateSelected(90)}
             onFlipHorizontal={handleFlipHorizontal}
             onDelete={handleDeleteSelected}
+            onSplitWall={handleSplitSelectedWall}
           />
         </main>
 

@@ -378,6 +378,7 @@ export type CadTool =
   | 'hand' 
   | 'wall' 
   | 'rect_room' 
+  | 'split'
   | 'wall_numeric' 
   | 'plot'
   | 'door' 

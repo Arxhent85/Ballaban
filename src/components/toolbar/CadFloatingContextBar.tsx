@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { Copy, RotateCw, FlipHorizontal, Trash2, Lock } from 'lucide-react';
+import { Copy, RotateCw, FlipHorizontal, Trash2, Lock, Scissors } from 'lucide-react';
 import { SelectionState, BoundingBox2D, Point2D } from '../../types/cad';
 
 interface CadFloatingContextBarProps {
@@ -14,6 +14,7 @@ interface CadFloatingContextBarProps {
   onRotate90: () => void;
   onFlipHorizontal: () => void;
   onDelete: () => void;
+  onSplitWall?: () => void;
 }
 
 export const CadFloatingContextBar: React.FC<CadFloatingContextBarProps> = ({
@@ -24,6 +25,7 @@ export const CadFloatingContextBar: React.FC<CadFloatingContextBarProps> = ({
   onRotate90,
   onFlipHorizontal,
   onDelete,
+  onSplitWall,
 }) => {
   if (!boundingBox || selection.ids.length === 0 || selection.type === 'none') {
     return null;
@@ -40,6 +42,9 @@ export const CadFloatingContextBar: React.FC<CadFloatingContextBarProps> = ({
 
   return (
     <div
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
         left: `${clampedX}px`,
@@ -55,7 +60,12 @@ export const CadFloatingContextBar: React.FC<CadFloatingContextBarProps> = ({
       )}
 
       <button
-        onClick={onDuplicate}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDuplicate();
+        }}
         title="Duplizieren (Strg+D)"
         className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
       >
@@ -63,7 +73,12 @@ export const CadFloatingContextBar: React.FC<CadFloatingContextBarProps> = ({
       </button>
 
       <button
-        onClick={onRotate90}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRotate90();
+        }}
         title="90° Drehen (R)"
         className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
       >
@@ -71,17 +86,42 @@ export const CadFloatingContextBar: React.FC<CadFloatingContextBarProps> = ({
       </button>
 
       <button
-        onClick={onFlipHorizontal}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onFlipHorizontal();
+        }}
         title="Horizontal spiegeln"
         className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
       >
         <FlipHorizontal className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
       </button>
 
+      {onSplitWall && (selection.type === 'wall' || selection.ids.length === 1) && (
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSplitWall();
+          }}
+          title="Wand an Kreuzung oder in der Mitte teilen (C)"
+          className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
+        >
+          <Scissors className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+        </button>
+      )}
+
       <div className="h-4 w-px bg-stone-200 dark:bg-stone-800 mx-0.5" />
 
       <button
-        onClick={onDelete}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
         title="Auswahl löschen (Entf / Backspace)"
         className="px-2 py-1 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 text-red-600 dark:text-red-400 font-semibold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
       >

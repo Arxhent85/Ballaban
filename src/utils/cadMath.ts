@@ -34,7 +34,7 @@ export function formatArea(m2: number): string {
 export interface SnapResult {
   point: Point2D;
   snapped: boolean;
-  type: 'none' | 'grid' | 'endpoint' | 'midpoint' | 'intersection' | 'ortho' | 'angle15';
+  type: 'none' | 'grid' | 'endpoint' | 'midpoint' | 'intersection' | 'edge' | 'ortho' | 'angle15';
   targetWallId?: string;
 }
 
@@ -45,7 +45,7 @@ export function calculateSnap(
   settings: SnapSettings,
   zoom: number
 ): SnapResult {
-  const thresholdM = 14 / zoom; // Snap tolerance in meters
+  const thresholdM = 16 / zoom; // Generous snap tolerance in meters
 
   // 1. Check Endpoint snaps (highest priority)
   if (settings.wallEndpoints) {
@@ -77,6 +77,16 @@ export function calculateSnap(
         if (inter && distance(target, inter) <= thresholdM) {
           return { point: inter, snapped: true, type: 'intersection' };
         }
+      }
+    }
+  }
+
+  // 3b. Check Wall Edge / Surface Snap (T-junctions along existing walls, 0 mm gap)
+  if (walls.length > 0) {
+    for (const w of walls) {
+      const proj = projectPointOntoWall(target, w);
+      if (proj.ratio >= 0.005 && proj.ratio <= 0.995 && proj.dist <= thresholdM * 1.35) {
+        return { point: proj.point, snapped: true, type: 'edge', targetWallId: w.id };
       }
     }
   }
