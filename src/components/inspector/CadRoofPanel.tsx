@@ -118,11 +118,10 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
 
   // Current working roof state
   const currentRoof = useMemo<Roof>(() => {
-    if (roof) return roof;
     const defaultRidgeDir = envelope.width >= envelope.depth ? 'horizontal' : 'vertical';
     const span = defaultRidgeDir === 'horizontal' ? envelope.depth : envelope.width;
     const h = Math.round((span / 2) * Math.tan((35 * Math.PI) / 180) * 100) / 100;
-    return {
+    const fallback: Roof = {
       id: 'roof_' + Date.now(),
       type: 'gable',
       pitchDegrees: 35,
@@ -144,6 +143,19 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
       skylightsCount: 0,
       accessories: [],
     };
+    if (roof) {
+      return {
+        ...fallback,
+        ...roof,
+        pitchDegrees: roof.pitchDegrees ?? (roof as any).pitchDeg ?? 35,
+        height: roof.height ?? (roof as any).ridgeHeightM ?? h,
+        overhangEaves: roof.overhangEaves ?? roof.overhang ?? 0.40,
+        overhangGable: roof.overhangGable ?? roof.overhang ?? 0.40,
+        baseHeight: roof.baseHeight ?? envelope.avgH,
+        accessories: roof.accessories ?? [],
+      };
+    }
+    return fallback;
   }, [roof, envelope]);
 
   // Helper to trigger live updates

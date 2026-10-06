@@ -35,23 +35,28 @@ export function angleDeg(p1: Point2D, p2: Point2D): number {
   return deg;
 }
 
-export function formatGermanNumber(val: number, decimals = 2): string {
-  return val.toFixed(decimals).replace('.', ',');
+export function formatGermanNumber(val: number | undefined | null, decimals = 2): string {
+  if (val === undefined || val === null || isNaN(Number(val))) {
+    return (0).toFixed(decimals).replace('.', ',');
+  }
+  return Number(val).toFixed(decimals).replace('.', ',');
 }
 
-export function formatDimension(valInMeters: number, unit: UnitType, decimals = 2): string {
+export function formatDimension(valInMeters: number | undefined | null, unit: UnitType = 'm', decimals = 2): string {
+  const safeVal = (valInMeters === undefined || valInMeters === null || isNaN(Number(valInMeters))) ? 0 : Number(valInMeters);
   if (unit === 'cm') {
-    const cmVal = (valInMeters * 100).toFixed(decimals > 1 ? 1 : 0).replace('.', ',');
+    const cmVal = (safeVal * 100).toFixed(decimals > 1 ? 1 : 0).replace('.', ',');
     return `${cmVal} cm`;
   }
   if (unit === 'mm') {
-    return `${Math.round(valInMeters * 1000)} mm`;
+    return `${Math.round(safeVal * 1000)} mm`;
   }
-  return `${valInMeters.toFixed(decimals).replace('.', ',')} m`;
+  return `${safeVal.toFixed(decimals).replace('.', ',')} m`;
 }
 
-export function formatArea(m2: number): string {
-  return `${m2.toFixed(2).replace('.', ',')} m²`;
+export function formatArea(m2: number | undefined | null): string {
+  const safeVal = (m2 === undefined || m2 === null || isNaN(Number(m2))) ? 0 : Number(m2);
+  return `${safeVal.toFixed(2).replace('.', ',')} m²`;
 }
 
 export interface SnapResult {

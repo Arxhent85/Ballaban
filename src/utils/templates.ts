@@ -648,9 +648,27 @@ export function createLogCabinTemplate(): CadProject {
       w.thickness = 0.28;
     }
   });
-  proj.floors[0].roofs[0].type = 'gable';
-  proj.floors[0].roofs[0].pitchDegrees = 42;
-  proj.floors[0].roofs[0].material = 'slate';
-  proj.floors[0].roofs[0].hasChimney = true;
+  if (!proj.floors[0].roofs || proj.floors[0].roofs.length === 0) {
+    proj.floors[0].roofs = [{
+      id: 'roof_cabin',
+      type: 'gable',
+      pitchDegrees: 42,
+      height: 2.70,
+      overhang: 0.50,
+      overhangEaves: 0.50,
+      overhangGable: 0.50,
+      isOverhangLinked: true,
+      ridgeDirection: 'horizontal',
+      slopeDirection: 'front',
+      material: 'slate',
+      hasChimney: true,
+      accessories: [],
+    }];
+  } else {
+    proj.floors[0].roofs[0].type = 'gable';
+    proj.floors[0].roofs[0].pitchDegrees = 42;
+    proj.floors[0].roofs[0].material = 'slate';
+    proj.floors[0].roofs[0].hasChimney = true;
+  }
   return proj;
 }

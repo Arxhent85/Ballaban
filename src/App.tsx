@@ -132,7 +132,11 @@ export default function App() {
 
   // Dialogs
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
-    return !localStorage.getItem('cad_has_seen_welcome_v2');
+    try {
+      return !localStorage.getItem('cad_has_seen_welcome_v2');
+    } catch {
+      return false;
+    }
   });
   const [showHelp, setShowHelp] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
@@ -157,6 +161,42 @@ export default function App() {
   const [doorHinge, setDoorHinge] = useState<'left' | 'right'>('left');
   const [windowWidthM, setWindowWidthM] = useState<number>(1.20);
   const [windowSillHeightM, setWindowSillHeightM] = useState<number>(0.90);
+
+  // Tablet, Touch & Apple Pencil UI State
+  const isTablet = useMemo(() => isTouchDevice(), []);
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+  const [pencilMode, setPencilMode] = useState<PencilMode>('pencil_draws_finger_pans');
+  const [precisionMode, setPrecisionMode] = useState<PrecisionMode>('normal');
+  const [touchSettings, setTouchSettings] = useState<TouchGestureSettings>(() => {
+    try {
+      const saved = localStorage.getItem('cad_touch_gesture_settings_v1');
+      if (saved) return { ...DEFAULT_TOUCH_GESTURE_SETTINGS, ...JSON.parse(saved) };
+    } catch {}
+    return { ...DEFAULT_TOUCH_GESTURE_SETTINGS };
+  });
+  const [viewRotationDeg, setViewRotationDeg] = useState<number>(0);
+  const [leftHandedMode, setLeftHandedMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cad_left_handed_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [bottomSheetDetent, setBottomSheetDetent] = useState<'peek' | 'half' | 'full'>('half');
+  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  const [showTouchNumpad, setShowTouchNumpad] = useState<boolean>(false);
+  const [numpadValue, setNumpadValue] = useState<string>('');
+  const [numpadMode, setNumpadMode] = useState<'length' | 'angle'>('length');
+  const [showGestureHelp, setShowGestureHelp] = useState<boolean>(false);
+  const [showClipboardSheet, setShowClipboardSheet] = useState<boolean>(false);
+  const [isMultiSelectActive, setIsMultiSelectActive] = useState<boolean>(false);
+  const [clipboardData, setClipboardData] = useState<{
+    walls: Wall[];
+    furniture: Furniture[];
+    rooms: Room[];
+    doors: Door[];
+    windows: Window[];
+  } | null>(null);
 
   // Fullscreen state & Home Screen Guide
   const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
@@ -210,48 +250,15 @@ export default function App() {
     if (!nativeSuccess) {
       setIsFocusMode(true);
       const isStandalone = (window.navigator as any).standalone || window.matchMedia('(display-mode: standalone)').matches;
-      const dismissed = localStorage.getItem('cad_dismiss_homescreen_guide_v1') === 'true';
+      let dismissed = false;
+      try {
+        dismissed = localStorage.getItem('cad_dismiss_homescreen_guide_v1') === 'true';
+      } catch {}
       if (!isStandalone && !dismissed) {
         setShowHomeScreenGuide(true);
       }
     }
   }, [isFocusMode]);
-
-  // Tablet, Touch & Apple Pencil UI State
-  const isTablet = useMemo(() => isTouchDevice(), []);
-  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
-  const [pencilMode, setPencilMode] = useState<PencilMode>('pencil_draws_finger_pans');
-  const [precisionMode, setPrecisionMode] = useState<PrecisionMode>('normal');
-  const [touchSettings, setTouchSettings] = useState<TouchGestureSettings>(() => {
-    try {
-      const saved = localStorage.getItem('cad_touch_gesture_settings_v1');
-      if (saved) return { ...DEFAULT_TOUCH_GESTURE_SETTINGS, ...JSON.parse(saved) };
-    } catch {}
-    return { ...DEFAULT_TOUCH_GESTURE_SETTINGS };
-  });
-  const [viewRotationDeg, setViewRotationDeg] = useState<number>(0);
-  const [leftHandedMode, setLeftHandedMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('cad_left_handed_mode') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const [bottomSheetDetent, setBottomSheetDetent] = useState<'peek' | 'half' | 'full'>('half');
-  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
-  const [showTouchNumpad, setShowTouchNumpad] = useState<boolean>(false);
-  const [numpadValue, setNumpadValue] = useState<string>('');
-  const [numpadMode, setNumpadMode] = useState<'length' | 'angle'>('length');
-  const [showGestureHelp, setShowGestureHelp] = useState<boolean>(false);
-  const [showClipboardSheet, setShowClipboardSheet] = useState<boolean>(false);
-  const [isMultiSelectActive, setIsMultiSelectActive] = useState<boolean>(false);
-  const [clipboardData, setClipboardData] = useState<{
-    walls: Wall[];
-    furniture: Furniture[];
-    rooms: Room[];
-    doors: Door[];
-    windows: Window[];
-  } | null>(null);
 
   const handleSaveDefaultsWalls = useCallback(() => {
     updateProject({
@@ -2047,7 +2054,9 @@ export default function App() {
         isOpen={showWelcome}
         onClose={() => {
           setShowWelcome(false);
-          localStorage.setItem('cad_has_seen_welcome_v2', 'true');
+          try {
+            localStorage.setItem('cad_has_seen_welcome_v2', 'true');
+          } catch {}
         }}
         language={language}
       />
@@ -2170,7 +2179,9 @@ export default function App() {
         isOpen={showHomeScreenGuide}
         onClose={() => setShowHomeScreenGuide(false)}
         onNeverShowAgain={() => {
-          localStorage.setItem('cad_dismiss_homescreen_guide_v1', 'true');
+          try {
+            localStorage.setItem('cad_dismiss_homescreen_guide_v1', 'true');
+          } catch {}
           setShowHomeScreenGuide(false);
         }}
       />
