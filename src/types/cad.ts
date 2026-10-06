@@ -139,22 +139,70 @@ export interface Column {
   color?: string;
 }
 
-export type RoofType = 'gable' | 'hip' | 'shed' | 'flat' | 'tent';
+export type RoofType = 
+  | 'gable'        // Satteldach
+  | 'shed'         // Pultdach
+  | 'hip'          // Walmdach
+  | 'half_hip'     // Krüppelwalmdach
+  | 'tent'         // Zeltdach
+  | 'flat'         // Flachdach (mit Attika)
+  | 'mansard'      // Mansarddach
+  | 'barrel'       // Tonnendach
+  | 'butterfly'    // Schmetterlingsdach
+  | 'sawtooth'     // Sheddach
+  | 'freeform';    // Freiform
+
+export type RoofMaterial = 
+  | 'concrete_tiles'   // Betondachstein
+  | 'clay_tiles'       // Tonziegel
+  | 'tiles_anthracite' // Tonziegel Anthrazit
+  | 'tiles_red'        // Ziegelrot
+  | 'slate'            // Naturschiefer
+  | 'metal_sheet'      // Stehfalzblech
+  | 'shingles'         // Schindel
+  | 'thatch'           // Reet
+  | 'green_roof'       // Gründach
+  | 'custom_color';
+
+export type RoofSlopeDirection = 'front' | 'back' | 'left' | 'right' | 'north' | 'south' | 'east' | 'west';
+
+export interface RoofAccessoryItem {
+  id: string;
+  type: 'chimney' | 'skylight' | 'dormer_gable' | 'dormer_shed' | 'dormer_flat' | 'solar' | 'gutter' | 'roof_hatch';
+  name: string;
+  enabled: boolean;
+  count: number;
+  width?: number;
+  depth?: number;
+  height?: number;
+  position?: Point2D;
+}
 
 export interface Roof {
   id: string;
   type: RoofType;
   pitchDegrees: number; // e.g. 35° (0° for flat)
+  pitchLeft?: number;
+  pitchRight?: number;
+  isPitchLinked?: boolean;
   overhang: number; // e.g. 0.40m
+  overhangEaves?: number; // Traufe (Längsseiten)
+  overhangGable?: number; // Ortgang (Giebelseiten)
+  isOverhangLinked?: boolean;
   ridgeDirection: 'horizontal' | 'vertical';
+  slopeDirection?: RoofSlopeDirection;
+  ridgeOffset?: number; // Firstversatz
+  pitchMode?: 'follow_walls' | 'specify_pitch';
   height: number; // Ridge height above eaves (Firsthöhe, e.g. 2.20m)
   baseHeight?: number; // Eaves / Wall plate height above floor (Traufhöhe, e.g. 2.50m)
-  material: 'tiles_red' | 'tiles_anthracite' | 'metal_sheet' | 'slate' | 'green_roof';
+  material: RoofMaterial | 'tiles_red' | 'tiles_anthracite' | 'metal_sheet' | 'slate' | 'green_roof';
+  customColor?: string;
   hasChimney: boolean;
   chimneyPosition?: Point2D;
   chimneyHeight?: number;
   skylightsCount: number;
   customBounds?: { minX: number; maxX: number; minY: number; maxY: number };
+  accessories?: RoofAccessoryItem[];
   color?: string;
 }
 

@@ -8,10 +8,11 @@
     <!-- iOS / iPadOS Web App & Safari Optimization -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="HausPlaner CAD" />
-    <meta name="application-name" content="HausPlaner CAD" />
+    <meta name="apple-mobile-web-app-title" content="Ferienhaus-Planer" />
+    <meta name="application-name" content="Ferienhaus-Planer" />
     <meta name="format-detection" content="telephone=no" />
     <meta name="theme-color" content="#0f172a" />
+    <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%230f172a'/%3E%3Cpath d='M256 96L80 240v208a16 16 0 0016 16h112V336h96v128h112a16 16 0 0016-16V240L256 96z' fill='%23f59e0b'/%3E%3Cpath d='M256 160l112 96v176h-48V304H192v128h-48V256l112-96z' fill='%231e293b' opacity='0.7'/%3E%3Ccircle cx='384' cy='128' r='36' fill='%2338bdf8'/%3E%3C/svg%3E" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%230f172a'/%3E%3Cpath d='M256 96L80 240v208a16 16 0 0016 16h112V336h96v128h112a16 16 0 0016-16V240L256 96z' fill='%23f59e0b'/%3E%3C/svg%3E" />
     <meta property="og:title" content="Ferienhaus Grundriss- & Bauplan-Planer CAD" />
@@ -25,6 +26,13 @@
   <body class="overflow-hidden select-none bg-slate-900 text-slate-100 antialiased font-sans overscroll-none touch-none">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('./sw.js').catch(function() {});
+        });
+      }
+    </script>
   </body>
 </html>
 

@@ -49,6 +49,7 @@ import { CadStatusBar } from './components/toolbar/CadStatusBar';
 import { CadInspector } from './components/inspector/CadInspector';
 import { CadFloatingContextBar } from './components/toolbar/CadFloatingContextBar';
 import { CadTouchControls } from './components/toolbar/CadTouchControls';
+import { CadToolOptionsFlyout } from './components/toolbar/CadToolOptionsFlyout';
 
 // Views
 import { CadCanvas2D } from './components/canvas/CadCanvas2D';
@@ -57,7 +58,9 @@ import { CadElevationsView } from './components/views/CadElevationsView';
 import { CadSectionView } from './components/views/CadSectionView';
 import { CadQuantitiesView } from './components/views/CadQuantitiesView';
 
-// Modals
+// Modals & Panels
+import { CadRoofPanel } from './components/inspector/CadRoofPanel';
+import { HomeScreenGuideModal } from './components/dialogs/HomeScreenGuideModal';
 import { WelcomeDialog } from './components/dialogs/WelcomeDialog';
 import { HelpDialog } from './components/dialogs/HelpDialog';
 import { HouseWizardModal } from './components/dialogs/HouseWizardModal';
@@ -143,6 +146,77 @@ export default function App() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showRoofModal, setShowRoofModal] = useState(false);
 
+  // Tool options state (Wall, Door, Window)
+  const [wallMode, setWallMode] = useState<'exterior' | 'interior'>('exterior');
+  const [wallThicknessM, setWallThicknessM] = useState<number>(project.defaults?.exteriorWallThickness || 0.30);
+  const [wallStartHeight, setWallStartHeight] = useState<number>(project.defaults?.wallHeight || 2.50);
+  const [wallEndHeight, setWallEndHeight] = useState<number>(project.defaults?.wallHeight || 2.50);
+  const [isLockWallHeights, setIsLockWallHeights] = useState<boolean>(true);
+  const [isDrawingActive, setIsDrawingActive] = useState<boolean>(false);
+  const [doorWidthM, setDoorWidthM] = useState<number>(0.90);
+  const [doorHinge, setDoorHinge] = useState<'left' | 'right'>('left');
+  const [windowWidthM, setWindowWidthM] = useState<number>(1.20);
+  const [windowSillHeightM, setWindowSillHeightM] = useState<number>(0.90);
+
+  // Fullscreen state & Home Screen Guide
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
+    return !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+  });
+  const [showHomeScreenGuide, setShowHomeScreenGuide] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const active = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      setIsFullscreen(active);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
+      try {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if ((document as any).webkitExitFullscreen) await (document as any).webkitExitFullscreen();
+      } catch {}
+      setIsFullscreen(false);
+      setIsFocusMode(false);
+      return;
+    }
+
+    if (isFocusMode) {
+      setIsFocusMode(false);
+      return;
+    }
+
+    let nativeSuccess = false;
+    const docEl = document.documentElement as any;
+    try {
+      if (docEl.requestFullscreen) {
+        await docEl.requestFullscreen();
+        nativeSuccess = true;
+      } else if (docEl.webkitRequestFullscreen) {
+        await docEl.webkitRequestFullscreen();
+        nativeSuccess = true;
+      }
+    } catch {
+      nativeSuccess = false;
+    }
+
+    if (!nativeSuccess) {
+      setIsFocusMode(true);
+      const isStandalone = (window.navigator as any).standalone || window.matchMedia('(display-mode: standalone)').matches;
+      const dismissed = localStorage.getItem('cad_dismiss_homescreen_guide_v1') === 'true';
+      if (!isStandalone && !dismissed) {
+        setShowHomeScreenGuide(true);
+      }
+    }
+  }, [isFocusMode]);
+
   // Tablet, Touch & Apple Pencil UI State
   const isTablet = useMemo(() => isTouchDevice(), []);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
@@ -178,6 +252,18 @@ export default function App() {
     doors: Door[];
     windows: Window[];
   } | null>(null);
+
+  const handleSaveDefaultsWalls = useCallback(() => {
+    updateProject({
+      ...project,
+      defaults: {
+        ...project.defaults,
+        wallHeight: wallStartHeight,
+        exteriorWallThickness: wallMode === 'exterior' ? wallThicknessM : project.defaults?.exteriorWallThickness || 0.30,
+        interiorWallThickness: wallMode === 'interior' ? wallThicknessM : project.defaults?.interiorWallThickness || 0.115,
+      },
+    });
+  }, [project, wallMode, wallThicknessM, wallStartHeight]);
 
   // Tablet Wake Lock API (keeps screen awake while drawing)
   useEffect(() => {
@@ -1574,7 +1660,8 @@ export default function App() {
           onRenameProject={(newName) => updateProject({ ...project, name: newName })}
           onOpenRoofModal={() => setShowRoofModal(true)}
           isFocusMode={isFocusMode}
-          onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={handleToggleFullscreen}
           onOpenGestureHelp={() => setShowGestureHelp(true)}
         />
       )}
@@ -1591,6 +1678,36 @@ export default function App() {
             onOpenWallNumericModal={() => setShowWallNumeric(true)}
             onOpenRoofModal={() => setShowRoofModal(true)}
             leftHandedMode={leftHandedMode}
+          />
+        )}
+
+        {/* Tool Options Flyout (TEIL 3: Wall, Door, Window Options Docked Beside Toolbar) */}
+        {!isFocusMode && (
+          <CadToolOptionsFlyout
+            activeTool={activeTool}
+            wallMode={wallMode}
+            onWallModeChange={setWallMode}
+            wallThicknessM={wallThicknessM}
+            onWallThicknessChange={setWallThicknessM}
+            wallStartHeight={wallStartHeight}
+            onWallStartHeightChange={setWallStartHeight}
+            wallEndHeight={wallEndHeight}
+            onWallEndHeightChange={setWallEndHeight}
+            isLockWallHeights={isLockWallHeights}
+            onLockWallHeightsChange={setIsLockWallHeights}
+            onSaveAsDefaultWalls={handleSaveDefaultsWalls}
+            doorWidthM={doorWidthM}
+            onDoorWidthChange={setDoorWidthM}
+            doorHinge={doorHinge}
+            onDoorHingeChange={setDoorHinge}
+            windowWidthM={windowWidthM}
+            onWindowWidthChange={setWindowWidthM}
+            windowSillHeightM={windowSillHeightM}
+            onWindowSillHeightChange={setWindowSillHeightM}
+            isDrawingActive={isDrawingActive}
+            leftHandedMode={leftHandedMode}
+            isPortrait={window.innerHeight > window.innerWidth}
+            language={language}
           />
         )}
 
@@ -1658,6 +1775,17 @@ export default function App() {
               viewRotationDeg={viewRotationDeg}
               onViewRotationChange={setViewRotationDeg}
               isMultiSelectActive={isMultiSelectActive}
+              wallMode={wallMode}
+              onWallModeChange={setWallMode}
+              wallThicknessM={wallThicknessM}
+              onWallThicknessChange={setWallThicknessM}
+              wallStartHeight={wallStartHeight}
+              onWallStartHeightChange={setWallStartHeight}
+              wallEndHeight={wallEndHeight}
+              onWallEndHeightChange={setWallEndHeight}
+              isLockWallHeights={isLockWallHeights}
+              onLockWallHeightsChange={setIsLockWallHeights}
+              onDrawingStateChange={setIsDrawingActive}
             />
           )}
 
@@ -1738,6 +1866,17 @@ export default function App() {
                   viewRotationDeg={viewRotationDeg}
                   onViewRotationChange={setViewRotationDeg}
                   isMultiSelectActive={isMultiSelectActive}
+                  wallMode={wallMode}
+                  onWallModeChange={setWallMode}
+                  wallThicknessM={wallThicknessM}
+                  onWallThicknessChange={setWallThicknessM}
+                  wallStartHeight={wallStartHeight}
+                  onWallStartHeightChange={setWallStartHeight}
+                  wallEndHeight={wallEndHeight}
+                  onWallEndHeightChange={setWallEndHeight}
+                  isLockWallHeights={isLockWallHeights}
+                  onLockWallHeightsChange={setIsLockWallHeights}
+                  onDrawingStateChange={setIsDrawingActive}
                 />
               </div>
               <div className="w-1/2 h-full">
@@ -2002,13 +2141,38 @@ export default function App() {
         language={language}
       />
 
-      <RoofConfigModal
+      <CadRoofPanel
         isOpen={showRoofModal}
         onClose={() => setShowRoofModal(false)}
         roof={activeFloor.roofs[0] || null}
         walls={activeFloor.walls}
-        onSaveRoof={handleSaveRoof}
+        onLiveUpdateRoof={(liveRoof) => {
+          setProject((prev) => ({
+            ...prev,
+            floors: prev.floors.map((fl) =>
+              fl.id === prev.activeFloorId ? { ...fl, roofs: liveRoof ? [liveRoof] : [] } : fl
+            ),
+          }));
+        }}
+        onCommitRoof={(committedRoof) => {
+          handleSaveRoof(committedRoof);
+          setShowRoofModal(false);
+        }}
+        onRemoveRoof={() => {
+          handleSaveRoof(null);
+          setShowRoofModal(false);
+        }}
         language={language}
+        isPortrait={window.innerHeight > window.innerWidth}
+      />
+
+      <HomeScreenGuideModal
+        isOpen={showHomeScreenGuide}
+        onClose={() => setShowHomeScreenGuide(false)}
+        onNeverShowAgain={() => {
+          localStorage.setItem('cad_dismiss_homescreen_guide_v1', 'true');
+          setShowHomeScreenGuide(false);
+        }}
       />
 
       {/* CONFIRMATION DIALOG: LEERE NEUE SEITE / ALLES LÖSCHEN */}

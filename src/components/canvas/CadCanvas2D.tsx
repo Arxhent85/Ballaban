@@ -144,6 +144,17 @@ interface CadCanvas2DProps {
   viewRotationDeg?: number;
   onViewRotationChange?: (deg: number) => void;
   isMultiSelectActive?: boolean;
+  wallMode?: 'exterior' | 'interior';
+  onWallModeChange?: (mode: 'exterior' | 'interior') => void;
+  wallThicknessM?: number;
+  onWallThicknessChange?: (thickness: number) => void;
+  wallStartHeight?: number;
+  onWallStartHeightChange?: (h: number) => void;
+  wallEndHeight?: number;
+  onWallEndHeightChange?: (h: number) => void;
+  isLockWallHeights?: boolean;
+  onLockWallHeightsChange?: (locked: boolean) => void;
+  onDrawingStateChange?: (isDrawing: boolean) => void;
 }
 
 export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
@@ -204,6 +215,17 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   viewRotationDeg = 0,
   onViewRotationChange,
   isMultiSelectActive = false,
+  wallMode: propsWallMode,
+  onWallModeChange,
+  wallThicknessM: propsWallThicknessM,
+  onWallThicknessChange,
+  wallStartHeight: propsWallStartHeight,
+  onWallStartHeightChange,
+  wallEndHeight: propsWallEndHeight,
+  onWallEndHeightChange,
+  isLockWallHeights: propsIsLockWallHeights,
+  onLockWallHeightsChange,
+  onDrawingStateChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -288,11 +310,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   }, [smartSnap]);
 
   // Wall Drawing Mode: Exterior (30 cm) vs Interior (11.5 cm)
-  const [wallMode, setWallMode] = useState<'exterior' | 'interior'>('exterior');
-  const [wallThicknessM, setWallThicknessM] = useState<number>(0.30);
-  const [wallStartHeight, setWallStartHeight] = useState<number>(defaults?.wallHeight || 2.50);
-  const [wallEndHeight, setWallEndHeight] = useState<number>(defaults?.wallHeight || 2.50);
-  const [isLockWallHeights, setIsLockWallHeights] = useState<boolean>(true);
+  const [internalWallMode, setInternalWallMode] = useState<'exterior' | 'interior'>('exterior');
+  const [internalWallThicknessM, setInternalWallThicknessM] = useState<number>(0.30);
+  const [internalWallStartHeight, setInternalWallStartHeight] = useState<number>(defaults?.wallHeight || 2.50);
+  const [internalWallEndHeight, setInternalWallEndHeight] = useState<number>(defaults?.wallHeight || 2.50);
+  const [internalIsLockWallHeights, setInternalIsLockWallHeights] = useState<boolean>(true);
+
+  const wallMode = propsWallMode ?? internalWallMode;
+  const setWallMode = onWallModeChange ?? setInternalWallMode;
+  const wallThicknessM = propsWallThicknessM ?? internalWallThicknessM;
+  const setWallThicknessM = onWallThicknessChange ?? setInternalWallThicknessM;
+  const wallStartHeight = propsWallStartHeight ?? internalWallStartHeight;
+  const setWallStartHeight = onWallStartHeightChange ?? setInternalWallStartHeight;
+  const wallEndHeight = propsWallEndHeight ?? internalWallEndHeight;
+  const setWallEndHeight = onWallEndHeightChange ?? setInternalWallEndHeight;
+  const isLockWallHeights = propsIsLockWallHeights ?? internalIsLockWallHeights;
+  const setIsLockWallHeights = onLockWallHeightsChange ?? setInternalIsLockWallHeights;
 
   const handleChangeStartHeight = (val: number) => {
     setWallStartHeight(val);
@@ -339,6 +372,12 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
   // Property / Plot Polygon Line Drawing state
   const [plotDrawPoints, setPlotDrawPoints] = useState<Point2D[]>([]);
+
+  // Notify parent of active drawing state (for auto-collapsing tool options flyout)
+  useEffect(() => {
+    const isDrawing = wallStartPoint !== null || plotDrawPoints.length > 0 || rectRoomStart !== null;
+    onDrawingStateChange?.(isDrawing);
+  }, [wallStartPoint, plotDrawPoints.length, rectRoomStart, onDrawingStateChange]);
 
   // Marquee Selection Box
   const [marquee, setMarquee] = useState<MarqueeBox | null>(null);
@@ -3768,189 +3807,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         </div>
       )}
 
-      {/* FLOATING TOP-CENTER TOOL HUD: Quick Wall Type, Thickness & Sloped Heights */}
-      {selection.ids.length === 0 && (activeTool === 'wall' || activeTool === 'rect_room') && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-stone-900/95 dark:bg-stone-900/95 backdrop-blur border border-stone-700/80 rounded-xl px-3 py-2 shadow-2xl flex flex-wrap items-center gap-2 text-xs text-stone-200 z-30 max-w-[94vw]">
-          {/* Wandtyp Toggle */}
-          <div className="flex items-center gap-1 bg-stone-950 p-0.5 rounded-lg border border-stone-800">
-            <button
-              onClick={() => handleToggleWallMode('exterior')}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
-                wallMode === 'exterior'
-                  ? 'bg-amber-600 text-white shadow-sm'
-                  : 'text-stone-400 hover:text-white'
-              }`}
-            >
-              Außenwand
-            </button>
-            <button
-              onClick={() => handleToggleWallMode('interior')}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
-                wallMode === 'interior'
-                  ? 'bg-amber-600 text-white shadow-sm'
-                  : 'text-stone-400 hover:text-white'
-              }`}
-            >
-              Innenwand
-            </button>
-          </div>
 
-          <div className="h-4 w-px bg-stone-700" />
-
-          {/* Quick Thickness Buttons */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-stone-400">Stärke:</span>
-            {[0.115, 0.175, 0.24, 0.30, 0.365].map((val) => (
-              <button
-                key={val}
-                onClick={() => setWallThicknessM(val)}
-                className={`px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors cursor-pointer ${
-                  Math.abs(wallThicknessM - val) < 0.005
-                    ? 'bg-amber-600 text-white font-bold'
-                    : 'bg-stone-800 text-stone-300 hover:bg-stone-700'
-                }`}
-              >
-                {(val * 100).toFixed(1)} cm
-              </button>
-            ))}
-          </div>
-
-          <div className="h-4 w-px bg-stone-700" />
-
-          {/* Wall Heights: Anfangshöhe & Endhöhe */}
-          <div className="flex items-center gap-1.5 bg-stone-950/80 px-2 py-1 rounded-lg border border-stone-800">
-            <span className="text-[10px] text-stone-400 font-semibold">Höhe:</span>
-
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-stone-400">Start:</span>
-              <input
-                type="number"
-                step="0.05"
-                min="1.0"
-                max="8.0"
-                value={wallStartHeight}
-                onChange={(e) => handleChangeStartHeight(parseFloat(e.target.value) || 2.5)}
-                className="w-14 bg-stone-900 border border-stone-700 rounded px-1.5 py-0.5 font-mono text-center font-bold text-amber-300"
-              />
-              <span className="text-[10px] text-stone-400">m</span>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-stone-400">Ende:</span>
-              <input
-                type="number"
-                step="0.05"
-                min="1.0"
-                max="8.0"
-                value={wallEndHeight}
-                onChange={(e) => handleChangeEndHeight(parseFloat(e.target.value) || 2.5)}
-                className="w-14 bg-stone-900 border border-stone-700 rounded px-1.5 py-0.5 font-mono text-center font-bold text-amber-300"
-              />
-              <span className="text-[10px] text-stone-400">m</span>
-            </div>
-
-            {/* Lock button */}
-            <button
-              onClick={() => setIsLockWallHeights(!isLockWallHeights)}
-              title={isLockWallHeights ? "Höhen gekoppelt (Start = Ende). Klicken für schräge Wand / Pultdach" : "Höhen getrennt (schräge Wand). Klicken zum Koppeln"}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
-                isLockWallHeights
-                  ? 'bg-stone-800 text-stone-300 hover:bg-stone-700'
-                  : 'bg-amber-600/30 border border-amber-500/50 text-amber-300 hover:bg-amber-600/40'
-              }`}
-            >
-              {isLockWallHeights ? '🔒 Gekoppelt' : '🔓 Schräg'}
-            </button>
-
-            {/* Swap direction button */}
-            <button
-              onClick={handleSwapWallHeights}
-              title="Start- und Endhöhe tauschen"
-              className="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 text-[10px] font-mono cursor-pointer transition-colors"
-            >
-              ⇄
-            </button>
-
-            <div className="h-3 w-px bg-stone-700" />
-
-            {/* Presets */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setWallHeightPreset(2.50, 2.50)}
-                title="Standardhöhe 2,50 m (gerade)"
-                className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer ${
-                  wallStartHeight === 2.5 && wallEndHeight === 2.5
-                    ? 'bg-amber-600 text-white font-bold'
-                    : 'bg-stone-800 text-stone-400 hover:text-white'
-                }`}
-              >
-                2,50m
-              </button>
-
-              <button
-                onClick={() => setWallHeightPreset(2.80, 2.80)}
-                title="Hohe Decke 2,80 m (gerade)"
-                className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer ${
-                  wallStartHeight === 2.8 && wallEndHeight === 2.8
-                    ? 'bg-amber-600 text-white font-bold'
-                    : 'bg-stone-800 text-stone-400 hover:text-white'
-                }`}
-              >
-                2,80m
-              </button>
-
-              <button
-                onClick={() => setWallHeightPreset(2.50, 4.50)}
-                title="Pultwand: 2,50 m auf 4,50 m ansteigend (+2,00m)"
-                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-pointer ${
-                  wallStartHeight === 2.5 && wallEndHeight === 4.5
-                    ? 'bg-amber-600 text-white font-bold shadow-sm'
-                    : 'bg-amber-950/60 border border-amber-600/50 text-amber-300 hover:bg-amber-900/60'
-                }`}
-              >
-                2,50m → 4,50m ↗
-              </button>
-
-              <button
-                onClick={() => setWallHeightPreset(2.50, 3.50)}
-                title="Pultwand: 2,50 m auf 3,50 m ansteigend (+1,00m)"
-                className={`px-1.5 py-0.5 rounded text-[10px] cursor-pointer ${
-                  wallStartHeight === 2.5 && wallEndHeight === 3.5
-                    ? 'bg-amber-600 text-white font-bold'
-                    : 'bg-stone-800 text-stone-400 hover:text-white'
-                }`}
-              >
-                2,50m → 3,50m ↗
-              </button>
-            </div>
-
-            {/* Steigung indicator */}
-            {Math.abs(wallEndHeight - wallStartHeight) > 0.02 && (
-              <span className="text-[10px] text-amber-400 font-mono font-medium ml-1">
-                {wallEndHeight > wallStartHeight ? '↗ +' : '↘ '}
-                {(wallEndHeight - wallStartHeight).toFixed(2)}m
-              </span>
-            )}
-          </div>
-
-          {/* Magnetic Height Snapping Active Alert */}
-          {smartSnap?.matchedHeights && (
-            <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/60 rounded-lg px-2.5 py-1 text-[11px] text-emerald-200">
-              <span className="animate-pulse">📐</span>
-              <span className="font-semibold">
-                {smartSnap.matchedHeights.label || 'Höhen-Magnet'}:
-              </span>
-              <span className="font-mono font-bold text-white">
-                {smartSnap.matchedHeights.height.toFixed(2)}m
-                {smartSnap.matchedHeights.endHeight !== undefined && Math.abs(smartSnap.matchedHeights.endHeight - smartSnap.matchedHeights.height) > 0.01
-                  ? ` → ${smartSnap.matchedHeights.endHeight.toFixed(2)}m`
-                  : ''}
-              </span>
-              <span className="text-[10px] text-emerald-300/80">(automatisch angepasst)</span>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* FLOATING TOP-CENTER TOOL HUD: Plot Drawing Guidance & Control */}
       {selection.ids.length === 0 && activeTool === 'plot' && (

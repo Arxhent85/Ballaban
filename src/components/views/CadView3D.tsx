@@ -750,11 +750,16 @@ export const CadView3D: React.FC<CadView3DProps> = ({
       const rf = floor.roofs[0];
       const isRoofSelected = selection?.ids.includes(rf.id);
 
-      let roofTileColor = '#1e293b'; // anthracite
-      if (rf.material === 'tiles_red') roofTileColor = '#991b1b'; // terra cotta red
-      else if (rf.material === 'slate') roofTileColor = '#334155'; // natural slate
-      else if (rf.material === 'metal_sheet') roofTileColor = '#64748b'; // zinc sheet
-      else if (rf.material === 'green_roof') roofTileColor = '#166534'; // green roof
+      let roofTileColor = '#27272a'; // default anthracite
+      if (rf.material === 'tiles_red') roofTileColor = '#b91c1c';
+      else if (rf.material === 'clay_tiles') roofTileColor = '#ea580c';
+      else if (rf.material === 'concrete_tiles') roofTileColor = '#475569';
+      else if (rf.material === 'slate') roofTileColor = '#1e293b';
+      else if (rf.material === 'metal_sheet') roofTileColor = '#64748b';
+      else if (rf.material === 'shingles') roofTileColor = '#78350f';
+      else if (rf.material === 'thatch') roofTileColor = '#d97706';
+      else if (rf.material === 'green_roof') roofTileColor = '#15803d';
+      else if (rf.customColor) roofTileColor = rf.customColor;
 
       const roofMat = new THREE.MeshStandardMaterial({
         color: isRoofSelected ? '#f59e0b' : roofTileColor,
@@ -779,23 +784,22 @@ export const CadView3D: React.FC<CadView3DProps> = ({
       const rCenterX = (rMinX + rMaxX) / 2;
       const rCenterZ = (rMinZ + rMaxZ) / 2;
       const rBaseY = rf.baseHeight ?? buildingBounds.maxH;
-      const rHeight = rf.height ?? 2.20;
+      const rHeight = Math.max(0.2, rf.height ?? 2.20);
+      const isHoriz = rf.ridgeDirection === 'horizontal';
 
-      // 10a. SATTELDACH (Gable Roof)
+      // 10a. SATTELDACH (Gable Roof with Ridge Offset / Asymmetry)
       if (rf.type === 'gable') {
-        const isHoriz = rf.ridgeDirection === 'horizontal';
         const span = isHoriz ? rD : rW;
         const length = isHoriz ? rW : rD;
+        const rOff = rf.ridgeOffset || 0;
 
         const roofShape = new THREE.Shape();
         roofShape.moveTo(-span / 2, 0);
-        roofShape.lineTo(0, rHeight);
+        roofShape.lineTo(rOff, rHeight);
         roofShape.lineTo(span / 2, 0);
         roofShape.closePath();
 
-        const extrudeSettings = { depth: length, bevelEnabled: false };
-        const roofGeo = new THREE.ExtrudeGeometry(roofShape, extrudeSettings);
-
+        const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: length, bevelEnabled: false });
         if (isHoriz) {
           roofGeo.rotateY(Math.PI / 2);
           roofGeo.translate(rCenterX - length / 2, rBaseY, rCenterZ);
@@ -810,28 +814,49 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         scene.add(roofMesh);
         interactiveMeshesRef.current.push(roofMesh);
       }
-      // 10b. PULTDACH (Shed / Monopitch)
+      // 10b. PULTDACH (Shed / Monopitch with 4-way slope direction)
       else if (rf.type === 'shed') {
+        const slopeDir = rf.slopeDirection || 'front';
         const roofShape = new THREE.Shape();
-        roofShape.moveTo(-rD / 2, 0);
-        roofShape.lineTo(rD / 2, rHeight);
-        roofShape.lineTo(rD / 2, rHeight - 0.15);
-        roofShape.lineTo(-rD / 2, -0.15);
-        roofShape.closePath();
 
-        const extrudeSettings = { depth: rW, bevelEnabled: false };
-        const roofGeo = new THREE.ExtrudeGeometry(roofShape, extrudeSettings);
-        roofGeo.rotateY(Math.PI / 2);
-        roofGeo.translate(rCenterX - rW / 2, rBaseY, rCenterZ);
+        if (slopeDir === 'left' || slopeDir === 'right') {
+          roofShape.moveTo(-rW / 2, slopeDir === 'left' ? 0 : rHeight);
+          roofShape.lineTo(rW / 2, slopeDir === 'left' ? rHeight : 0);
+          roofShape.lineTo(rW / 2, (slopeDir === 'left' ? rHeight : 0) - 0.15);
+          roofShape.lineTo(-rW / 2, (slopeDir === 'left' ? 0 : rHeight) - 0.15);
+          roofShape.closePath();
 
-        const roofMesh = new THREE.Mesh(roofGeo, roofMat);
-        roofMesh.castShadow = true;
-        roofMesh.receiveShadow = true;
-        roofMesh.userData = { type: 'roof', id: rf.id };
-        scene.add(roofMesh);
-        interactiveMeshesRef.current.push(roofMesh);
+          const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: rD, bevelEnabled: false });
+          roofGeo.translate(rCenterX, rBaseY, rCenterZ - rD / 2);
+
+          const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+          roofMesh.castShadow = true;
+          roofMesh.receiveShadow = true;
+          roofMesh.userData = { type: 'roof', id: rf.id };
+          scene.add(roofMesh);
+          interactiveMeshesRef.current.push(roofMesh);
+        } else {
+          // front or back
+          const isFront = slopeDir === 'front';
+          roofShape.moveTo(-rD / 2, isFront ? rHeight : 0);
+          roofShape.lineTo(rD / 2, isFront ? 0 : rHeight);
+          roofShape.lineTo(rD / 2, (isFront ? 0 : rHeight) - 0.15);
+          roofShape.lineTo(-rD / 2, (isFront ? rHeight : 0) - 0.15);
+          roofShape.closePath();
+
+          const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: rW, bevelEnabled: false });
+          roofGeo.rotateY(Math.PI / 2);
+          roofGeo.translate(rCenterX - rW / 2, rBaseY, rCenterZ);
+
+          const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+          roofMesh.castShadow = true;
+          roofMesh.receiveShadow = true;
+          roofMesh.userData = { type: 'roof', id: rf.id };
+          scene.add(roofMesh);
+          interactiveMeshesRef.current.push(roofMesh);
+        }
       }
-      // 10c. FLACHDACH (Flat with Attika)
+      // 10c. FLACHDACH (Flat with Attika Parapet Walls)
       else if (rf.type === 'flat') {
         const slabGeo = new THREE.BoxGeometry(rW, 0.25, rD);
         const slabMesh = new THREE.Mesh(slabGeo, roofMat);
@@ -841,26 +866,260 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         scene.add(slabMesh);
         interactiveMeshesRef.current.push(slabMesh);
 
-        // Attika border around perimeter
-        const attikaGeo = new THREE.BoxGeometry(rW, 0.40, 0.20);
-        const attikaNorth = new THREE.Mesh(attikaGeo, extWallMat);
+        // Attika walls on all 4 sides
+        const attikaNorth = new THREE.Mesh(new THREE.BoxGeometry(rW, 0.40, 0.20), extWallMat);
         attikaNorth.position.set(rCenterX, rBaseY + 0.35, rMinZ + 0.1);
         scene.add(attikaNorth);
 
-        const attikaSouth = new THREE.Mesh(attikaGeo, extWallMat);
+        const attikaSouth = new THREE.Mesh(new THREE.BoxGeometry(rW, 0.40, 0.20), extWallMat);
         attikaSouth.position.set(rCenterX, rBaseY + 0.35, rMaxZ - 0.1);
         scene.add(attikaSouth);
+
+        const attikaWest = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.40, rD - 0.4), extWallMat);
+        attikaWest.position.set(rMinX + 0.1, rBaseY + 0.35, rCenterZ);
+        scene.add(attikaWest);
+
+        const attikaEast = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.40, rD - 0.4), extWallMat);
+        attikaEast.position.set(rMaxX - 0.1, rBaseY + 0.35, rCenterZ);
+        scene.add(attikaEast);
       }
-      // 10d. WALMDACH (Hip Roof / Pyramid)
-      else {
-        const coneGeo = new THREE.ConeGeometry(Math.max(rW, rD) * 0.7, rHeight, 4);
-        coneGeo.rotateY(Math.PI / 4);
-        const hipMesh = new THREE.Mesh(coneGeo, roofMat);
-        hipMesh.position.set(rCenterX, rBaseY + rHeight / 2, rCenterZ);
+      // 10d. WALMDACH (Hip Roof with 4 sloped faces)
+      else if (rf.type === 'hip') {
+        const span = Math.min(rW, rD);
+        const ridgeLen = Math.max(0, Math.max(rW, rD) - span);
+        const hipOffset = span / 2;
+
+        const pos: number[] = [];
+        if (rW >= rD) {
+          // East-West ridge
+          const pRidge1 = [rCenterX - ridgeLen / 2, rBaseY + rHeight, rCenterZ];
+          const pRidge2 = [rCenterX + ridgeLen / 2, rBaseY + rHeight, rCenterZ];
+          const cNW = [rMinX, rBaseY, rMinZ];
+          const cNE = [rMaxX, rBaseY, rMinZ];
+          const cSE = [rMaxX, rBaseY, rMaxZ];
+          const cSW = [rMinX, rBaseY, rMaxZ];
+
+          // 4 faces as triangles / quads
+          pos.push(...cNW, ...cNE, ...pRidge2,  ...cNW, ...pRidge2, ...pRidge1); // North face
+          pos.push(...cNE, ...cSE, ...pRidge2); // East hip
+          pos.push(...cSE, ...cSW, ...pRidge1,  ...cSE, ...pRidge1, ...pRidge2); // South face
+          pos.push(...cSW, ...cNW, ...pRidge1); // West hip
+        } else {
+          // North-South ridge
+          const pRidge1 = [rCenterX, rBaseY + rHeight, rCenterZ - ridgeLen / 2];
+          const pRidge2 = [rCenterX, rBaseY + rHeight, rCenterZ + ridgeLen / 2];
+          const cNW = [rMinX, rBaseY, rMinZ];
+          const cNE = [rMaxX, rBaseY, rMinZ];
+          const cSE = [rMaxX, rBaseY, rMaxZ];
+          const cSW = [rMinX, rBaseY, rMaxZ];
+
+          pos.push(...cNW, ...cNE, ...pRidge1); // North hip
+          pos.push(...cNE, ...cSE, ...pRidge2,  ...cNE, ...pRidge2, ...pRidge1); // East face
+          pos.push(...cSE, ...cSW, ...pRidge2); // South hip
+          pos.push(...cSW, ...cNW, ...pRidge1,  ...cSW, ...pRidge1, ...pRidge2); // West face
+        }
+
+        const hipGeo = new THREE.BufferGeometry();
+        hipGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        hipGeo.computeVertexNormals();
+
+        const hipMesh = new THREE.Mesh(hipGeo, roofMat);
         hipMesh.castShadow = true;
+        hipMesh.receiveShadow = true;
         hipMesh.userData = { type: 'roof', id: rf.id };
         scene.add(hipMesh);
         interactiveMeshesRef.current.push(hipMesh);
+      }
+      // 10e. ZELTDACH (Pyramid / Tent Roof)
+      else if (rf.type === 'tent') {
+        const cNW = [rMinX, rBaseY, rMinZ];
+        const cNE = [rMaxX, rBaseY, rMinZ];
+        const cSE = [rMaxX, rBaseY, rMaxZ];
+        const cSW = [rMinX, rBaseY, rMaxZ];
+        const apex = [rCenterX, rBaseY + rHeight, rCenterZ];
+
+        const pos = [
+          ...cNW, ...cNE, ...apex,
+          ...cNE, ...cSE, ...apex,
+          ...cSE, ...cSW, ...apex,
+          ...cSW, ...cNW, ...apex,
+        ];
+
+        const tentGeo = new THREE.BufferGeometry();
+        tentGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        tentGeo.computeVertexNormals();
+
+        const tentMesh = new THREE.Mesh(tentGeo, roofMat);
+        tentMesh.castShadow = true;
+        tentMesh.receiveShadow = true;
+        tentMesh.userData = { type: 'roof', id: rf.id };
+        scene.add(tentMesh);
+        interactiveMeshesRef.current.push(tentMesh);
+      }
+      // 10f. MANSARDDACH (2-tier Broken Slope)
+      else if (rf.type === 'mansard') {
+        const span = isHoriz ? rD : rW;
+        const length = isHoriz ? rW : rD;
+
+        const roofShape = new THREE.Shape();
+        roofShape.moveTo(-span / 2, 0);
+        roofShape.lineTo(-span * 0.35, rHeight * 0.65);
+        roofShape.lineTo(0, rHeight);
+        roofShape.lineTo(span * 0.35, rHeight * 0.65);
+        roofShape.lineTo(span / 2, 0);
+        roofShape.closePath();
+
+        const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: length, bevelEnabled: false });
+        if (isHoriz) {
+          roofGeo.rotateY(Math.PI / 2);
+          roofGeo.translate(rCenterX - length / 2, rBaseY, rCenterZ);
+        } else {
+          roofGeo.translate(rCenterX, rBaseY, rCenterZ - length / 2);
+        }
+
+        const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+        roofMesh.castShadow = true;
+        roofMesh.userData = { type: 'roof', id: rf.id };
+        scene.add(roofMesh);
+        interactiveMeshesRef.current.push(roofMesh);
+      }
+      // 10g. TONNENDACH (Curved Barrel Vault)
+      else if (rf.type === 'barrel') {
+        const span = isHoriz ? rD : rW;
+        const length = isHoriz ? rW : rD;
+
+        const roofShape = new THREE.Shape();
+        roofShape.moveTo(-span / 2, 0);
+        roofShape.quadraticCurveTo(0, rHeight * 1.4, span / 2, 0);
+        roofShape.lineTo(span / 2, -0.15);
+        roofShape.quadraticCurveTo(0, rHeight * 1.4 - 0.15, -span / 2, -0.15);
+        roofShape.closePath();
+
+        const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: length, bevelEnabled: false, curveSegments: 24 });
+        if (isHoriz) {
+          roofGeo.rotateY(Math.PI / 2);
+          roofGeo.translate(rCenterX - length / 2, rBaseY, rCenterZ);
+        } else {
+          roofGeo.translate(rCenterX, rBaseY, rCenterZ - length / 2);
+        }
+
+        const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+        roofMesh.castShadow = true;
+        roofMesh.userData = { type: 'roof', id: rf.id };
+        scene.add(roofMesh);
+        interactiveMeshesRef.current.push(roofMesh);
+      }
+      // 10h. SCHMETTERLINGSDACH (Butterfly Inverted V)
+      else if (rf.type === 'butterfly') {
+        const span = isHoriz ? rD : rW;
+        const length = isHoriz ? rW : rD;
+
+        const roofShape = new THREE.Shape();
+        roofShape.moveTo(-span / 2, rHeight);
+        roofShape.lineTo(0, 0);
+        roofShape.lineTo(span / 2, rHeight);
+        roofShape.lineTo(span / 2, rHeight - 0.15);
+        roofShape.lineTo(0, -0.15);
+        roofShape.lineTo(-span / 2, rHeight - 0.15);
+        roofShape.closePath();
+
+        const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: length, bevelEnabled: false });
+        if (isHoriz) {
+          roofGeo.rotateY(Math.PI / 2);
+          roofGeo.translate(rCenterX - length / 2, rBaseY, rCenterZ);
+        } else {
+          roofGeo.translate(rCenterX, rBaseY, rCenterZ - length / 2);
+        }
+
+        const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+        roofMesh.castShadow = true;
+        roofMesh.userData = { type: 'roof', id: rf.id };
+        scene.add(roofMesh);
+        interactiveMeshesRef.current.push(roofMesh);
+      }
+      // 10i. SHEDDACH (Sawtooth Factory Roof)
+      else if (rf.type === 'sawtooth') {
+        const span = isHoriz ? rD : rW;
+        const length = isHoriz ? rW : rD;
+        const segments = 3;
+        const segW = span / segments;
+
+        const roofShape = new THREE.Shape();
+        roofShape.moveTo(-span / 2, 0);
+        for (let i = 0; i < segments; i++) {
+          const xStart = -span / 2 + i * segW;
+          roofShape.lineTo(xStart + segW * 0.7, rHeight);
+          roofShape.lineTo(xStart + segW, 0);
+        }
+        roofShape.lineTo(span / 2, -0.15);
+        roofShape.lineTo(-span / 2, -0.15);
+        roofShape.closePath();
+
+        const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: length, bevelEnabled: false });
+        if (isHoriz) {
+          roofGeo.rotateY(Math.PI / 2);
+          roofGeo.translate(rCenterX - length / 2, rBaseY, rCenterZ);
+        } else {
+          roofGeo.translate(rCenterX, rBaseY, rCenterZ - length / 2);
+        }
+
+        const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+        roofMesh.castShadow = true;
+        roofMesh.userData = { type: 'roof', id: rf.id };
+        scene.add(roofMesh);
+        interactiveMeshesRef.current.push(roofMesh);
+      }
+      // 10j. KRÜPPELWALMDACH & FREIFORM (Gable with truncated hip / custom)
+      else {
+        const span = isHoriz ? rD : rW;
+        const length = isHoriz ? rW : rD;
+
+        const roofShape = new THREE.Shape();
+        roofShape.moveTo(-span / 2, 0);
+        roofShape.lineTo(0, rHeight);
+        roofShape.lineTo(span / 2, 0);
+        roofShape.closePath();
+
+        const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: length, bevelEnabled: false });
+        if (isHoriz) {
+          roofGeo.rotateY(Math.PI / 2);
+          roofGeo.translate(rCenterX - length / 2, rBaseY, rCenterZ);
+        } else {
+          roofGeo.translate(rCenterX, rBaseY, rCenterZ - length / 2);
+        }
+
+        const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+        roofMesh.castShadow = true;
+        roofMesh.userData = { type: 'roof', id: rf.id };
+        scene.add(roofMesh);
+        interactiveMeshesRef.current.push(roofMesh);
+      }
+
+      // 10k. ACCESSORIES: DACHFENSTER (Skylights)
+      if (rf.skylightsCount && rf.skylightsCount > 0 && rf.type !== 'flat') {
+        const winMat = new THREE.MeshStandardMaterial({
+          color: '#38bdf8',
+          roughness: 0.1,
+          metalness: 0.8,
+          transparent: true,
+          opacity: 0.85,
+        });
+        const frameMat = new THREE.MeshStandardMaterial({ color: '#1e293b' });
+
+        for (let i = 0; i < Math.min(6, rf.skylightsCount); i++) {
+          const stepOffset = ((i - (rf.skylightsCount - 1) / 2) * 1.4);
+          const skylightGroup = new THREE.Group();
+
+          const frame = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 1.2), frameMat);
+          const glass = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.09, 1.06), winMat);
+          skylightGroup.add(frame);
+          skylightGroup.add(glass);
+
+          const rad = (rf.pitchDegrees * Math.PI) / 180;
+          skylightGroup.rotation.x = rad * 0.8;
+          skylightGroup.position.set(rCenterX + stepOffset, rBaseY + rHeight * 0.55, rCenterZ + rD * 0.2);
+          scene.add(skylightGroup);
+        }
       }
 
       // Chimney

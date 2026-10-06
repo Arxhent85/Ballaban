@@ -35,18 +35,23 @@ export function angleDeg(p1: Point2D, p2: Point2D): number {
   return deg;
 }
 
+export function formatGermanNumber(val: number, decimals = 2): string {
+  return val.toFixed(decimals).replace('.', ',');
+}
+
 export function formatDimension(valInMeters: number, unit: UnitType, decimals = 2): string {
   if (unit === 'cm') {
-    return `${(valInMeters * 100).toFixed(decimals > 1 ? 1 : 0)} cm`;
+    const cmVal = (valInMeters * 100).toFixed(decimals > 1 ? 1 : 0).replace('.', ',');
+    return `${cmVal} cm`;
   }
   if (unit === 'mm') {
     return `${Math.round(valInMeters * 1000)} mm`;
   }
-  return `${valInMeters.toFixed(decimals)} m`;
+  return `${valInMeters.toFixed(decimals).replace('.', ',')} m`;
 }
 
 export function formatArea(m2: number): string {
-  return `${m2.toFixed(2)} m²`;
+  return `${m2.toFixed(2).replace('.', ',')} m²`;
 }
 
 export interface SnapResult {
