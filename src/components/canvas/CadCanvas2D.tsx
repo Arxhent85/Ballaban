@@ -459,6 +459,67 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     }
 
     // ==========================================
+    // 0. WORLD AXES (X=0 & Y=0 NULL-ACHSEN & URSPRUNG)
+    // ==========================================
+    const originX = Math.round(panOffset.x) + 0.5;
+    const originY = Math.round(panOffset.y) + 0.5;
+
+    // Y-Axis line (vertical line at X = 0.00 m)
+    if (originX >= 0 && originX <= width) {
+      ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.5)' : 'rgba(2, 132, 199, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(originX, 0);
+      ctx.lineTo(originX, height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Label at top
+      ctx.font = '600 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = isDark ? '#38bdf8' : '#0284c7';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('Y-Achse (X = 0 m)', originX + 5, 30);
+    }
+
+    // X-Axis line (horizontal line at Y = 0.00 m)
+    if (originY >= 0 && originY <= height) {
+      ctx.strokeStyle = isDark ? 'rgba(244, 63, 94, 0.5)' : 'rgba(225, 29, 72, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, originY);
+      ctx.lineTo(width, originY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Label at left
+      ctx.font = '600 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = isDark ? '#f43f5e' : '#e11d48';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('X-Achse (Y = 0 m)', 36, originY - 4);
+    }
+
+    // Origin marker at (0, 0)
+    if (originX >= 0 && originX <= width && originY >= 0 && originY <= height) {
+      ctx.fillStyle = isDark ? '#38bdf8' : '#0284c7';
+      ctx.beginPath();
+      ctx.arc(originX, originY, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.font = '700 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = isDark ? '#7dd3fc' : '#0369a1';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('(0, 0)', originX + 7, originY + 7);
+    }
+
+    // ==========================================
     // 1. PROPERTY PLOT (GRUNDSTÜCK, GRENZLINIEN & BAUFENSTER)
     // ==========================================
     if (plot && plot.enabled) {
@@ -1280,6 +1341,247 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         ctx.fill();
       }
     }
+
+    // ==========================================
+    // 11. HORIZONTAL & VERTICAL RULERS (X- & Y-ACHSEN MAßSTAB IN METERN)
+    // ==========================================
+    const RULER_THICKNESS_X = 26; // Height of top ruler
+    const RULER_THICKNESS_Y = 34; // Width of left ruler
+
+    let majorStep = 1; // in meters
+    let mediumStep = 0.5;
+    let minorStep = 0.1;
+
+    if (zoom >= 110) {
+      majorStep = 1;
+      mediumStep = 0.5;
+      minorStep = 0.1;
+    } else if (zoom >= 50) {
+      majorStep = 1;
+      mediumStep = 0.5;
+      minorStep = 0.25;
+    } else if (zoom >= 25) {
+      majorStep = 2;
+      mediumStep = 1;
+      minorStep = 0.5;
+    } else if (zoom >= 12) {
+      majorStep = 5;
+      mediumStep = 2.5;
+      minorStep = 1;
+    } else {
+      majorStep = 10;
+      mediumStep = 5;
+      minorStep = 2.5;
+    }
+
+    // A. TOP HORIZONTAL RULER (X-Achse in Metern)
+    ctx.fillStyle = isDark ? '#18181b' : '#f8fafc';
+    ctx.fillRect(0, 0, width, RULER_THICKNESS_X);
+
+    ctx.strokeStyle = isDark ? '#3f3f46' : '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, RULER_THICKNESS_X - 0.5);
+    ctx.lineTo(width, RULER_THICKNESS_X - 0.5);
+    ctx.stroke();
+
+    const minWorldX = (RULER_THICKNESS_Y - panOffset.x) / zoom;
+    const maxWorldX = (width - panOffset.x) / zoom;
+    const startMinorX = Math.floor(minWorldX / minorStep) * minorStep;
+    const endMinorX = Math.ceil(maxWorldX / minorStep) * minorStep;
+
+    ctx.font = '600 10px "JetBrains Mono", monospace';
+    for (let wx = startMinorX; wx <= endMinorX; wx += minorStep) {
+      const sx = Math.round(wx * zoom + panOffset.x) + 0.5;
+      if (sx < RULER_THICKNESS_Y || sx > width) continue;
+
+      const isMajor = Math.abs(wx % majorStep) < 0.001 || Math.abs(Math.abs(wx % majorStep) - majorStep) < 0.001;
+      const isMedium = !isMajor && (Math.abs(wx % mediumStep) < 0.001 || Math.abs(Math.abs(wx % mediumStep) - mediumStep) < 0.001);
+
+      if (isMajor) {
+        const isZero = Math.abs(wx) < 0.001;
+        ctx.strokeStyle = isZero ? (isDark ? '#38bdf8' : '#0284c7') : (isDark ? '#a1a1aa' : '#475569');
+        ctx.lineWidth = isZero ? 2 : 1.2;
+        ctx.beginPath();
+        ctx.moveTo(sx, RULER_THICKNESS_X - 12);
+        ctx.lineTo(sx, RULER_THICKNESS_X);
+        ctx.stroke();
+
+        const roundedM = Math.round(wx * 10) / 10;
+        const label = isZero ? '0.0 m' : `${roundedM > 0 ? '+' : ''}${roundedM} m`;
+        ctx.fillStyle = isZero ? (isDark ? '#38bdf8' : '#0284c7') : (isDark ? '#f4f4f5' : '#1e293b');
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(label, sx, 3);
+      } else if (isMedium) {
+        ctx.strokeStyle = isDark ? '#71717a' : '#94a3b8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx, RULER_THICKNESS_X - 7);
+        ctx.lineTo(sx, RULER_THICKNESS_X);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = isDark ? '#52525b' : '#cbd5e1';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sx, RULER_THICKNESS_X - 4);
+        ctx.lineTo(sx, RULER_THICKNESS_X);
+        ctx.stroke();
+      }
+    }
+
+    // B. LEFT VERTICAL RULER (Y-Achse in Metern)
+    ctx.fillStyle = isDark ? '#18181b' : '#f8fafc';
+    ctx.fillRect(0, 0, RULER_THICKNESS_Y, height);
+
+    ctx.strokeStyle = isDark ? '#3f3f46' : '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(RULER_THICKNESS_Y - 0.5, 0);
+    ctx.lineTo(RULER_THICKNESS_Y - 0.5, height);
+    ctx.stroke();
+
+    const minWorldY = (RULER_THICKNESS_X - panOffset.y) / zoom;
+    const maxWorldY = (height - panOffset.y) / zoom;
+    const startMinorY = Math.floor(minWorldY / minorStep) * minorStep;
+    const endMinorY = Math.ceil(maxWorldY / minorStep) * minorStep;
+
+    ctx.font = '600 9px "JetBrains Mono", monospace';
+    for (let wy = startMinorY; wy <= endMinorY; wy += minorStep) {
+      const sy = Math.round(wy * zoom + panOffset.y) + 0.5;
+      if (sy < RULER_THICKNESS_X || sy > height) continue;
+
+      const isMajor = Math.abs(wy % majorStep) < 0.001 || Math.abs(Math.abs(wy % majorStep) - majorStep) < 0.001;
+      const isMedium = !isMajor && (Math.abs(wy % mediumStep) < 0.001 || Math.abs(Math.abs(wy % mediumStep) - mediumStep) < 0.001);
+
+      if (isMajor) {
+        const isZero = Math.abs(wy) < 0.001;
+        ctx.strokeStyle = isZero ? (isDark ? '#f43f5e' : '#e11d48') : (isDark ? '#a1a1aa' : '#475569');
+        ctx.lineWidth = isZero ? 2 : 1.2;
+        ctx.beginPath();
+        ctx.moveTo(RULER_THICKNESS_Y - 12, sy);
+        ctx.lineTo(RULER_THICKNESS_Y, sy);
+        ctx.stroke();
+
+        const roundedM = Math.round(wy * 10) / 10;
+        const label = isZero ? '0' : `${roundedM > 0 ? '+' : ''}${roundedM}`;
+        ctx.fillStyle = isZero ? (isDark ? '#f43f5e' : '#e11d48') : (isDark ? '#f4f4f5' : '#1e293b');
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, RULER_THICKNESS_Y - 14, sy);
+      } else if (isMedium) {
+        ctx.strokeStyle = isDark ? '#71717a' : '#94a3b8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(RULER_THICKNESS_Y - 7, sy);
+        ctx.lineTo(RULER_THICKNESS_Y, sy);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = isDark ? '#52525b' : '#cbd5e1';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(RULER_THICKNESS_Y - 4, sy);
+        ctx.lineTo(RULER_THICKNESS_Y, sy);
+        ctx.stroke();
+      }
+    }
+
+    // C. TOP-LEFT CORNER BOX (Nullpunkt-Taste & Einheitsindikator "m")
+    ctx.fillStyle = isDark ? '#27272a' : '#e2e8f0';
+    ctx.fillRect(0, 0, RULER_THICKNESS_Y, RULER_THICKNESS_X);
+    ctx.strokeStyle = isDark ? '#3f3f46' : '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, RULER_THICKNESS_Y - 1, RULER_THICKNESS_X - 1);
+
+    ctx.font = 'bold 11px "Inter", sans-serif';
+    ctx.fillStyle = isDark ? '#f59e0b' : '#d97706';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('m', RULER_THICKNESS_Y / 2, RULER_THICKNESS_X / 2);
+
+    // D. DYNAMIC CURSOR INDICATORS ON RULERS
+    if (currentCursorWorld) {
+      const curScreenX = Math.round(currentCursorWorld.x * zoom + panOffset.x);
+      const curScreenY = Math.round(currentCursorWorld.y * zoom + panOffset.y);
+
+      // Top Ruler Indicator
+      if (curScreenX >= RULER_THICKNESS_Y && curScreenX <= width) {
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.moveTo(curScreenX - 4, 0);
+        ctx.lineTo(curScreenX + 4, 0);
+        ctx.lineTo(curScreenX, 6);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(curScreenX, 6);
+        ctx.lineTo(curScreenX, RULER_THICKNESS_X);
+        ctx.stroke();
+      }
+
+      // Left Ruler Indicator
+      if (curScreenY >= RULER_THICKNESS_X && curScreenY <= height) {
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.moveTo(0, curScreenY - 4);
+        ctx.lineTo(0, curScreenY + 4);
+        ctx.lineTo(6, curScreenY);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(6, curScreenY);
+        ctx.lineTo(RULER_THICKNESS_Y, curScreenY);
+        ctx.stroke();
+      }
+    }
+
+    // ==========================================
+    // 12. ARCHITECTURAL SCALE BAR (MAßSTABSBALKEN)
+    // ==========================================
+    const scaleBarMeters = zoom >= 70 ? 1 : zoom >= 30 ? 2 : zoom >= 15 ? 5 : 10;
+    const scaleBarPx = scaleBarMeters * zoom;
+    const sbX = width - scaleBarPx - 20;
+    const sbY = height - 34;
+
+    if (sbX > RULER_THICKNESS_Y + 100 && sbY > RULER_THICKNESS_X + 40) {
+      const cardW = scaleBarPx + 20;
+      const cardH = 34;
+      ctx.fillStyle = isDark ? 'rgba(24, 24, 27, 0.88)' : 'rgba(255, 255, 255, 0.9)';
+      ctx.fillRect(sbX - 10, sbY - 14, cardW, cardH);
+      ctx.strokeStyle = isDark ? '#3f3f46' : '#cbd5e1';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sbX - 10, sbY - 14, cardW, cardH);
+
+      ctx.font = '600 9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = isDark ? '#f4f4f5' : '#1e293b';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`Maßstab: ${scaleBarMeters} m`, sbX, sbY - 2);
+
+      const segments = 2;
+      const segW = scaleBarPx / segments;
+      for (let s = 0; s < segments; s++) {
+        ctx.fillStyle = s % 2 === 0 ? (isDark ? '#f4f4f5' : '#18181b') : (isDark ? '#71717a' : '#ffffff');
+        ctx.fillRect(sbX + s * segW, sbY, segW, 6);
+        ctx.strokeStyle = isDark ? '#a1a1aa' : '#000000';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sbX + s * segW, sbY, segW, 6);
+      }
+
+      ctx.font = '500 8.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = isDark ? '#a1a1aa' : '#64748b';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('0', sbX, sbY + 8);
+      ctx.fillText(`${(scaleBarMeters / 2).toFixed(1)}m`, sbX + segW, sbY + 8);
+      ctx.fillText(`${scaleBarMeters}m`, sbX + scaleBarPx, sbY + 8);
+    }
   }, [
     walls,
     doors,
@@ -1342,6 +1644,20 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
     const rect = canvas.getBoundingClientRect();
     const screenPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+    // Top-Left Corner Box (0,0 button): Center origin on screen!
+    if (screenPt.x <= 34 && screenPt.y <= 26) {
+      onPanOffsetChange({ x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 });
+      return;
+    }
+
+    // Clicking on Rulers: Pan view instead of accidental drawing behind rulers
+    if (screenPt.x < 34 || screenPt.y < 26) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      return;
+    }
+
     const rawWorld = screenToWorld(screenPt);
 
     // Pan with middle click, Space, or Hand tool
