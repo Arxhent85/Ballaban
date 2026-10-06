@@ -61,6 +61,7 @@ import { FurnitureCatalogModal } from './components/dialogs/FurnitureCatalogModa
 import { WallNumericModal } from './components/dialogs/WallNumericModal';
 import { HistoryModal } from './components/dialogs/HistoryModal';
 import { RoomEditModal } from './components/dialogs/RoomEditModal';
+import { RoofConfigModal } from './components/dialogs/RoofConfigModal';
 
 export default function App() {
   // Project state: default to newly designed 6x8m Holiday House
@@ -132,6 +133,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showRoofModal, setShowRoofModal] = useState(false);
 
   const t = getT(language);
 
@@ -477,6 +479,12 @@ export default function App() {
   const handleUpdateRoof = (roof: Roof) => {
     updateActiveFloor((f) => ({ ...f, roofs: f.roofs.map((r) => (r.id === roof.id ? roof : r)) }));
   };
+  const handleSaveRoof = useCallback((roof: Roof | null) => {
+    updateActiveFloor((f) => ({
+      ...f,
+      roofs: roof ? [roof] : [],
+    }));
+  }, [updateActiveFloor]);
   const handleUpdateRoom = (room: Room) => {
     updateActiveFloor((f) => ({ ...f, rooms: f.rooms.map((r) => (r.id === room.id ? room : r)) }));
   };
@@ -631,8 +639,12 @@ export default function App() {
       targetIds.includes('plot') ||
       selection.type === 'plot' ||
       targetIds.some((id) => id.startsWith('plot_pt_'));
+    const isRoofTargeted =
+      targetIds.includes('roof') ||
+      selection.type === 'roof' ||
+      (activeFloor.roofs && activeFloor.roofs.some((rf) => targetIds.includes(rf.id)));
 
-    if (targetIds.length === 0 && !isPlotTargeted && selection.type === 'none') return;
+    if (targetIds.length === 0 && !isPlotTargeted && !isRoofTargeted && selection.type === 'none') return;
     const idSet = new Set(targetIds);
 
     let nextPlot = project.plot ? { ...project.plot } : undefined;
@@ -669,7 +681,7 @@ export default function App() {
         shapes: (fl.shapes || []).filter((sh) => !idSet.has(sh.id)),
         annotations: (fl.annotations || []).filter((an) => !idSet.has(an.id)),
         columns: (fl.columns || []).filter((col) => !idSet.has(col.id)),
-        roofs: (fl.roofs || []).filter((rf) => !idSet.has(rf.id)),
+        roofs: isRoofTargeted ? [] : (fl.roofs || []).filter((rf) => !idSet.has(rf.id)),
         electrical: (fl.electrical || []).filter((el) => !idSet.has(el.id)),
       };
     });
@@ -1139,6 +1151,7 @@ export default function App() {
       if (e.key === 'f' || e.key === 'F') setActiveTool('window');
       if (e.key === 't' || e.key === 'T') setActiveTool('stairs');
       if (e.key === 'm' || e.key === 'M') setShowFurnitureCatalog(true);
+      if (e.key === 'u' || e.key === 'U') setShowRoofModal(true);
       if (e.key === 'b' || e.key === 'B') setActiveTool('dimension');
       if ((e.key === 's' || e.key === 'S' || e.key === 'F3') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
@@ -1324,6 +1337,7 @@ export default function App() {
           updateProject({ ...project, activeFloorId: rem[0].id, floors: rem });
         }}
         onRenameProject={(newName) => updateProject({ ...project, name: newName })}
+        onOpenRoofModal={() => setShowRoofModal(true)}
       />
 
       {/* 2. MAIN WORKSPACE */}
@@ -1335,6 +1349,7 @@ export default function App() {
           language={language}
           onOpenFurnitureCatalog={() => setShowFurnitureCatalog(true)}
           onOpenWallNumericModal={() => setShowWallNumeric(true)}
+          onOpenRoofModal={() => setShowRoofModal(true)}
         />
 
         {/* Center Viewport */}
@@ -1395,7 +1410,15 @@ export default function App() {
 
           {/* VIEW: 3D MODEL */}
           {viewMode === '3d' && (
-            <CadView3D project={project} floor={activeFloor} language={language} />
+            <CadView3D
+              project={project}
+              floor={activeFloor}
+              language={language}
+              selection={selection}
+              onSelect={setSelection}
+              isDark={isDark}
+              onOpenRoofModal={() => setShowRoofModal(true)}
+            />
           )}
 
           {/* VIEW: SPLIT 2D + 3D */}
@@ -1454,7 +1477,15 @@ export default function App() {
                 />
               </div>
               <div className="w-1/2 h-full">
-                <CadView3D project={project} floor={activeFloor} language={language} />
+                <CadView3D
+                  project={project}
+                  floor={activeFloor}
+                  language={language}
+                  selection={selection}
+                  onSelect={setSelection}
+                  isDark={isDark}
+                  onOpenRoofModal={() => setShowRoofModal(true)}
+                />
               </div>
             </div>
           )}
@@ -1525,6 +1556,7 @@ export default function App() {
           plot={project.plot}
           onUpdatePlot={handleUpdatePlot}
           floorsCount={project.floors.length}
+          onOpenRoofModal={() => setShowRoofModal(true)}
         />
       </div>
 
@@ -1641,6 +1673,15 @@ export default function App() {
           handleUpdateRoom(updated);
           setEditingRoom(null);
         }}
+        language={language}
+      />
+
+      <RoofConfigModal
+        isOpen={showRoofModal}
+        onClose={() => setShowRoofModal(false)}
+        roof={activeFloor.roofs[0] || null}
+        walls={activeFloor.walls}
+        onSaveRoof={handleSaveRoof}
         language={language}
       />
 

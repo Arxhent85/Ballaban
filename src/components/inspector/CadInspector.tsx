@@ -28,6 +28,7 @@ import {
   EyeOff,
   Compass,
   AlertTriangle,
+  Home,
 } from 'lucide-react';
 import {
   SelectionState,
@@ -78,6 +79,7 @@ interface CadInspectorProps {
   plot?: PlotBoundary;
   onUpdatePlot?: (plot: PlotBoundary) => void;
   floorsCount?: number;
+  onOpenRoofModal?: () => void;
 }
 
 export const CadInspector: React.FC<CadInspectorProps> = ({
@@ -109,6 +111,7 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
   plot,
   onUpdatePlot,
   floorsCount = 1,
+  onOpenRoofModal,
 }) => {
   const t = getT(language);
   const [activeTab, setActiveTab] = useState<InspectorTab>('properties');
@@ -130,6 +133,9 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
   const selectedWindow = !isMultiSelect && singleId ? windows.find((w) => w.id === singleId) || null : null;
   const selectedRoom = !isMultiSelect && singleId ? rooms.find((r) => r.id === singleId) || null : null;
   const selectedFurniture = !isMultiSelect && singleId ? furniture.find((f) => f.id === singleId) || null : null;
+  const selectedRoof = !isMultiSelect
+    ? (singleId ? roofs.find((r) => r.id === singleId) || null : (selection.type === 'roof' ? roofs[0] || null : null))
+    : (selection.type === 'roof' ? roofs[0] || null : null);
 
   // Filtered library items
   const filteredCatalog = FURNITURE_CATALOG.filter((item) => {
@@ -764,8 +770,206 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
               </div>
             )}
 
-            {/* EMPTY STATE: PLOT (GRUNDSTÜCK) & PLAN OVERVIEW */}
-            {!selectedWall && !selectedDoor && !selectedWindow && !selectedRoom && !selectedFurniture && !isMultiSelect && (
+            {/* SINGLE: FURNITURE PROPERTIES */}
+            {selectedFurniture && (
+              <div className="flex flex-col gap-3">
+                <div className="font-semibold text-stone-900 dark:text-white flex items-center justify-between pb-1 border-b border-stone-200 dark:border-stone-800">
+                  <span className="flex items-center gap-1.5">
+                    <Armchair className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span>{selectedFurniture.name}</span>
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800 capitalize">
+                    {selectedFurniture.category}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-stone-500 text-[11px]">Breite:</span>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <input
+                        type="number"
+                        step="0.05"
+                        value={selectedFurniture.width}
+                        onChange={(e) => onUpdateFurniture({ ...selectedFurniture, width: parseFloat(e.target.value) || 0.5 })}
+                        className="w-full bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono"
+                      />
+                      <span className="text-stone-400 font-mono">m</span>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-stone-500 text-[11px]">Tiefe:</span>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <input
+                        type="number"
+                        step="0.05"
+                        value={selectedFurniture.depth}
+                        onChange={(e) => onUpdateFurniture({ ...selectedFurniture, depth: parseFloat(e.target.value) || 0.5 })}
+                        className="w-full bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono"
+                      />
+                      <span className="text-stone-400 font-mono">m</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-stone-500 text-[11px]">Drehung:</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="15"
+                      value={selectedFurniture.rotation}
+                      onChange={(e) => onUpdateFurniture({ ...selectedFurniture, rotation: (parseInt(e.target.value, 10) || 0) % 360 })}
+                      className="w-18 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono"
+                    />
+                    <span className="text-stone-400 font-mono">°</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    onClick={onDeleteSelected}
+                    className="p-1.5 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg text-red-600 dark:text-red-400 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* SINGLE: ROOF PROPERTIES */}
+            {selectedRoof && (
+              <div className="flex flex-col gap-3">
+                <div className="font-semibold text-stone-900 dark:text-white flex items-center justify-between pb-1 border-b border-stone-200 dark:border-stone-800">
+                  <span className="flex items-center gap-1.5">
+                    <Home className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span>Dach</span>
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800 capitalize">
+                    {selectedRoof.type}
+                  </span>
+                </div>
+
+                {/* Roof Type Quick Switcher */}
+                <div>
+                  <span className="text-stone-500 text-[11px]">Dachform:</span>
+                  <select
+                    value={selectedRoof.type}
+                    onChange={(e) => onUpdateRoof({ ...selectedRoof, type: e.target.value as any })}
+                    className="w-full bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-1 font-medium mt-0.5 outline-none"
+                  >
+                    <option value="gable">Satteldach</option>
+                    <option value="shed">Pultdach</option>
+                    <option value="hip">Walmdach</option>
+                    <option value="flat">Flachdach (Attika)</option>
+                    <option value="mansard">Zeltdach</option>
+                  </select>
+                </div>
+
+                {/* Pitch Slider */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500 text-[11px]">Dachneigung (Winkel):</span>
+                    <span className="font-mono font-bold text-stone-900 dark:text-white">{selectedRoof.pitchDegrees}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="60"
+                    step="1"
+                    value={selectedRoof.pitchDegrees}
+                    onChange={(e) => onUpdateRoof({ ...selectedRoof, pitchDegrees: parseInt(e.target.value, 10) || 0 })}
+                    className="w-full accent-amber-600"
+                  />
+                </div>
+
+                {/* Overhang */}
+                <div className="flex items-center justify-between">
+                  <span className="text-stone-500 text-[11px]">Dachüberstand:</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      max="1.5"
+                      value={selectedRoof.overhang}
+                      onChange={(e) => onUpdateRoof({ ...selectedRoof, overhang: parseFloat(e.target.value) || 0 })}
+                      className="w-18 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono font-semibold"
+                    />
+                    <span className="text-stone-400 font-mono">m</span>
+                  </div>
+                </div>
+
+                {/* Base Height (Traufhöhe / Kniestock) */}
+                <div className="flex items-center justify-between">
+                  <span className="text-stone-500 text-[11px]">Traufhöhe / Kniestock:</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      max="6.0"
+                      value={selectedRoof.baseHeight ?? 2.80}
+                      onChange={(e) => onUpdateRoof({ ...selectedRoof, baseHeight: parseFloat(e.target.value) || 2.80 })}
+                      className="w-18 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono font-semibold"
+                    />
+                    <span className="text-stone-400 font-mono">m</span>
+                  </div>
+                </div>
+
+                {/* Material */}
+                <div>
+                  <span className="text-stone-500 text-[11px]">Dacheindeckung:</span>
+                  <select
+                    value={selectedRoof.material || 'tiles_red'}
+                    onChange={(e) => onUpdateRoof({ ...selectedRoof, material: e.target.value as any })}
+                    className="w-full bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-1 font-medium mt-0.5 outline-none"
+                  >
+                    <option value="tiles_red">Dachziegel Rot</option>
+                    <option value="tiles_anthracite">Dachziegel Anthrazit</option>
+                    <option value="slate">Schiefer Natur</option>
+                    <option value="metal_sheet">Stehfalzblech Zink</option>
+                    <option value="green_roof">Gründach extensiv</option>
+                  </select>
+                </div>
+
+                {/* Chimney Toggle */}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-stone-500 text-[11px]">Schornstein / Kamin:</span>
+                  <input
+                    type="checkbox"
+                    checked={selectedRoof.hasChimney}
+                    onChange={(e) => onUpdateRoof({ ...selectedRoof, hasChimney: e.target.checked })}
+                    className="rounded text-amber-600 accent-amber-600"
+                  />
+                </div>
+
+                {/* Full Modal button */}
+                {onOpenRoofModal && (
+                  <button
+                    onClick={onOpenRoofModal}
+                    className="w-full py-2 px-3 mt-1 bg-amber-500 hover:bg-amber-600 text-stone-950 font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm text-xs"
+                  >
+                    <Sliders className="w-4 h-4" />
+                    <span>Im Dach-Modul bearbeiten</span>
+                  </button>
+                )}
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    onClick={onDeleteSelected}
+                    className="p-1.5 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg text-red-600 dark:text-red-400 cursor-pointer flex items-center gap-1"
+                    title="Dach entfernen"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Dach entfernen</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* EMPTY STATE: PLOT (GRUNDSTÜCK), ROOF & PLAN OVERVIEW */}
+            {!selectedWall && !selectedDoor && !selectedWindow && !selectedRoom && !selectedFurniture && !selectedRoof && !isMultiSelect && (
               <div className="flex flex-col gap-3">
                 {/* 1. Grundstück & Baugrenzen Einstellungen */}
                 {plot && (
@@ -939,6 +1143,39 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                       <span className="font-bold text-stone-900 dark:text-white">{furniture.length}</span>
                     </div>
                   </div>
+                </div>
+
+                {/* 3. Dach & Bedachung Modul */}
+                <div className="bg-stone-50 dark:bg-stone-800/60 p-3.5 rounded-xl border border-stone-200 dark:border-stone-700/60 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-stone-800 dark:text-stone-200 flex items-center gap-1.5">
+                      <Home className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      <span>Dach & Bedachung</span>
+                    </span>
+                    {roofs.length > 0 ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-semibold">
+                        Aktiv ({roofs[0].type})
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-400">
+                        Kein Dach
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-stone-600 dark:text-stone-400">
+                    {roofs.length > 0
+                      ? `Neigung: ${roofs[0].pitchDegrees}°, Überstand: ${(roofs[0].overhang || 0.4).toFixed(2)}m, Material: ${roofs[0].material || 'tiles_red'}`
+                      : 'Erstelle ein passgenaues Sattel-, Pult-, Walm-, Flach- oder Zeltdach direkt auf die Außenwände deines Hauses.'}
+                  </p>
+                  {onOpenRoofModal && (
+                    <button
+                      onClick={onOpenRoofModal}
+                      className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-stone-950 font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-xs shadow-sm"
+                    >
+                      <Home className="w-3.5 h-3.5" />
+                      <span>{roofs.length > 0 ? 'Dach im Dach-Modul bearbeiten' : 'Neues Dach aufsetzen'}</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/40 text-[11px] text-stone-700 dark:text-stone-300 leading-relaxed">

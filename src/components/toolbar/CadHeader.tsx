@@ -29,6 +29,7 @@ import {
   Check,
   SplitSquareVertical,
   RotateCcw,
+  Home,
 } from 'lucide-react';
 import { ViewMode, Language, CadProject, Floor } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -56,6 +57,7 @@ interface CadHeaderProps {
   onOpenHelp: () => void;
   onOpenSettings: () => void;
   onOpenHistory: () => void;
+  onOpenRoofModal?: () => void;
   onSwitchFloor: (floorId: string) => void;
   onAddFloor: () => void;
   onDeleteFloor: (floorId: string) => void;
@@ -85,6 +87,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   onOpenHelp,
   onOpenSettings,
   onOpenHistory,
+  onOpenRoofModal,
   onSwitchFloor,
   onAddFloor,
   onDeleteFloor,
@@ -254,6 +257,17 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
                 >
                   <Wand2 className="w-3.5 h-3.5 text-amber-500" />
                   <span>Haus-Assistent...</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    onOpenRoofModal?.();
+                    setShowFileMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
+                >
+                  <Home className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Dach-Modul & Überdachung...</span>
                 </button>
               </div>
             )}

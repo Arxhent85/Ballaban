@@ -144,14 +144,18 @@ export type RoofType = 'gable' | 'hip' | 'shed' | 'flat' | 'tent';
 export interface Roof {
   id: string;
   type: RoofType;
-  pitchDegrees: number; // e.g. 35°
+  pitchDegrees: number; // e.g. 35° (0° for flat)
   overhang: number; // e.g. 0.40m
   ridgeDirection: 'horizontal' | 'vertical';
-  height: number; // Ridge height
+  height: number; // Ridge height above eaves (Firsthöhe, e.g. 2.20m)
+  baseHeight?: number; // Eaves / Wall plate height above floor (Traufhöhe, e.g. 2.50m)
   material: 'tiles_red' | 'tiles_anthracite' | 'metal_sheet' | 'slate' | 'green_roof';
   hasChimney: boolean;
   chimneyPosition?: Point2D;
+  chimneyHeight?: number;
   skylightsCount: number;
+  customBounds?: { minX: number; maxX: number; minY: number; maxY: number };
+  color?: string;
 }
 
 export type FloorFinish = 
