@@ -92,7 +92,7 @@ export default function App() {
 
   // Canvas zoom & pan
   const [zoom, setZoom] = useState(55);
-  const [panOffset, setPanOffset] = useState<Point2D>({ x: 220, y: 160 });
+  const [panOffset, setPanOffset] = useState<Point2D>({ x: 50, y: 40 });
   const [cursorPos, setCursorPos] = useState<Point2D | null>(null);
 
   // Snapping
@@ -316,7 +316,7 @@ export default function App() {
     setSelection({ type: 'none', ids: [] });
     setActiveTool('wall');
     setZoom(55);
-    setPanOffset({ x: 220, y: 160 });
+    setPanOffset({ x: 50, y: 40 });
     setShowClearConfirm(false);
   }, [updateProject]);
 

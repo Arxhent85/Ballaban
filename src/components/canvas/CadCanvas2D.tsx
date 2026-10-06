@@ -464,42 +464,45 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     const originX = Math.round(panOffset.x) + 0.5;
     const originY = Math.round(panOffset.y) + 0.5;
 
-    // Y-Axis line (vertical line at X = 0.00 m)
+    // Subtle shading for area outside the primary positive workspace (x < 0 or y < 0)
+    if (originX > 0 || originY > 0) {
+      ctx.fillStyle = isDark ? 'rgba(0, 0, 0, 0.25)' : 'rgba(241, 245, 249, 0.55)';
+      if (originX > 0) ctx.fillRect(0, 0, originX, height);
+      if (originY > 0) ctx.fillRect(originX, 0, width - originX, originY);
+    }
+
+    // Y-Axis line (vertical line at X = 0.00 m extending into positive Y)
     if (originX >= 0 && originX <= width) {
-      ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.5)' : 'rgba(2, 132, 199, 0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.65)' : 'rgba(2, 132, 199, 0.7)';
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.moveTo(originX, 0);
+      ctx.moveTo(originX, Math.max(0, originY));
       ctx.lineTo(originX, height);
       ctx.stroke();
-      ctx.setLineDash([]);
 
-      // Label at top
+      // Label at Y-Axis
       ctx.font = '600 10px "JetBrains Mono", monospace';
       ctx.fillStyle = isDark ? '#38bdf8' : '#0284c7';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
-      ctx.fillText('Y-Achse (X = 0 m)', originX + 5, 30);
+      ctx.fillText('Y-Achse (0 m)', originX + 5, Math.max(30, originY + 5));
     }
 
-    // X-Axis line (horizontal line at Y = 0.00 m)
+    // X-Axis line (horizontal line at Y = 0.00 m extending into positive X)
     if (originY >= 0 && originY <= height) {
-      ctx.strokeStyle = isDark ? 'rgba(244, 63, 94, 0.5)' : 'rgba(225, 29, 72, 0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = isDark ? 'rgba(244, 63, 94, 0.65)' : 'rgba(225, 29, 72, 0.7)';
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.moveTo(0, originY);
+      ctx.moveTo(Math.max(0, originX), originY);
       ctx.lineTo(width, originY);
       ctx.stroke();
-      ctx.setLineDash([]);
 
-      // Label at left
+      // Label at X-Axis
       ctx.font = '600 10px "JetBrains Mono", monospace';
       ctx.fillStyle = isDark ? '#f43f5e' : '#e11d48';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
-      ctx.fillText('X-Achse (Y = 0 m)', 36, originY - 4);
+      ctx.fillText('X-Achse (0 m)', Math.max(36, originX + 5), originY - 4);
     }
 
     // Origin marker at (0, 0)
@@ -512,11 +515,11 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      ctx.font = '700 10px "JetBrains Mono", monospace';
+      ctx.font = '700 10.5px "JetBrains Mono", monospace';
       ctx.fillStyle = isDark ? '#7dd3fc' : '#0369a1';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
-      ctx.fillText('(0, 0)', originX + 7, originY + 7);
+      ctx.fillText('0,0 m', originX + 7, originY + 7);
     }
 
     // ==========================================
@@ -1374,9 +1377,15 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       minorStep = 2.5;
     }
 
-    // A. TOP HORIZONTAL RULER (X-Achse in Metern)
+    // A. TOP HORIZONTAL RULER (X-Achse in Metern - Beginnt strikt bei 0 m)
     ctx.fillStyle = isDark ? '#18181b' : '#f8fafc';
     ctx.fillRect(0, 0, width, RULER_THICKNESS_X);
+
+    // Negative X zone shading on ruler (left of origin 0 m)
+    if (originX > RULER_THICKNESS_Y) {
+      ctx.fillStyle = isDark ? '#141416' : '#f1f5f9';
+      ctx.fillRect(RULER_THICKNESS_Y, 0, originX - RULER_THICKNESS_Y, RULER_THICKNESS_X);
+    }
 
     ctx.strokeStyle = isDark ? '#3f3f46' : '#cbd5e1';
     ctx.lineWidth = 1;
@@ -1387,11 +1396,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
     const minWorldX = (RULER_THICKNESS_Y - panOffset.x) / zoom;
     const maxWorldX = (width - panOffset.x) / zoom;
-    const startMinorX = Math.floor(minWorldX / minorStep) * minorStep;
-    const endMinorX = Math.ceil(maxWorldX / minorStep) * minorStep;
+    // START STRICTLY AT 0! NO NEGATIVE NUMBERS!
+    const startMinorX = Math.max(0, Math.floor(minWorldX / minorStep) * minorStep);
+    const endMinorX = Math.max(0, Math.ceil(maxWorldX / minorStep) * minorStep);
 
     ctx.font = '600 10px "JetBrains Mono", monospace';
     for (let wx = startMinorX; wx <= endMinorX; wx += minorStep) {
+      if (wx < 0) continue; // KEINE NEGATIVEN WERTE
       const sx = Math.round(wx * zoom + panOffset.x) + 0.5;
       if (sx < RULER_THICKNESS_Y || sx > width) continue;
 
@@ -1401,14 +1412,14 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       if (isMajor) {
         const isZero = Math.abs(wx) < 0.001;
         ctx.strokeStyle = isZero ? (isDark ? '#38bdf8' : '#0284c7') : (isDark ? '#a1a1aa' : '#475569');
-        ctx.lineWidth = isZero ? 2 : 1.2;
+        ctx.lineWidth = isZero ? 2.2 : 1.2;
         ctx.beginPath();
         ctx.moveTo(sx, RULER_THICKNESS_X - 12);
         ctx.lineTo(sx, RULER_THICKNESS_X);
         ctx.stroke();
 
         const roundedM = Math.round(wx * 10) / 10;
-        const label = isZero ? '0.0 m' : `${roundedM > 0 ? '+' : ''}${roundedM} m`;
+        const label = `${roundedM} m`;
         ctx.fillStyle = isZero ? (isDark ? '#38bdf8' : '#0284c7') : (isDark ? '#f4f4f5' : '#1e293b');
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
@@ -1430,9 +1441,15 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       }
     }
 
-    // B. LEFT VERTICAL RULER (Y-Achse in Metern)
+    // B. LEFT VERTICAL RULER (Y-Achse in Metern - Beginnt strikt bei 0 m)
     ctx.fillStyle = isDark ? '#18181b' : '#f8fafc';
     ctx.fillRect(0, 0, RULER_THICKNESS_Y, height);
+
+    // Negative Y zone shading on ruler (above origin 0 m)
+    if (originY > RULER_THICKNESS_X) {
+      ctx.fillStyle = isDark ? '#141416' : '#f1f5f9';
+      ctx.fillRect(0, RULER_THICKNESS_X, RULER_THICKNESS_Y, originY - RULER_THICKNESS_X);
+    }
 
     ctx.strokeStyle = isDark ? '#3f3f46' : '#cbd5e1';
     ctx.lineWidth = 1;
@@ -1443,11 +1460,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
     const minWorldY = (RULER_THICKNESS_X - panOffset.y) / zoom;
     const maxWorldY = (height - panOffset.y) / zoom;
-    const startMinorY = Math.floor(minWorldY / minorStep) * minorStep;
-    const endMinorY = Math.ceil(maxWorldY / minorStep) * minorStep;
+    // START STRICTLY AT 0! NO NEGATIVE NUMBERS!
+    const startMinorY = Math.max(0, Math.floor(minWorldY / minorStep) * minorStep);
+    const endMinorY = Math.max(0, Math.ceil(maxWorldY / minorStep) * minorStep);
 
     ctx.font = '600 9px "JetBrains Mono", monospace';
     for (let wy = startMinorY; wy <= endMinorY; wy += minorStep) {
+      if (wy < 0) continue; // KEINE NEGATIVEN WERTE
       const sy = Math.round(wy * zoom + panOffset.y) + 0.5;
       if (sy < RULER_THICKNESS_X || sy > height) continue;
 
@@ -1457,14 +1476,14 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       if (isMajor) {
         const isZero = Math.abs(wy) < 0.001;
         ctx.strokeStyle = isZero ? (isDark ? '#f43f5e' : '#e11d48') : (isDark ? '#a1a1aa' : '#475569');
-        ctx.lineWidth = isZero ? 2 : 1.2;
+        ctx.lineWidth = isZero ? 2.2 : 1.2;
         ctx.beginPath();
         ctx.moveTo(RULER_THICKNESS_Y - 12, sy);
         ctx.lineTo(RULER_THICKNESS_Y, sy);
         ctx.stroke();
 
         const roundedM = Math.round(wy * 10) / 10;
-        const label = isZero ? '0' : `${roundedM > 0 ? '+' : ''}${roundedM}`;
+        const label = `${roundedM} m`;
         ctx.fillStyle = isZero ? (isDark ? '#f43f5e' : '#e11d48') : (isDark ? '#f4f4f5' : '#1e293b');
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
@@ -1497,10 +1516,10 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     ctx.fillStyle = isDark ? '#f59e0b' : '#d97706';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('m', RULER_THICKNESS_Y / 2, RULER_THICKNESS_X / 2);
+    ctx.fillText('0,0', RULER_THICKNESS_Y / 2, RULER_THICKNESS_X / 2);
 
-    // D. DYNAMIC CURSOR INDICATORS ON RULERS
-    if (currentCursorWorld) {
+    // D. DYNAMIC CURSOR INDICATORS ON RULERS (Nur für positive Werte)
+    if (currentCursorWorld && currentCursorWorld.x >= 0 && currentCursorWorld.y >= 0) {
       const curScreenX = Math.round(currentCursorWorld.x * zoom + panOffset.x);
       const curScreenY = Math.round(currentCursorWorld.y * zoom + panOffset.y);
 
