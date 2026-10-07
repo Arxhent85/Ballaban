@@ -626,34 +626,63 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
   };
 
   // Direct trace mode without AI
-  const handleUseAsManualUnderlay = () => {
+  const handleUseAsManualUnderlay = async () => {
     if (!activeImage) return;
-    const estW = 10.0;
-    const estH = (activeImage.height / activeImage.width) * estW;
-
-    onImportPlan({
-      walls: [],
-      doors: [],
-      windows: [],
-      rooms: [],
-      furniture: [],
-      stairs: [],
-      backgroundImageUrl: activeImage.dataUrl,
-      backgroundWidthM: estW,
-      backgroundHeightM: estH,
-      target: 'underlay_only',
-      qualityChecks: [
-        {
-          id: 'manual_trace_info',
-          type: 'info',
-          title: 'Plan als Vorlage eingefügt',
-          description: 'Das Bild liegt als transparente Unterlage auf der Zeichenfläche. Sie können nun mit Wandwerkzeug und Fangfunktionen darüber zeichnen.',
-          severity: 'info',
+    try {
+      const proc = await processImageToDataUrl({
+        ...activeImage,
+        rotationDeg,
+        perspectiveCorners: prepMode === 'perspective' && perspectivePins ? perspectivePins : undefined,
+        cropRect: cropBox || undefined,
+        filterSettings: {
+          brightness,
+          contrast,
+          sketchMode,
         },
-      ],
-    });
+      });
+      const estW = 10.0;
+      const estH = Math.round((proc.height / proc.width) * estW * 100) / 100;
 
-    onClose();
+      onImportPlan({
+        walls: [],
+        doors: [],
+        windows: [],
+        rooms: [],
+        furniture: [],
+        stairs: [],
+        backgroundImageUrl: proc.dataUrl,
+        backgroundWidthM: estW,
+        backgroundHeightM: estH,
+        target: 'underlay_only',
+        qualityChecks: [
+          {
+            id: 'manual_trace_info',
+            type: 'info',
+            title: 'Plan als Vorlage eingefügt',
+            description: 'Das Bild liegt als veränderbare Unterlage auf der Zeichenfläche. Sie können die Vorlage frei skalieren, verschieben, zuschneiden und mit Wänden nachzeichnen.',
+            severity: 'info',
+          },
+        ],
+      });
+      onClose();
+    } catch {
+      const estW = 10.0;
+      const estH = Math.round((activeImage.height / activeImage.width) * estW * 100) / 100;
+      onImportPlan({
+        walls: [],
+        doors: [],
+        windows: [],
+        rooms: [],
+        furniture: [],
+        stairs: [],
+        backgroundImageUrl: activeImage.dataUrl,
+        backgroundWidthM: estW,
+        backgroundHeightM: estH,
+        target: 'underlay_only',
+        qualityChecks: [],
+      });
+      onClose();
+    }
   };
 
   if (!isOpen) return null;
@@ -882,9 +911,10 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
 
                   <button
                     onClick={handleUseAsManualUnderlay}
-                    className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-sm"
                   >
-                    <span>Ohne KI als Vorlage verwenden</span>
+                    <ImageIcon className="w-4 h-4 text-sky-200" />
+                    <span>Als Plan-Vorlage ohne KI einfügen</span>
                   </button>
                 </div>
               </div>

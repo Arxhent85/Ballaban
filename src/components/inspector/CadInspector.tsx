@@ -29,6 +29,13 @@ import {
   Compass,
   AlertTriangle,
   Home,
+  Lock,
+  Unlock,
+  Image as ImageIcon,
+  Crop,
+  Sun,
+  Contrast,
+  RotateCcw,
 } from 'lucide-react';
 import {
   SelectionState,
@@ -45,6 +52,7 @@ import {
   InspectorTab,
   WallMaterial,
   PlotBoundary,
+  BackgroundImage,
 } from '../../types/cad';
 import { formatDimension, distance, calculatePlotMetrics } from '../../utils/cadMath';
 import { FURNITURE_CATALOG } from '../../utils/furnitureLibrary';
@@ -85,6 +93,11 @@ interface CadInspectorProps {
   onCloseDrawer?: () => void;
   bottomSheetDetent?: 'peek' | 'half' | 'full';
   onBottomSheetDetentChange?: (detent: 'peek' | 'half' | 'full') => void;
+  backgroundImage?: BackgroundImage;
+  onUpdateBackgroundImage?: (bg?: BackgroundImage) => void;
+  onToggleLockLayer?: (layerId: string) => void;
+  onOpenUnderlayCrop?: () => void;
+  onInsertUnderlayImage?: (file: File) => void;
 }
 
 export const TouchStepperInput: React.FC<{
@@ -160,6 +173,11 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
   onCloseDrawer,
   bottomSheetDetent = 'half',
   onBottomSheetDetentChange,
+  backgroundImage,
+  onUpdateBackgroundImage,
+  onToggleLockLayer,
+  onOpenUnderlayCrop,
+  onInsertUnderlayImage,
 }) => {
   const t = getT(language);
   const [activeTab, setActiveTab] = useState<InspectorTab>('properties');
@@ -1429,26 +1447,347 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
 
         {/* ================= TAB 3: EBENEN ================= */}
         {activeTab === 'layers' && (
-          <div className="flex flex-col gap-2">
-            <span className="font-semibold text-stone-800 dark:text-white text-xs">Zeichenebenen</span>
-            <div className="flex flex-col gap-1 border border-stone-200 dark:border-stone-800 rounded-lg p-1 bg-stone-50 dark:bg-stone-850">
-              {layers.map((l) => (
-                <div
-                  key={l.id}
-                  onClick={() => onToggleLayer(l.id)}
-                  className="flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-stone-200/60 dark:hover:bg-stone-800 cursor-pointer text-xs"
-                >
-                  <span className="text-stone-700 dark:text-stone-300 font-medium">{l.name}</span>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-stone-800 dark:text-white text-xs">Zeichenebenen</span>
+                <span className="text-[10px] text-stone-400 font-mono">{layers.length} Ebenen</span>
+              </div>
+
+              <div className="flex flex-col gap-1 border border-stone-200 dark:border-stone-800 rounded-lg p-1 bg-stone-50 dark:bg-stone-850">
+                {layers.map((l) => (
+                  <div
+                    key={l.id}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-md transition-colors text-xs ${
+                      l.id === 'underlay'
+                        ? 'bg-amber-500/10 border border-amber-500/30 font-medium'
+                        : 'hover:bg-stone-200/60 dark:hover:bg-stone-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      {l.id === 'underlay' ? (
+                        <ImageIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      ) : (
+                        <Layers className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      )}
+                      <span className="text-stone-700 dark:text-stone-200 truncate">{l.name}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Lock Toggle */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleLockLayer?.(l.id);
+                        }}
+                        className={`p-1 rounded hover:bg-stone-300 dark:hover:bg-stone-700 transition-colors ${
+                          l.locked ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-stone-400'
+                        }`}
+                        title={l.locked ? 'Ebene entsperren' : 'Ebene sperren'}
+                      >
+                        {l.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                      </button>
+
+                      {/* Visibility Toggle */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleLayer(l.id);
+                        }}
+                        className="p-1 rounded hover:bg-stone-300 dark:hover:bg-stone-700 transition-colors"
+                        title={l.visible ? 'Ebene ausblenden' : 'Ebene einblenden'}
+                      >
+                        {l.visible ? (
+                          <Eye className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        ) : (
+                          <EyeOff className="w-3.5 h-3.5 text-stone-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* SECTION: PLAN-VORLAGE (HINTERGRUND) KONTROLLEN */}
+            {backgroundImage && backgroundImage.url ? (
+              <div className="flex flex-col gap-3 p-3 bg-white dark:bg-stone-900 border border-amber-500/30 rounded-xl shadow-xs">
+                {/* Header with lock status */}
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {l.visible ? (
-                      <Eye className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                    ) : (
-                      <EyeOff className="w-4 h-4 text-stone-400" />
-                    )}
+                    <div className="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                      <ImageIcon className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-xs text-stone-800 dark:text-white">Plan-Vorlage</div>
+                      <div className="text-[10px] text-stone-400">Hintergrundbild zum Nachzeichnen</div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (onUpdateBackgroundImage) {
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          locked: !backgroundImage.locked,
+                        });
+                      }
+                      if (onToggleLockLayer) {
+                        onToggleLockLayer('underlay');
+                      }
+                    }}
+                    className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1.5 transition-colors ${
+                      backgroundImage.locked
+                        ? 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-700'
+                        : 'bg-amber-500 text-white shadow-xs'
+                    }`}
+                    title={backgroundImage.locked ? 'Vorlage entsperren (erlaubt Verschieben & Skalieren)' : 'Vorlage sperren (fixiert Position)'}
+                  >
+                    {backgroundImage.locked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                    <span>{backgroundImage.locked ? 'Gesperrt' : 'Bearbeitbar'}</span>
+                  </button>
+                </div>
+
+                {/* Quick Action Buttons: Zuschneiden, 90° Drehen, Löschen */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  <button
+                    onClick={() => onOpenUnderlayCrop?.()}
+                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-lg text-xs font-medium text-stone-700 dark:text-stone-200 transition-colors"
+                    title="Ausschnitt zuschneiden"
+                  >
+                    <Crop className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Zuschneiden</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (onUpdateBackgroundImage) {
+                        const curRot = backgroundImage.rotationDeg || 0;
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          rotationDeg: (curRot + 90) % 360,
+                        });
+                      }
+                    }}
+                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-lg text-xs font-medium text-stone-700 dark:text-stone-200 transition-colors"
+                    title="90° im Uhrzeigersinn drehen"
+                  >
+                    <RotateCw className="w-3.5 h-3.5 text-blue-500" />
+                    <span>90° Drehen</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (confirm('Möchtest du die Plan-Vorlage entfernen?')) {
+                        onUpdateBackgroundImage?.(undefined);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/60 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 transition-colors"
+                    title="Vorlage entfernen"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Entfernen</span>
+                  </button>
+                </div>
+
+                {/* BILD-ANPASSUNG: Kontrast & Helligkeit & Transparenz */}
+                <div className="border-t border-stone-200 dark:border-stone-800 pt-2 flex flex-col gap-2.5">
+                  <span className="text-[11px] font-semibold text-stone-600 dark:text-stone-300">Darstellung & Filter</span>
+
+                  {/* Kontrast Slider */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-1 text-stone-600 dark:text-stone-400">
+                        <Contrast className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Kontrast</span>
+                      </span>
+                      <span className="font-mono text-stone-500 font-semibold">{backgroundImage.contrast ?? 100}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={40}
+                      max={220}
+                      step={5}
+                      value={backgroundImage.contrast ?? 100}
+                      onChange={(e) => {
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          contrast: parseInt(e.target.value, 10),
+                        });
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none"
+                    />
+                  </div>
+
+                  {/* Helligkeit Slider */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-1 text-stone-600 dark:text-stone-400">
+                        <Sun className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Helligkeit</span>
+                      </span>
+                      <span className="font-mono text-stone-500 font-semibold">{backgroundImage.brightness ?? 100}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={40}
+                      max={200}
+                      step={5}
+                      value={backgroundImage.brightness ?? 100}
+                      onChange={(e) => {
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          brightness: parseInt(e.target.value, 10),
+                        });
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none"
+                    />
+                  </div>
+
+                  {/* Transparenz Slider */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-1 text-stone-600 dark:text-stone-400">
+                        <Eye className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Deckkraft</span>
+                      </span>
+                      <span className="font-mono text-stone-500 font-semibold">{Math.round((backgroundImage.opacity ?? 0.5) * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={10}
+                      max={100}
+                      step={5}
+                      value={Math.round((backgroundImage.opacity ?? 0.5) * 100)}
+                      onChange={(e) => {
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          opacity: parseInt(e.target.value, 10) / 100,
+                        });
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none"
+                    />
+                  </div>
+
+                  {/* Skizzen-Modus & Invertieren Toggles */}
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    <button
+                      onClick={() => {
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          sketchMode: !backgroundImage.sketchMode,
+                        });
+                      }}
+                      className={`px-2 py-1.5 rounded-lg text-[11px] font-medium border flex items-center justify-center gap-1.5 transition-colors ${
+                        backgroundImage.sketchMode
+                          ? 'bg-stone-800 text-white border-stone-700 shadow-xs'
+                          : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                      }`}
+                    >
+                      <span>S/W Skizze</span>
+                      {backgroundImage.sketchMode && <Check className="w-3 h-3 text-emerald-400" />}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          inverted: !backgroundImage.inverted,
+                        });
+                      }}
+                      className={`px-2 py-1.5 rounded-lg text-[11px] font-medium border flex items-center justify-center gap-1.5 transition-colors ${
+                        backgroundImage.inverted
+                          ? 'bg-stone-800 text-white border-stone-700 shadow-xs'
+                          : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700'
+                      }`}
+                    >
+                      <span>Invertieren</span>
+                      {backgroundImage.inverted && <Check className="w-3 h-3 text-emerald-400" />}
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                {/* MAßE & SKALIERUNG */}
+                <div className="border-t border-stone-200 dark:border-stone-800 pt-2 flex flex-col gap-2">
+                  <span className="text-[11px] font-semibold text-stone-600 dark:text-stone-300">Reale Maße im Plan</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-stone-400 font-medium">Breite (m)</label>
+                      <input
+                        type="number"
+                        step={0.1}
+                        min={0.5}
+                        max={100}
+                        value={Math.round((backgroundImage.widthM || 10) * 100) / 100}
+                        onChange={(e) => {
+                          const newW = Math.max(0.5, parseFloat(e.target.value) || 10);
+                          const currentW = backgroundImage.widthM || 10;
+                          const currentH = backgroundImage.heightM || 8;
+                          const ratio = currentH / currentW;
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            widthM: newW,
+                            heightM: Math.round(newW * ratio * 100) / 100,
+                          });
+                        }}
+                        className="w-full bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-2 py-1 text-xs font-mono font-semibold"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-stone-400 font-medium">Höhe (m)</label>
+                      <input
+                        type="number"
+                        step={0.1}
+                        min={0.5}
+                        max={100}
+                        value={Math.round((backgroundImage.heightM || 8) * 100) / 100}
+                        onChange={(e) => {
+                          const newH = Math.max(0.5, parseFloat(e.target.value) || 8);
+                          const currentW = backgroundImage.widthM || 10;
+                          const currentH = backgroundImage.heightM || 8;
+                          const ratio = currentW / currentH;
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            heightM: newH,
+                            widthM: Math.round(newH * ratio * 100) / 100,
+                          });
+                        }}
+                        className="w-full bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-2 py-1 text-xs font-mono font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-stone-400 leading-normal bg-stone-50 dark:bg-stone-850 p-2 rounded-lg border border-stone-200 dark:border-stone-800">
+                    💡 Tipp: Bei entsperrter Vorlage kannst du die Ecken direkt im 2D-Plan anfassen, oder die 2-Punkt-Kalibrierung im Plan-HUD nutzen.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 p-3 bg-stone-50 dark:bg-stone-850 border border-dashed border-stone-300 dark:border-stone-700 rounded-xl text-center">
+                <ImageIcon className="w-6 h-6 text-stone-400 mx-auto" />
+                <span className="text-xs font-semibold text-stone-700 dark:text-stone-300">Keine Vorlage geladen</span>
+                <p className="text-[10px] text-stone-400">
+                  Lade ein Bild oder Foto als Hintergrundebene, um Grundrisse präzise nachzuzeichnen.
+                </p>
+                <label className="mt-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium cursor-pointer transition-colors shadow-xs">
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>Bild als Vorlage wählen...</span>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && onInsertUnderlayImage) {
+                        onInsertUnderlayImage(file);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+            )}
           </div>
         )}
 

@@ -45,6 +45,7 @@ export function createEmptyProject(): CadProject {
       revision: 'Index 0',
     },
     layers: [
+      { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: false },
       { id: 'walls', name: 'Wände & Konstruktion', visible: true, locked: false },
       { id: 'openings', name: 'Türen & Fenster', visible: true, locked: false },
       { id: 'rooms', name: 'Räume & Flächen', visible: true, locked: false },

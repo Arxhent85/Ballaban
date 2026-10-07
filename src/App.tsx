@@ -77,6 +77,8 @@ import { RoofConfigModal } from './components/dialogs/RoofConfigModal';
 import { TouchGestureHelpModal } from './components/dialogs/TouchGestureHelpModal';
 import { AiPlanImportModal } from './components/dialogs/AiPlanImportModal';
 import { VoiceTextCorrectionModal } from './components/dialogs/VoiceTextCorrectionModal';
+import { UnderlayCropModal } from './components/dialogs/UnderlayCropModal';
+import { loadImageFromFile } from './utils/imageProcessing';
 
 export default function App() {
   // Project state: default to newly designed 6x8m Holiday House
@@ -156,6 +158,7 @@ export default function App() {
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showRoofModal, setShowRoofModal] = useState(false);
+  const [showUnderlayCropModal, setShowUnderlayCropModal] = useState(false);
 
   // Tool options state (Wall, Door, Window)
   const [wallMode, setWallMode] = useState<'exterior' | 'interior'>('exterior');
@@ -515,9 +518,16 @@ export default function App() {
     });
   }, [activeFloor]);
 
-  // Auto zoom-to-fit on initial mount
+  // Auto zoom-to-fit on initial mount and ensure underlay layer exists
   useEffect(() => {
     const timer = setTimeout(handleZoomFit, 150);
+    setProject((prev) => {
+      if (prev.layers.some((l) => l.id === 'underlay')) return prev;
+      return {
+        ...prev,
+        layers: [...prev.layers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: false }],
+      };
+    });
     return () => clearTimeout(timer);
   }, []);
 
@@ -545,11 +555,90 @@ export default function App() {
   }, []);
 
   const handleUpdateBackgroundImage = useCallback((bg?: BackgroundImage) => {
+    let nextLayers = project.layers;
+    if (bg) {
+      const hasUnderlay = project.layers.some((l) => l.id === 'underlay');
+      if (hasUnderlay) {
+        nextLayers = project.layers.map((l) =>
+          l.id === 'underlay' ? { ...l, locked: !!bg.locked, visible: bg.visible !== false } : l
+        );
+      } else {
+        nextLayers = [
+          ...project.layers,
+          { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: bg.visible !== false, locked: !!bg.locked },
+        ];
+      }
+    }
     updateProject({
       ...project,
+      layers: nextLayers,
       backgroundImage: bg,
     });
   }, [project, updateProject]);
+
+  const handleToggleLockLayer = useCallback((layerId: string) => {
+    const isUnderlay = layerId === 'underlay';
+    const target = project.layers.find((l) => l.id === layerId);
+    const newLocked = target ? !target.locked : true;
+
+    const nextLayers = project.layers.map((l) =>
+      l.id === layerId ? { ...l, locked: newLocked } : l
+    );
+
+    let nextBg = project.backgroundImage;
+    if (isUnderlay && nextBg) {
+      nextBg = { ...nextBg, locked: newLocked };
+    }
+
+    updateProject({
+      ...project,
+      layers: nextLayers,
+      backgroundImage: nextBg,
+    });
+  }, [project, updateProject]);
+
+  const handleInsertUnderlayImage = useCallback(async (file: File) => {
+    try {
+      const items = await loadImageFromFile(file, 'floorplan');
+      if (items.length === 0) return;
+      const item = items[0];
+
+      const defaultWidthM = 10.0;
+      const aspect = item.height && item.width ? item.height / item.width : 0.75;
+      const heightM = Math.round(defaultWidthM * aspect * 100) / 100;
+
+      const newBg: BackgroundImage = {
+        url: item.dataUrl,
+        originalUrl: item.dataUrl,
+        x: 0,
+        y: 0,
+        widthM: defaultWidthM,
+        heightM: heightM,
+        opacity: 0.5,
+        contrast: 100,
+        brightness: 100,
+        rotationDeg: 0,
+        locked: false,
+        visible: true,
+      };
+
+      const hasUnderlayLayer = project.layers.some((l) => l.id === 'underlay');
+      const nextLayers = hasUnderlayLayer
+        ? project.layers.map((l) => (l.id === 'underlay' ? { ...l, visible: true, locked: false } : l))
+        : [...project.layers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: false }];
+
+      updateProject({
+        ...project,
+        layers: nextLayers,
+        backgroundImage: newBg,
+      });
+
+      setViewMode('2d');
+      setTimeout(handleZoomFit, 100);
+    } catch (err: any) {
+      alert('Fehler beim Laden der Plan-Vorlage: ' + (err?.message || err));
+    }
+  }, [project, updateProject, handleZoomFit]);
 
   const handleImportPlan = useCallback((imported: {
     walls: Wall[];
@@ -572,15 +661,23 @@ export default function App() {
       widthM: imported.backgroundWidthM,
       heightM: imported.backgroundHeightM,
       opacity: 0.40,
-      locked: true,
+      locked: false,
     } : project.backgroundImage;
 
     if (imported.target === 'underlay_only') {
+      const hasUnderlay = project.layers.some((l) => l.id === 'underlay');
+      const nextLayers = hasUnderlay
+        ? project.layers.map((l) => (l.id === 'underlay' ? { ...l, visible: true, locked: false } : l))
+        : [...project.layers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: false }];
+
       updateProject({
         ...project,
-        backgroundImage: bgImage,
+        layers: nextLayers,
+        backgroundImage: bgImage ? { ...bgImage, locked: false } : undefined,
       });
       setShowAiImport(false);
+      setViewMode('2d');
+      setTimeout(handleZoomFit, 100);
       return;
     }
 
@@ -1821,6 +1918,7 @@ export default function App() {
         onOpenGestureHelp={() => setShowGestureHelp(true)}
         onOpenAiImport={() => setShowAiImport(true)}
         onOpenVoiceCorrection={() => setShowVoiceCorrection(true)}
+        onInsertUnderlayImage={handleInsertUnderlayImage}
       />
 
       {/* 2. MAIN WORKSPACE */}
@@ -2123,6 +2221,11 @@ export default function App() {
           onCloseDrawer={() => setIsDrawerOpen(false)}
           bottomSheetDetent={bottomSheetDetent}
           onBottomSheetDetentChange={setBottomSheetDetent}
+          backgroundImage={project.backgroundImage}
+          onUpdateBackgroundImage={handleUpdateBackgroundImage}
+          onToggleLockLayer={handleToggleLockLayer}
+          onOpenUnderlayCrop={() => setShowUnderlayCropModal(true)}
+          onInsertUnderlayImage={handleInsertUnderlayImage}
         />
       </div>
 
@@ -2350,6 +2453,22 @@ export default function App() {
           } catch {}
           setShowHomeScreenGuide(false);
         }}
+      />
+
+      <UnderlayCropModal
+        isOpen={showUnderlayCropModal}
+        onClose={() => setShowUnderlayCropModal(false)}
+        backgroundImage={project.backgroundImage}
+        onApplyCrop={(crop) => {
+          if (project.backgroundImage) {
+            handleUpdateBackgroundImage({
+              ...project.backgroundImage,
+              crop,
+            });
+          }
+          setShowUnderlayCropModal(false);
+        }}
+        language={language}
       />
 
       {/* CONFIRMATION DIALOG: LEERE NEUE SEITE / ALLES LÖSCHEN */}

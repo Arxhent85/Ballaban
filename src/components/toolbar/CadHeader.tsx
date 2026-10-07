@@ -46,6 +46,7 @@ import {
   CheckCircle2,
   Eye,
   Mic,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { ViewMode, Language, CadProject, Floor } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -84,6 +85,7 @@ interface CadHeaderProps {
   onOpenGestureHelp?: () => void;
   onOpenAiImport?: () => void;
   onOpenVoiceCorrection?: () => void;
+  onInsertUnderlayImage?: (file: File) => void;
 }
 
 export const CadHeader: React.FC<CadHeaderProps> = ({
@@ -120,9 +122,11 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   onOpenGestureHelp,
   onOpenAiImport,
   onOpenVoiceCorrection,
+  onInsertUnderlayImage,
 }) => {
   const t = getT(language);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const underlayFileInputRef = useRef<HTMLInputElement>(null);
 
   // Hamburger Menu state
   const [showMainMenu, setShowMainMenu] = useState(false);
@@ -263,6 +267,37 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
                     <span className="text-[10px] text-stone-400">Foto, Scan oder PDF in bearbeitbaren CAD-Plan wandeln</span>
                   </div>
                 </button>
+              )}
+
+              {onInsertUnderlayImage && (
+                <>
+                  <input
+                    type="file"
+                    ref={underlayFileInputRef}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        onInsertUnderlayImage(file);
+                      }
+                      e.target.value = '';
+                    }}
+                    accept="image/*,.pdf"
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => {
+                      underlayFileInputRef.current?.click();
+                      setShowMainMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center gap-2.5 text-stone-800 dark:text-stone-200 cursor-pointer"
+                  >
+                    <ImageIcon className="w-4 h-4 text-emerald-500" />
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">Bild als Vorlage einfügen (ohne KI)...</span>
+                      <span className="text-[10px] text-stone-400">Hintergrund-Plan manuell skalieren, zuschneiden, nachzeichnen</span>
+                    </div>
+                  </button>
+                </>
               )}
 
               {onOpenVoiceCorrection && (

@@ -314,14 +314,30 @@ export interface GuideLine {
   position: number; // Coordinate in meters
 }
 
+export interface BackgroundImageCrop {
+  x: number; // 0..1 (relative left in original image)
+  y: number; // 0..1 (relative top in original image)
+  width: number; // 0..1 (relative width in original image)
+  height: number; // 0..1 (relative height in original image)
+}
+
 export interface BackgroundImage {
+  id?: string;
   url: string;
-  x: number;
-  y: number;
-  widthM: number;
-  heightM: number;
-  opacity: number;
-  locked: boolean;
+  originalUrl?: string; // original source image before crop or adjustments
+  x: number; // in meters (world origin X)
+  y: number; // in meters (world origin Y)
+  widthM: number; // in meters (world width)
+  heightM: number; // in meters (world height)
+  opacity: number; // 0.05 .. 1.0 (default 0.40)
+  locked: boolean; // whether template position & scale are locked
+  contrast?: number; // 50 .. 200 %, default 100
+  brightness?: number; // 50 .. 200 %, default 100
+  rotationDeg?: number; // 0, 90, 180, 270 (or any angle)
+  sketchMode?: boolean; // sketch mode / high-pass contrast filter
+  inverted?: boolean; // color inversion
+  crop?: BackgroundImageCrop; // sub-rect of image to render
+  visible?: boolean; // whether visible
 }
 
 export interface LayerState {

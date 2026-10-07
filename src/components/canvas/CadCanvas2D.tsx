@@ -84,7 +84,21 @@ import {
   MousePointer,
   Scissors,
   Image as ImageIcon,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff,
+  Crop,
+  Sliders,
+  ChevronDown,
+  ChevronUp,
+  Sun,
+  Contrast,
+  Maximize2,
+  Move,
+  Ruler,
 } from 'lucide-react';
+import { UnderlayCropModal } from '../dialogs/UnderlayCropModal';
 
 interface CadCanvas2DProps {
   walls: Wall[];
@@ -406,6 +420,17 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   // Dragging plot vertex or entire plot
   const [draggingPlotVertex, setDraggingPlotVertex] = useState<number | null>(null);
   const [isDraggingPlot, setIsDraggingPlot] = useState<boolean>(false);
+
+  // Underlay (Plan-Vorlage) Manipulation & Calibration states
+  const [draggingUnderlayHandle, setDraggingUnderlayHandle] = useState<'move' | 'nw' | 'ne' | 'se' | 'sw' | null>(null);
+  const underlayDragStartRef = useRef<{ clientX: number; clientY: number; startX: number; startY: number; startWM: number; startHM: number } | null>(null);
+  const [isUnderlayHudExpanded, setIsUnderlayHudExpanded] = useState<boolean>(false);
+  const [showCropModal, setShowCropModal] = useState<boolean>(false);
+  const [isCalibratingUnderlay, setIsCalibratingUnderlay] = useState<boolean>(false);
+  const [underlayCalibPointA, setUnderlayCalibPointA] = useState<Point2D | null>(null);
+  const [underlayCalibPointB, setUnderlayCalibPointB] = useState<Point2D | null>(null);
+  const [showUnderlayCalibPrompt, setShowUnderlayCalibPrompt] = useState<boolean>(false);
+  const [underlayCalibInputM, setUnderlayCalibInputM] = useState<string>('5.00');
 
   // Coordinate conversions
   const worldToScreen = useCallback(
@@ -813,16 +838,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     // ==========================================
     // 0.5 BACKGROUND IMAGE / PLAN UNDERLAY (VORLAGE)
     // ==========================================
-    if (backgroundImage && backgroundImage.url) {
+    const underlayLayer = layers.find((l) => l.id === 'underlay');
+    const isUnderlayVisible = underlayLayer ? underlayLayer.visible : true;
+    const isUnderlayLayerLocked = underlayLayer ? underlayLayer.locked : false;
+    const isUnderlayActive = backgroundImage && backgroundImage.url && isUnderlayVisible && (backgroundImage.visible !== false);
+
+    if (isUnderlayActive && backgroundImage) {
       let cached = bgImgCacheRef.current;
-      if (!cached || cached.url !== backgroundImage.url) {
+      const sourceUrl = backgroundImage.originalUrl || backgroundImage.url;
+      if (!cached || cached.url !== sourceUrl) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.src = backgroundImage.url;
+        img.src = sourceUrl;
         img.onload = () => {
           setBgImgTrigger((v) => v + 1);
         };
-        bgImgCacheRef.current = { url: backgroundImage.url, img };
+        bgImgCacheRef.current = { url: sourceUrl, img };
       } else if (cached.img.complete && cached.img.naturalWidth > 0) {
         const sp1 = worldToScreen({ x: backgroundImage.x, y: backgroundImage.y });
         const sp2 = worldToScreen({
@@ -834,9 +865,134 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
         ctx.save();
         ctx.globalAlpha = Math.max(0.05, Math.min(1, backgroundImage.opacity ?? 0.45));
-        ctx.drawImage(cached.img, sp1.x, sp1.y, w, h);
+
+        // Filters: Contrast, Brightness, Sketch Mode, Inversion
+        const filterTokens: string[] = [];
+        if (backgroundImage.contrast && backgroundImage.contrast !== 100) {
+          filterTokens.push(`contrast(${backgroundImage.contrast}%)`);
+        }
+        if (backgroundImage.brightness && backgroundImage.brightness !== 100) {
+          filterTokens.push(`brightness(${backgroundImage.brightness}%)`);
+        }
+        if (backgroundImage.sketchMode) {
+          filterTokens.push('grayscale(100%) contrast(200%)');
+        }
+        if (backgroundImage.inverted) {
+          filterTokens.push('invert(100%)');
+        }
+        if (filterTokens.length > 0) {
+          ctx.filter = filterTokens.join(' ');
+        }
+
+        // Rotation around center
+        const rot = ((backgroundImage.rotationDeg || 0) % 360 + 360) % 360;
+        if (rot !== 0) {
+          const cx = sp1.x + w / 2;
+          const cy = sp1.y + h / 2;
+          ctx.translate(cx, cy);
+          ctx.rotate((rot * Math.PI) / 180);
+          ctx.translate(-cx, -cy);
+        }
+
+        // Draw cropped or full
+        if (backgroundImage.crop) {
+          const natW = cached.img.naturalWidth;
+          const natH = cached.img.naturalHeight;
+          const sx = Math.max(0, backgroundImage.crop.x * natW);
+          const sy = Math.max(0, backgroundImage.crop.y * natH);
+          const sw = Math.min(natW - sx, backgroundImage.crop.width * natW);
+          const sh = Math.min(natH - sy, backgroundImage.crop.height * natH);
+          ctx.drawImage(cached.img, sx, sy, sw, sh, sp1.x, sp1.y, w, h);
+        } else {
+          ctx.drawImage(cached.img, sp1.x, sp1.y, w, h);
+        }
+
         ctx.restore();
+
+        // 2. If UNLOCKED, draw selection outline, dimensions, and 4 corner handles
+        if (!backgroundImage.locked && !isUnderlayLayerLocked) {
+          ctx.save();
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(sp1.x, sp1.y, w, h);
+          ctx.setLineDash([]);
+
+          // Dimension badge top
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(`${(backgroundImage.widthM || 10).toFixed(2)} m`, sp1.x + w / 2, sp1.y - 4);
+
+          // Dimension badge right
+          ctx.save();
+          ctx.translate(sp1.x + w + 14, sp1.y + h / 2);
+          ctx.rotate(Math.PI / 2);
+          ctx.fillText(`${(backgroundImage.heightM || 10).toFixed(2)} m`, 0, 0);
+          ctx.restore();
+
+          // Corner handles: NW, NE, SE, SW
+          const corners = [
+            { id: 'nw', x: sp1.x, y: sp1.y },
+            { id: 'ne', x: sp1.x + w, y: sp1.y },
+            { id: 'se', x: sp1.x + w, y: sp1.y + h },
+            { id: 'sw', x: sp1.x, y: sp1.y + h },
+          ];
+
+          for (const c of corners) {
+            ctx.fillStyle = '#f59e0b';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+
+          ctx.restore();
+        }
       }
+    }
+
+    // Calibration Line & Points (2-Punkte Referenzmaß)
+    if (underlayCalibPointA) {
+      const sa = worldToScreen(underlayCalibPointA);
+      ctx.save();
+      ctx.fillStyle = '#ef4444';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(sa.x, sa.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (underlayCalibPointB) {
+      const sb = worldToScreen(underlayCalibPointB);
+      ctx.save();
+      ctx.fillStyle = '#ef4444';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(sb.x, sb.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (underlayCalibPointA && underlayCalibPointB) {
+      const sa = worldToScreen(underlayCalibPointA);
+      const sb = worldToScreen(underlayCalibPointB);
+      ctx.save();
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(sa.x, sa.y);
+      ctx.lineTo(sb.x, sb.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
     }
 
     // ==========================================
@@ -2574,6 +2730,17 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
 
+    // TOOL: UNDERLAY 2-POINT SCALE CALIBRATION
+    if (isCalibratingUnderlay) {
+      if (!underlayCalibPointA) {
+        setUnderlayCalibPointA(rawWorld);
+      } else if (!underlayCalibPointB) {
+        setUnderlayCalibPointB(rawWorld);
+        setShowUnderlayCalibPrompt(true);
+      }
+      return;
+    }
+
     // TOOL: SPLIT (Wand trennen an geklickter Position)
     if (activeTool === 'split') {
       const nearWall = findWallNearPoint(rawWorld, Math.max(0.4, 25 / zoom));
@@ -2924,6 +3091,63 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           draggedIdsRef.current = ['plot'];
           setIsDraggingSelection(true);
           setDragSelectionStart(rawWorld);
+          return;
+        }
+      }
+
+      // 9.5 Underlay (Plan-Vorlage) selection / manipulation (when unlocked)
+      const underlayLayer = layers.find((l) => l.id === 'underlay');
+      const isUnderlayVisible = underlayLayer ? underlayLayer.visible : true;
+      const isUnderlayLayerLocked = underlayLayer ? underlayLayer.locked : false;
+      const isUnderlayInteractive = backgroundImage && backgroundImage.url && isUnderlayVisible && (backgroundImage.visible !== false) && !backgroundImage.locked && !isUnderlayLayerLocked;
+
+      if (isUnderlayInteractive && backgroundImage) {
+        const sp1 = worldToScreen({ x: backgroundImage.x, y: backgroundImage.y });
+        const sp2 = worldToScreen({
+          x: backgroundImage.x + (backgroundImage.widthM || 10),
+          y: backgroundImage.y + (backgroundImage.heightM || 10),
+        });
+        const w = sp2.x - sp1.x;
+        const h = sp2.y - sp1.y;
+
+        const screenClick = {
+          x: e.clientX - canvas.getBoundingClientRect().left,
+          y: e.clientY - canvas.getBoundingClientRect().top,
+        };
+
+        // Check 4 corner resize handles
+        const corners = [
+          { id: 'nw', x: sp1.x, y: sp1.y },
+          { id: 'ne', x: sp1.x + w, y: sp1.y },
+          { id: 'se', x: sp1.x + w, y: sp1.y + h },
+          { id: 'sw', x: sp1.x, y: sp1.y + h },
+        ];
+        const hitHandle = corners.find((c) => Math.hypot(screenClick.x - c.x, screenClick.y - c.y) <= 24);
+
+        if (hitHandle) {
+          setDraggingUnderlayHandle(hitHandle.id as any);
+          underlayDragStartRef.current = {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            startX: backgroundImage.x,
+            startY: backgroundImage.y,
+            startWM: backgroundImage.widthM || 10,
+            startHM: backgroundImage.heightM || 10,
+          };
+          return;
+        }
+
+        // Check inside body
+        if (screenClick.x >= sp1.x && screenClick.x <= sp1.x + w && screenClick.y >= sp1.y && screenClick.y <= sp1.y + h) {
+          setDraggingUnderlayHandle('move');
+          underlayDragStartRef.current = {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            startX: backgroundImage.x,
+            startY: backgroundImage.y,
+            startWM: backgroundImage.widthM || 10,
+            startHM: backgroundImage.heightM || 10,
+          };
           return;
         }
       }
@@ -3379,6 +3603,63 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       }, 400);
     }
 
+    // Dragging / Scaling Underlay (Plan-Vorlage)
+    if (draggingUnderlayHandle && underlayDragStartRef.current && backgroundImage && onUpdateBackgroundImage) {
+      const dxM = (e.clientX - underlayDragStartRef.current.clientX) / zoom;
+      const dyM = (e.clientY - underlayDragStartRef.current.clientY) / zoom;
+      const init = underlayDragStartRef.current;
+      const aspect = init.startHM / init.startWM;
+
+      if (draggingUnderlayHandle === 'move') {
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          x: Math.round((init.startX + dxM) * 100) / 100,
+          y: Math.round((init.startY + dyM) * 100) / 100,
+        });
+      } else if (draggingUnderlayHandle === 'se') {
+        const newW = Math.max(0.5, init.startWM + dxM);
+        const newH = newW * aspect;
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          widthM: Math.round(newW * 100) / 100,
+          heightM: Math.round(newH * 100) / 100,
+        });
+      } else if (draggingUnderlayHandle === 'sw') {
+        const newW = Math.max(0.5, init.startWM - dxM);
+        const newH = newW * aspect;
+        const newX = init.startX + (init.startWM - newW);
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          x: Math.round(newX * 100) / 100,
+          widthM: Math.round(newW * 100) / 100,
+          heightM: Math.round(newH * 100) / 100,
+        });
+      } else if (draggingUnderlayHandle === 'ne') {
+        const newW = Math.max(0.5, init.startWM + dxM);
+        const newH = newW * aspect;
+        const newY = init.startY + (init.startHM - newH);
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          y: Math.round(newY * 100) / 100,
+          widthM: Math.round(newW * 100) / 100,
+          heightM: Math.round(newH * 100) / 100,
+        });
+      } else if (draggingUnderlayHandle === 'nw') {
+        const newW = Math.max(0.5, init.startWM - dxM);
+        const newH = newW * aspect;
+        const newX = init.startX + (init.startWM - newW);
+        const newY = init.startY + (init.startHM - newH);
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          x: Math.round(newX * 100) / 100,
+          y: Math.round(newY * 100) / 100,
+          widthM: Math.round(newW * 100) / 100,
+          heightM: Math.round(newH * 100) / 100,
+        });
+      }
+      return;
+    }
+
     // Dragging selection (translates all selected objects simultaneously)
     if (isDraggingSelection && dragSelectionStart) {
       const dx = rawWorld.x - dragSelectionStart.x;
@@ -3601,6 +3882,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     quickShapeStrokeRef.current = [];
 
     setIsPanning(false);
+    if (draggingUnderlayHandle) {
+      setDraggingUnderlayHandle(null);
+      underlayDragStartRef.current = null;
+      if (onCommitProjectChange) {
+        onCommitProjectChange();
+      }
+    }
     if (isDraggingSelection && onCommitProjectChange) {
       onCommitProjectChange();
     }
@@ -3854,13 +4142,17 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   };
 
   const cursorStyle = useMemo(() => {
+    if (isCalibratingUnderlay) return 'crosshair';
+    if (draggingUnderlayHandle === 'move') return 'grabbing';
+    if (draggingUnderlayHandle === 'nw' || draggingUnderlayHandle === 'se') return 'nwse-resize';
+    if (draggingUnderlayHandle === 'ne' || draggingUnderlayHandle === 'sw') return 'nesw-resize';
     if (isPanning || activeTool === 'hand') return 'grab';
     if (activeTool === 'wall' || activeTool === 'rect_room' || activeTool === 'dimension' || activeTool === 'plot') return 'crosshair';
     if (activeTool === 'eraser') return 'not-allowed';
     if (isDraggingSelection) return 'grabbing';
     if (activeTool === 'select' && isHoveringSelection) return 'move';
     return 'default';
-  }, [isPanning, activeTool, isDraggingSelection, isHoveringSelection]);
+  }, [isCalibratingUnderlay, draggingUnderlayHandle, isPanning, activeTool, isDraggingSelection, isHoveringSelection]);
 
   return (
     <div
@@ -4114,48 +4406,437 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         </div>
       )}
 
-      {/* Floating Plan Underlay HUD (Vorlage mit Deckkraft & Löschen) */}
-      {backgroundImage && (
-        <div
-          onPointerDown={(e) => e.stopPropagation()}
-          className="absolute bottom-16 left-4 bg-stone-900/90 dark:bg-stone-900/95 backdrop-blur border border-stone-800 rounded-xl px-3 py-2 shadow-2xl flex items-center gap-3 text-xs text-stone-200 z-30 select-none animate-in fade-in slide-in-from-bottom-2 duration-150"
-        >
-          <div className="flex items-center gap-1.5 font-semibold text-amber-400">
-            <ImageIcon className="w-4 h-4" />
-            <span>Plan-Vorlage</span>
+      {/* 2-Point Underlay Calibration Banner & Prompt */}
+      {isCalibratingUnderlay && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-stone-900/95 border border-amber-500 text-amber-300 px-4 py-2 rounded-2xl shadow-2xl z-50 flex items-center gap-3 text-xs animate-in fade-in duration-150">
+          <Ruler className="w-4 h-4 text-amber-400 animate-pulse" />
+          <span>
+            {!underlayCalibPointA
+              ? 'Tippen Sie den 1. Punkt der Referenzstrecke auf dem Plan an (z. B. Start einer Wand)'
+              : 'Tippen Sie den 2. Punkt der Referenzstrecke an'}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setIsCalibratingUnderlay(false);
+              setUnderlayCalibPointA(null);
+              setUnderlayCalibPointB(null);
+            }}
+            className="p-1 text-stone-400 hover:text-white rounded cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {showUnderlayCalibPrompt && underlayCalibPointA && underlayCalibPointB && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 bg-stone-900/95 border border-stone-700 text-white p-4 rounded-2xl shadow-2xl z-50 flex flex-col gap-3 text-xs max-w-sm w-full mx-4 animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center gap-2 font-bold text-amber-400">
+            <Ruler className="w-4 h-4" />
+            <span>Referenzmaß für Vorlage eingeben</span>
           </div>
+          <p className="text-stone-300 text-[11px] leading-relaxed">
+            Wie lang ist die gewählte Strecke in der Realität? (z. B. eine 5.0m oder 6.0m Wand)
+          </p>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-stone-400 font-mono w-7 text-right">
-              {Math.round((backgroundImage.opacity ?? 0.4) * 100)}%
-            </span>
             <input
-              type="range"
-              min="0.05"
-              max="1"
-              step="0.05"
-              value={backgroundImage.opacity ?? 0.4}
-              onChange={(e) => {
-                if (onUpdateBackgroundImage) {
+              type="number"
+              step="0.1"
+              min="0.1"
+              max="500"
+              value={underlayCalibInputM}
+              onChange={(e) => setUnderlayCalibInputM(e.target.value)}
+              className="bg-stone-950 border border-stone-700 rounded-lg px-3 py-1.5 text-white font-bold w-32 text-right font-mono"
+            />
+            <span className="font-mono text-stone-400">Meter</span>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setShowUnderlayCalibPrompt(false);
+                setIsCalibratingUnderlay(false);
+                setUnderlayCalibPointA(null);
+                setUnderlayCalibPointB(null);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-750 text-stone-300 cursor-pointer"
+            >
+              Abbrechen
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const measured = distance(underlayCalibPointA, underlayCalibPointB);
+                const target = parseFloat(underlayCalibInputM);
+                if (measured > 0.05 && target > 0 && backgroundImage && onUpdateBackgroundImage) {
+                  const factor = target / measured;
+                  const newW = Math.round((backgroundImage.widthM || 10) * factor * 100) / 100;
+                  const newH = Math.round((backgroundImage.heightM || 10) * factor * 100) / 100;
                   onUpdateBackgroundImage({
                     ...backgroundImage,
-                    opacity: parseFloat(e.target.value),
+                    widthM: newW,
+                    heightM: newH,
                   });
                 }
+                setShowUnderlayCalibPrompt(false);
+                setIsCalibratingUnderlay(false);
+                setUnderlayCalibPointA(null);
+                setUnderlayCalibPointB(null);
               }}
-              className="w-20 accent-amber-500 cursor-pointer h-1.5 bg-stone-700 rounded-lg"
-              title="Deckkraft der Vorlage anpassen"
-            />
-          </div>
-          {onUpdateBackgroundImage && (
-            <button
-              onClick={() => onUpdateBackgroundImage(undefined)}
-              title="Vorlage entfernen"
-              className="p-1 text-stone-400 hover:text-red-400 hover:bg-stone-800 rounded transition-colors cursor-pointer"
+              className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 font-bold text-white cursor-pointer"
             >
-              <X className="w-3.5 h-3.5" />
+              Maßstab übernehmen
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Plan Underlay HUD (Vorlage mit Kontrast, Größe, Position, Zuschnitt & Sperre) */}
+      {backgroundImage && backgroundImage.url && (
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute bottom-16 left-4 bg-stone-900/95 dark:bg-stone-900/98 backdrop-blur-md border border-stone-800 rounded-2xl shadow-2xl flex flex-col gap-2.5 text-xs text-stone-200 z-30 select-none animate-in fade-in slide-in-from-bottom-2 duration-150 max-w-sm w-auto overflow-hidden p-3"
+        >
+          {/* Top Bar / Header */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 font-bold text-amber-400">
+              <ImageIcon className="w-4 h-4" />
+              <span>Plan-Vorlage</span>
+              <span className="text-[10px] font-normal text-stone-400">(Hintergrund)</span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {/* Lock / Unlock Toggle Button */}
+              {onUpdateBackgroundImage && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onUpdateBackgroundImage({
+                      ...backgroundImage,
+                      locked: !backgroundImage.locked,
+                    })
+                  }
+                  className={`px-2 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                    backgroundImage.locked
+                      ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
+                      : 'bg-amber-950/60 border-amber-500 text-amber-300 animate-pulse'
+                  }`}
+                  title={
+                    backgroundImage.locked
+                      ? 'Vorlage ist fixiert. Klicken zum Entsperren & Positionieren'
+                      : 'Vorlage ist entsperrt. Klicken zum Fixieren/Sperren'
+                  }
+                >
+                  {backgroundImage.locked ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Fixiert</span>
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Verschiebbar</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Expand / Collapse Button */}
+              <button
+                type="button"
+                onClick={() => setIsUnderlayHudExpanded(!isUnderlayHudExpanded)}
+                className="p-1 rounded-lg hover:bg-stone-800 text-stone-400 hover:text-white transition-colors cursor-pointer"
+                title={isUnderlayHudExpanded ? 'Details einklappen' : 'Details ausklappen'}
+              >
+                {isUnderlayHudExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              </button>
+
+              {/* Remove Underlay */}
+              {onUpdateBackgroundImage && (
+                <button
+                  type="button"
+                  onClick={() => onUpdateBackgroundImage(undefined)}
+                  title="Vorlage entfernen"
+                  className="p-1 text-stone-400 hover:text-red-400 hover:bg-stone-800 rounded transition-colors cursor-pointer ml-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Slider: Opacity (always visible in compact mode) */}
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <span className="text-[11px] text-stone-400 flex items-center gap-1">
+              <Sun className="w-3.5 h-3.5 text-amber-400/80" />
+              <span>Deckkraft:</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="0.05"
+                max="1"
+                step="0.05"
+                value={backgroundImage.opacity ?? 0.45}
+                onChange={(e) => {
+                  if (onUpdateBackgroundImage) {
+                    onUpdateBackgroundImage({
+                      ...backgroundImage,
+                      opacity: parseFloat(e.target.value),
+                    });
+                  }
+                }}
+                className="w-24 accent-amber-500 cursor-pointer h-1.5 bg-stone-700 rounded-lg"
+              />
+              <span className="text-[11px] text-stone-300 font-mono w-7 text-right">
+                {Math.round((backgroundImage.opacity ?? 0.45) * 100)}%
+              </span>
+            </div>
+          </div>
+
+          {/* Expanded Controls: Size, Contrast, Brightness, Crop, 2-Point Scale */}
+          {isUnderlayHudExpanded && (
+            <div className="flex flex-col gap-3 pt-2 border-t border-stone-800 text-[11px] animate-in fade-in duration-150">
+              {/* SECTION: Maße & Skalierung */}
+              <div className="bg-stone-950/70 p-2.5 rounded-xl border border-stone-800 flex flex-col gap-2">
+                <span className="font-semibold text-stone-300">Maße der Vorlage (Meter):</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-stone-400">Breite:</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="200"
+                      value={backgroundImage.widthM || 10}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (val > 0 && onUpdateBackgroundImage) {
+                          const curW = backgroundImage.widthM || 10;
+                          const curH = backgroundImage.heightM || 10;
+                          const aspect = curH / curW;
+                          onUpdateBackgroundImage({
+                            ...backgroundImage,
+                            widthM: val,
+                            heightM: Math.round(val * aspect * 100) / 100,
+                          });
+                        }
+                      }}
+                      className="w-18 bg-stone-900 border border-stone-700 rounded px-1.5 py-0.5 text-white font-mono font-bold text-right"
+                    />
+                    <span className="text-stone-500">m</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-stone-400">Höhe:</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="200"
+                      value={backgroundImage.heightM || 10}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (val > 0 && onUpdateBackgroundImage) {
+                          const curW = backgroundImage.widthM || 10;
+                          const curH = backgroundImage.heightM || 10;
+                          const aspect = curW / curH;
+                          onUpdateBackgroundImage({
+                            ...backgroundImage,
+                            heightM: val,
+                            widthM: Math.round(val * aspect * 100) / 100,
+                          });
+                        }
+                      }}
+                      className="w-18 bg-stone-900 border border-stone-700 rounded px-1.5 py-0.5 text-white font-mono font-bold text-right"
+                    />
+                    <span className="text-stone-500">m</span>
+                  </div>
+                </div>
+
+                {/* 2-Point Scale Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCalibratingUnderlay(true);
+                    setUnderlayCalibPointA(null);
+                    setUnderlayCalibPointB(null);
+                  }}
+                  className="w-full mt-1 py-1.5 px-2 bg-stone-850 hover:bg-stone-800 border border-stone-700 text-stone-200 rounded-lg flex items-center justify-center gap-1.5 font-medium transition-colors cursor-pointer"
+                >
+                  <Ruler className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Maßstab mit 2 Punkten anpassen</span>
+                </button>
+              </div>
+
+              {/* SECTION: Kontrast & Helligkeit */}
+              <div className="bg-stone-950/70 p-2.5 rounded-xl border border-stone-800 flex flex-col gap-2">
+                <span className="font-semibold text-stone-300">Lesbarkeit & Kontrast:</span>
+
+                {/* Kontrast */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-stone-400 flex items-center gap-1">
+                    <Contrast className="w-3 h-3 text-amber-400" />
+                    <span>Kontrast:</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="50"
+                      max="200"
+                      value={backgroundImage.contrast ?? 100}
+                      onChange={(e) => {
+                        if (onUpdateBackgroundImage) {
+                          onUpdateBackgroundImage({
+                            ...backgroundImage,
+                            contrast: parseInt(e.target.value, 10),
+                          });
+                        }
+                      }}
+                      className="w-20 accent-amber-500 cursor-pointer h-1.5 bg-stone-700 rounded-lg"
+                    />
+                    <span className="text-[10px] text-stone-400 font-mono w-7 text-right">
+                      {backgroundImage.contrast ?? 100}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Helligkeit */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-stone-400 flex items-center gap-1">
+                    <Sun className="w-3 h-3 text-amber-400" />
+                    <span>Helligkeit:</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="50"
+                      max="200"
+                      value={backgroundImage.brightness ?? 100}
+                      onChange={(e) => {
+                        if (onUpdateBackgroundImage) {
+                          onUpdateBackgroundImage({
+                            ...backgroundImage,
+                            brightness: parseInt(e.target.value, 10),
+                          });
+                        }
+                      }}
+                      className="w-20 accent-amber-500 cursor-pointer h-1.5 bg-stone-700 rounded-lg"
+                    />
+                    <span className="text-[10px] text-stone-400 font-mono w-7 text-right">
+                      {backgroundImage.brightness ?? 100}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Filter buttons: Skizzen-Modus, Drehen, Invertieren */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onUpdateBackgroundImage) {
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          sketchMode: !backgroundImage.sketchMode,
+                        });
+                      }
+                    }}
+                    className={`py-1 px-1.5 rounded-lg border text-[10px] font-semibold text-center transition-colors cursor-pointer ${
+                      backgroundImage.sketchMode
+                        ? 'bg-amber-600 border-amber-500 text-white'
+                        : 'bg-stone-900 border-stone-700 text-stone-300 hover:bg-stone-850'
+                    }`}
+                  >
+                    Skizze (S/W)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onUpdateBackgroundImage) {
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          inverted: !backgroundImage.inverted,
+                        });
+                      }
+                    }}
+                    className={`py-1 px-1.5 rounded-lg border text-[10px] font-semibold text-center transition-colors cursor-pointer ${
+                      backgroundImage.inverted
+                        ? 'bg-amber-600 border-amber-500 text-white'
+                        : 'bg-stone-900 border-stone-700 text-stone-300 hover:bg-stone-850'
+                    }`}
+                  >
+                    Invertieren
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onUpdateBackgroundImage) {
+                        const curRot = backgroundImage.rotationDeg || 0;
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          rotationDeg: (curRot + 90) % 360,
+                        });
+                      }
+                    }}
+                    className="py-1 px-1.5 rounded-lg bg-stone-900 border border-stone-700 text-stone-300 hover:bg-stone-850 text-[10px] font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <RotateCw className="w-3 h-3 text-amber-400" />
+                    <span>+90°</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* SECTION: Zuschneiden (Crop) */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCropModal(true)}
+                  className="flex-1 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                >
+                  <Crop className="w-3.5 h-3.5 text-amber-200" />
+                  <span>Vorlage zuschneiden</span>
+                </button>
+
+                {backgroundImage.crop && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onUpdateBackgroundImage) {
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          crop: undefined,
+                        });
+                      }
+                    }}
+                    className="px-2.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 border border-stone-700 transition-colors cursor-pointer"
+                    title="Zuschnitt zurücksetzen"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-stone-400" />
+                  </button>
+                )}
+              </div>
+            </div>
           )}
         </div>
+      )}
+
+      {/* Underlay Crop Modal */}
+      {showCropModal && backgroundImage && (
+        <UnderlayCropModal
+          isOpen={showCropModal}
+          onClose={() => setShowCropModal(false)}
+          backgroundImage={backgroundImage}
+          onApplyCrop={(crop) => {
+            if (onUpdateBackgroundImage) {
+              onUpdateBackgroundImage({
+                ...backgroundImage,
+                crop,
+              });
+            }
+          }}
+        />
       )}
     </div>
   );
