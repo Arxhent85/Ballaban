@@ -143,7 +143,12 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       setTestResult(res);
       if (res.success && apiKeyInput) {
         setStoredApiKey(apiKeyInput);
-        setStoredModel(selectedModel);
+        if (res.modelUsed) {
+          setSelectedModel(res.modelUsed);
+          setStoredModel(res.modelUsed);
+        } else {
+          setStoredModel(selectedModel);
+        }
       }
     } finally {
       setIsTesting(false);

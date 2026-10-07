@@ -9,12 +9,19 @@
 
 import { ImportImageItem, AiPlanAnalysisResult } from '../types/aiImport';
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-lite-latest';
 export const AVAILABLE_GEMINI_MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Empfohlen – Schnell & Präzise)' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Kompakt)' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Höchste Detailtiefe)' },
+  { id: 'gemini-flash-lite-latest', name: 'Gemini Flash-Lite (Empfohlen – Blitzschnell & Stabil)' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Hohe Erkennungspräzision)' },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash (Neueste Generation)' },
   { id: 'gemini-flash-latest', name: 'Gemini Flash Latest' },
+];
+
+export const FALLBACK_GEMINI_MODELS = [
+  'gemini-flash-lite-latest',
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
 ];
 
 const STORAGE_KEY_API_KEY = 'cad_gemini_api_key_v1';
@@ -73,7 +80,21 @@ export function getStoredModel(): string {
   if (isLocalStorageAvailable()) {
     try {
       const stored = localStorage.getItem(STORAGE_KEY_MODEL);
-      if (stored) return stored.trim();
+      if (stored) {
+        const trimmed = stored.trim();
+        // If an older unavailable model was stored, auto-migrate to recommended model
+        if (
+          trimmed === 'gemini-2.5-flash' ||
+          trimmed === 'gemini-1.5-flash' ||
+          trimmed === 'gemini-2.0-flash' ||
+          trimmed === 'gemini-2.5-flash-lite' ||
+          trimmed === 'gemini-2.5-pro'
+        ) {
+          setStoredModel(DEFAULT_GEMINI_MODEL);
+          return DEFAULT_GEMINI_MODEL;
+        }
+        return trimmed;
+      }
     } catch {}
   }
   return inMemoryModel || DEFAULT_GEMINI_MODEL;
@@ -125,7 +146,7 @@ export function sanitizeErrorMessage(err: unknown, apiKey?: string): string {
 export async function testGeminiConnection(
   apiKey?: string,
   model?: string
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; modelUsed?: string }> {
   const key = apiKey?.trim() || getStoredApiKey();
   if (!key) {
     return {
@@ -134,72 +155,90 @@ export async function testGeminiConnection(
     };
   }
 
-  const modelName = model?.trim() || getStoredModel() || DEFAULT_GEMINI_MODEL;
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+  const requestedModel = model?.trim() || getStoredModel() || DEFAULT_GEMINI_MODEL;
+  const modelsToTry = [requestedModel, ...FALLBACK_GEMINI_MODELS.filter((m) => m !== requestedModel)];
 
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': key,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: 'Antworte nur mit dem Wort: BEREIT' }],
-          },
-        ],
-        generationConfig: {
-          maxOutputTokens: 10,
-          temperature: 0.1,
-        },
-      }),
-    });
+  let lastErrorDetail = '';
+  let lastStatus = 0;
 
-    if (response.ok) {
-      return {
-        success: true,
-        message: `Verbindung zur Gemini-API erfolgreich hergestellt! Modell "${modelName}" ist einsatzbereit.`,
-      };
-    }
+  for (const modelName of modelsToTry) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(key)}`;
 
-    const status = response.status;
-    let errorDetail = '';
     try {
-      const errJson = await response.json();
-      errorDetail = errJson?.error?.message || '';
-    } catch {}
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-    if (status === 400) {
-      return {
-        success: false,
-        message: `Ungültige Modellanfrage (Fehler 400). Prüfe den Modellnamen "${modelName}". Details: ${sanitizeErrorMessage(errorDetail, key)}`,
-      };
-    }
-    if (status === 401 || status === 403) {
-      return {
-        success: false,
-        message: 'Der API-Schlüssel ist ungültig oder hat keine Berechtigung für die Gemini-API (Fehler 403/401). Bitte Schlüssel im Google AI Studio überprüfen.',
-      };
-    }
-    if (status === 429) {
-      return {
-        success: false,
-        message: 'API-Kontingent überschritten (Rate Limit / Fehler 429). Bitte kurz warten oder einen bezahlten/neuen API-Schlüssel verwenden.',
-      };
-    }
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: 'Antworte nur mit dem Wort: BEREIT' }],
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 10,
+            temperature: 0.1,
+          },
+        }),
+      });
 
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        if (modelName !== requestedModel) {
+          setStoredModel(modelName);
+        }
+        return {
+          success: true,
+          message:
+            modelName === requestedModel
+              ? `Verbindung zur Gemini-API erfolgreich hergestellt! Modell "${modelName}" ist einsatzbereit.`
+              : `Verbindung erfolgreich hergestellt! Modell wurde automatisch auf das verfügbare Modell "${modelName}" umgestellt.`,
+          modelUsed: modelName,
+        };
+      }
+
+      lastStatus = response.status;
+      try {
+        const errJson = await response.json();
+        lastErrorDetail = errJson?.error?.message || '';
+      } catch {}
+
+      if (lastStatus === 401 || lastStatus === 403) {
+        return {
+          success: false,
+          message:
+            'Der API-Schlüssel ist ungültig oder hat keine Berechtigung für die Gemini-API (Fehler 403/401). Bitte Schlüssel im Google AI Studio (aistudio.google.com/app/apikey) überprüfen.',
+        };
+      }
+
+      console.warn(`Modell ${modelName} antwortete mit Code ${lastStatus}: ${lastErrorDetail}`);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        lastErrorDetail = 'Zeitüberschreitung (Timeout nach 12s)';
+      } else {
+        lastErrorDetail = sanitizeErrorMessage(err, key);
+      }
+    }
+  }
+
+  if (lastStatus === 429) {
     return {
       success: false,
-      message: `Google Gemini API antwortete mit Fehlercode ${status}: ${sanitizeErrorMessage(errorDetail, key)}`,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      message: `Verbindung fehlgeschlagen: ${sanitizeErrorMessage(err, key)}. Bitte Internetverbindung prüfen.`,
+      message: 'API-Kontingent überschritten (Rate Limit / Fehler 429). Bitte kurz warten.',
     };
   }
+
+  return {
+    success: false,
+    message: `Verbindung fehlgeschlagen (${lastStatus || 'Netzwerkfehler'}): ${sanitizeErrorMessage(lastErrorDetail, key)}. Bitte Internetverbindung und API-Schlüssel prüfen.`,
+  };
 }
 
 const ARCHITECTURAL_ANALYSIS_PROMPT = `
@@ -362,8 +401,11 @@ export async function analyzePlanImages(
     throw new Error('Kein Gemini API-Schlüssel hinterlegt. Bitte unter Einstellungen → KI eingeben.');
   }
 
-  const modelName = model?.trim() || getStoredModel() || DEFAULT_GEMINI_MODEL;
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+  const requestedModel = model?.trim() || getStoredModel() || DEFAULT_GEMINI_MODEL;
+  const modelsToTry = [
+    requestedModel,
+    ...FALLBACK_GEMINI_MODELS.filter((m) => m !== requestedModel),
+  ];
 
   if (images.length === 0) {
     throw new Error('Keine Bilder zur Analyse übergeben.');
@@ -410,11 +452,24 @@ export async function analyzePlanImages(
 
   onProgress?.('Gemini KI analysiert Wände, Türen, Fenster, Maße & Räume...');
 
-  let attempt = 0;
   let lastError: Error | null = null;
 
-  while (attempt < 2) {
-    attempt++;
+  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+    const currentModel = modelsToTry[mIdx];
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(currentModel)}:generateContent?key=${encodeURIComponent(key)}`;
+
+    if (mIdx > 0) {
+      onProgress?.(`Ausweichmodell wird verwendet (${currentModel})...`);
+    }
+
+    const reqController = new AbortController();
+    const timeoutId = setTimeout(() => reqController.abort(), 35000);
+
+    const onExternalAbort = () => reqController.abort();
+    if (signal) {
+      signal.addEventListener('abort', onExternalAbort);
+    }
+
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -422,7 +477,7 @@ export async function analyzePlanImages(
           'Content-Type': 'application/json',
           'x-goog-api-key': key,
         },
-        signal,
+        signal: reqController.signal,
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: {
@@ -431,6 +486,9 @@ export async function analyzePlanImages(
           },
         }),
       });
+
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
 
       if (!response.ok) {
         const status = response.status;
@@ -441,11 +499,19 @@ export async function analyzePlanImages(
         } catch {}
 
         if (status === 401 || status === 403) {
-          throw new Error('Ungültiger Gemini API-Schlüssel (Fehler 403/401). Bitte Schlüssel in den Einstellungen prüfen.');
+          throw new Error('Ungültiger Gemini API-Schlüssel (Fehler 403/401). Bitte überprüfe deinen Schlüssel in den Einstellungen oder erstelle einen neuen unter aistudio.google.com/app/apikey.');
         }
         if (status === 429) {
           throw new Error('API-Kontingent überschritten (Rate Limit / Fehler 429). Bitte kurz warten oder einen anderen Schlüssel verwenden.');
         }
+
+        // If 404 (model deprecated / unavailable) or 503 (high demand spike) or 500, try next model!
+        if ((status === 404 || status === 503 || status === 500) && mIdx < modelsToTry.length - 1) {
+          console.warn(`Modell ${currentModel} Fehler ${status}: ${detail}. Versuche Ausweichmodell...`);
+          lastError = new Error(`Google API Fehler ${status}: ${sanitizeErrorMessage(detail, key)}`);
+          continue;
+        }
+
         throw new Error(`Google API Fehler ${status}: ${sanitizeErrorMessage(detail, key)}`);
       }
 
@@ -460,6 +526,11 @@ export async function analyzePlanImages(
       const parsed = cleanAndParseJson(rawText);
       if (!parsed || typeof parsed !== 'object') {
         throw new Error('Ungültiges Datenformat von der KI erhalten.');
+      }
+
+      // If switched to a working fallback model, save it
+      if (currentModel !== requestedModel) {
+        setStoredModel(currentModel);
       }
 
       // Normalize items
@@ -579,15 +650,21 @@ export async function analyzePlanImages(
 
       return result;
     } catch (err: any) {
-      lastError = err;
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
       if (signal?.aborted) throw err;
-      if (attempt < 2) {
-        onProgress?.('Erneuter Versuch mit angepasster Formatierung...');
-        // Append retry hint
-        parts[0] = {
-          text: ARCHITECTURAL_ANALYSIS_PROMPT + '\n\nWICHTIG: Antworte strikt mit gültigem JSON ohne Markdown-Hüllen.',
-        };
+
+      if (err.name === 'AbortError') {
+        lastError = new Error(`Zeitüberschreitung bei Modell "${currentModel}" (über 35 Sekunden).`);
+      } else {
+        lastError = err;
       }
+
+      // If not an auth error and there are more models, try the next model
+      if (mIdx < modelsToTry.length - 1 && !err.message.includes('403') && !err.message.includes('401')) {
+        continue;
+      }
+      throw lastError;
     }
   }
 
@@ -618,8 +695,8 @@ export async function executeNaturalLanguageCorrection(
     throw new Error('Kein API-Schlüssel hinterlegt. Bitte unter Einstellungen → KI eingeben.');
   }
 
-  const modelName = model?.trim() || getStoredModel() || DEFAULT_GEMINI_MODEL;
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+  const requestedModel = model?.trim() || getStoredModel() || DEFAULT_GEMINI_MODEL;
+  const modelsToTry = [requestedModel, ...FALLBACK_GEMINI_MODELS.filter((m) => m !== requestedModel)];
 
   const prompt = `
 Du bist ein CAD-Architektur-Assistent. Der Benutzer möchte eine sprachliche Korrektur am aktuellen Grundriss vornehmen.
@@ -645,41 +722,78 @@ Antworte ausschließlich im JSON-Format:
 }
 `;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': key,
-    },
-    signal,
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-      },
-    }),
-  });
+  let lastError: any = null;
 
-  if (!response.ok) {
-    const status = response.status;
-    let detail = '';
+  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+    const currentModel = modelsToTry[mIdx];
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(currentModel)}:generateContent?key=${encodeURIComponent(key)}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const onExternalAbort = () => controller.abort();
+    if (signal) signal.addEventListener('abort', onExternalAbort, { once: true });
+
     try {
-      const errData = await response.json();
-      detail = errData?.error?.message || '';
-    } catch {}
-    throw new Error(`Google API Fehler ${status}: ${sanitizeErrorMessage(detail, key)}`);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        }),
+      });
+
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+
+      if (!response.ok) {
+        const status = response.status;
+        let detail = '';
+        try {
+          const errData = await response.json();
+          detail = errData?.error?.message || '';
+        } catch {}
+
+        if (status === 401 || status === 403) {
+          throw new Error(`Google API Authentifizierungsfehler (${status}): ${sanitizeErrorMessage(detail, key)}`);
+        }
+        if (mIdx < modelsToTry.length - 1) {
+          console.warn(`Modell ${currentModel} fehlgeschlagen (${status}), versuche Fallback...`);
+          continue;
+        }
+        throw new Error(`Google API Fehler ${status}: ${sanitizeErrorMessage(detail, key)}`);
+      }
+
+      const resJson = await response.json();
+      const rawText = resJson?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const parsed = cleanAndParseJson(rawText);
+
+      return {
+        success: true,
+        explanation: parsed?.explanation || 'Änderungen ermittelt.',
+        modifications: Array.isArray(parsed?.modifications) ? parsed.modifications : [],
+      };
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+      if (signal?.aborted) throw err;
+
+      lastError = err;
+      if (mIdx < modelsToTry.length - 1 && !err.message?.includes('403') && !err.message?.includes('401')) {
+        continue;
+      }
+      throw lastError;
+    }
   }
 
-  const resJson = await response.json();
-  const rawText = resJson?.candidates?.[0]?.content?.parts?.[0]?.text;
-  const parsed = cleanAndParseJson(rawText);
-
-  return {
-    success: true,
-    explanation: parsed?.explanation || 'Änderungen ermittelt.',
-    modifications: Array.isArray(parsed?.modifications) ? parsed.modifications : [],
-  };
+  throw lastError || new Error('Korrekturanalyse fehlgeschlagen.');
 }
 
 function cleanAndParseJson(text: string): any {

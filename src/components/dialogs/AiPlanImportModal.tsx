@@ -51,6 +51,8 @@ import {
 import {
   getStoredApiKey,
   getStoredModel,
+  setStoredModel,
+  DEFAULT_GEMINI_MODEL,
   hasPrivacyConsent,
   setPrivacyConsent,
   analyzePlanImages,
@@ -120,6 +122,7 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
   // Analysis & Gemini states
   const [analysisProgressMsg, setAnalysisProgressMsg] = useState<string>('');
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisElapsedSec, setAnalysisElapsedSec] = useState<number>(0);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [rawAiResult, setRawAiResult] = useState<AiPlanAnalysisResult | null>(null);
   const [calibratedResult, setCalibratedResult] = useState<AiPlanAnalysisResult | null>(null);
@@ -173,6 +176,22 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
       setAnalysisError(null);
     }
   }, [isOpen]);
+
+  // Elapsed seconds timer during active analysis
+  useEffect(() => {
+    let timer: any = null;
+    if (step === 'analyzing' && !analysisError) {
+      setAnalysisElapsedSec(0);
+      timer = setInterval(() => {
+        setAnalysisElapsedSec((s) => s + 1);
+      }, 1000);
+    } else {
+      setAnalysisElapsedSec(0);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [step, analysisError]);
 
   // Handle global paste
   useEffect(() => {
@@ -982,9 +1001,16 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                   <h3 className="text-base sm:text-lg font-bold text-white mb-2">
                     Grundriss wird analysiert...
                   </h3>
-                  <p className="text-xs text-amber-400 font-medium mb-6">
+                  <p className="text-xs text-amber-400 font-medium mb-3">
                     {analysisProgressMsg || 'Wände, Türen, Fenster & Räume werden erkannt...'}
                   </p>
+
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-slate-800/80 rounded-full border border-slate-700/60 text-[11px] text-slate-300 mb-6 shadow-inner">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Laufzeit: <strong className="text-white font-mono">{analysisElapsedSec}s</strong></span>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-slate-400">Modell: <span className="font-mono text-amber-300">{getStoredModel() || DEFAULT_GEMINI_MODEL}</span></span>
+                  </div>
 
                   <div className="w-full max-w-sm bg-slate-800 rounded-full h-2 mb-8 overflow-hidden">
                     <div className="bg-amber-500 h-full rounded-full animate-progress w-2/3" />
@@ -995,7 +1021,7 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                       abortController?.abort();
                       setStep('calibrate');
                     }}
-                    className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                    className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
                   >
                     Analyse abbrechen
                   </button>
@@ -1008,28 +1034,34 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                     {analysisError}
                   </p>
 
-                  <div className="flex flex-wrap gap-2 justify-center w-full">
+                  <div className="flex flex-col gap-2.5 w-full">
                     <button
-                      onClick={handleStartAnalysis}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
+                      onClick={() => {
+                        setStoredModel(DEFAULT_GEMINI_MODEL);
+                        handleStartAnalysis();
+                      }}
+                      className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-colors"
                     >
-                      <span>Erneut versuchen</span>
+                      <Sparkles className="w-4 h-4 text-amber-200" />
+                      <span>Mit schnellem Standard-Modell ({DEFAULT_GEMINI_MODEL}) wiederholen</span>
                     </button>
 
-                    <button
-                      onClick={() => onOpenSettings('ai')}
-                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Settings className="w-3.5 h-3.5 text-amber-400" />
-                      <span>API-Schlüssel prüfen</span>
-                    </button>
+                    <div className="flex gap-2 w-full">
+                      <button
+                        onClick={() => onOpenSettings('ai')}
+                        className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <Settings className="w-3.5 h-3.5 text-amber-400" />
+                        <span>API-Schlüssel prüfen</span>
+                      </button>
 
-                    <button
-                      onClick={handleUseAsManualUnderlay}
-                      className="px-4 py-2 bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-xl cursor-pointer"
-                    >
-                      <span>Als manuelle Vorlage öffnen</span>
-                    </button>
+                      <button
+                        onClick={handleUseAsManualUnderlay}
+                        className="flex-1 py-2 bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <span>Als Zeichenvorlage öffnen</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

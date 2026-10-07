@@ -206,7 +206,7 @@ function renderAffineTriangle(
  */
 export async function processImageToDataUrl(
   imageItem: ImportImageItem,
-  maxDimension = 2048
+  maxDimension = 1440
 ): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -327,7 +327,7 @@ export async function processImageToDataUrl(
       }
 
       resolve({
-        dataUrl: canvas.toDataURL('image/jpeg', 0.90),
+        dataUrl: canvas.toDataURL('image/jpeg', 0.85),
         width: canvas.width,
         height: canvas.height,
       });
