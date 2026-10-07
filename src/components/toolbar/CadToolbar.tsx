@@ -24,6 +24,7 @@ import {
   Lasso,
   Compass,
   Home,
+  Sparkles,
 } from 'lucide-react';
 import { CadTool, Language } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -49,6 +50,7 @@ interface CadToolbarProps {
   onOpenFurnitureCatalog: () => void;
   onOpenWallNumericModal: () => void;
   onOpenRoofModal?: () => void;
+  onOpenAiImport?: () => void;
   leftHandedMode?: boolean;
   isFullscreen?: boolean;
 }
@@ -60,6 +62,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
   onOpenFurnitureCatalog,
   onOpenWallNumericModal,
   onOpenRoofModal,
+  onOpenAiImport,
   leftHandedMode = false,
   isFullscreen = false,
 }) => {
@@ -291,6 +294,25 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
             <kbd className="px-1 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 font-mono">Entf</kbd>
           </div>
         </div>
+
+        {/* GROUP 7: KI-Plan-Import */}
+        {onOpenAiImport && (
+          <>
+            <div className="h-px bg-amber-500/30 my-1 mx-1 w-full" />
+            <div className="relative group flex items-center justify-center">
+              <button
+                onClick={onOpenAiImport}
+                title="Skizze oder Bauplan mit Gemini KI importieren"
+                className="w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 hover:text-amber-400 border border-amber-500/40 shadow-xs active:scale-95"
+              >
+                <Sparkles className={iconClass} />
+              </button>
+              <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
+                <span>KI-Plan-Import (Skizze)</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </aside>
   );

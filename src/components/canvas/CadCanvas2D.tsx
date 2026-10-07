@@ -34,6 +34,7 @@ import {
   MarqueeBox,
   PlotBoundary,
   ProjectDefaults,
+  BackgroundImage,
 } from '../../types/cad';
 import {
   distance,
@@ -82,6 +83,7 @@ import {
   X,
   MousePointer,
   Scissors,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface CadCanvas2DProps {
@@ -155,6 +157,8 @@ interface CadCanvas2DProps {
   isLockWallHeights?: boolean;
   onLockWallHeightsChange?: (locked: boolean) => void;
   onDrawingStateChange?: (isDrawing: boolean) => void;
+  backgroundImage?: BackgroundImage;
+  onUpdateBackgroundImage?: (bg?: BackgroundImage) => void;
 }
 
 export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
@@ -226,6 +230,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   isLockWallHeights: propsIsLockWallHeights,
   onLockWallHeightsChange,
   onDrawingStateChange,
+  backgroundImage,
+  onUpdateBackgroundImage,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -234,6 +240,10 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   // Pan state
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Background Image (Plan Vorlage) cache
+  const bgImgCacheRef = useRef<{ url: string; img: HTMLImageElement } | null>(null);
+  const [, setBgImgTrigger] = useState(0);
 
   // Hovering selection
   const [isHoveringSelection, setIsHoveringSelection] = useState(false);
@@ -798,6 +808,35 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText('0,0 m', originX + 7, originY + 7);
+    }
+
+    // ==========================================
+    // 0.5 BACKGROUND IMAGE / PLAN UNDERLAY (VORLAGE)
+    // ==========================================
+    if (backgroundImage && backgroundImage.url) {
+      let cached = bgImgCacheRef.current;
+      if (!cached || cached.url !== backgroundImage.url) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = backgroundImage.url;
+        img.onload = () => {
+          setBgImgTrigger((v) => v + 1);
+        };
+        bgImgCacheRef.current = { url: backgroundImage.url, img };
+      } else if (cached.img.complete && cached.img.naturalWidth > 0) {
+        const sp1 = worldToScreen({ x: backgroundImage.x, y: backgroundImage.y });
+        const sp2 = worldToScreen({
+          x: backgroundImage.x + (backgroundImage.widthM || 10),
+          y: backgroundImage.y + (backgroundImage.heightM || 10),
+        });
+        const w = sp2.x - sp1.x;
+        const h = sp2.y - sp1.y;
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0.05, Math.min(1, backgroundImage.opacity ?? 0.45));
+        ctx.drawImage(cached.img, sp1.x, sp1.y, w, h);
+        ctx.restore();
+      }
     }
 
     // ==========================================
@@ -2320,6 +2359,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     worldToScreen,
     isPointerDown,
     precisionMode,
+    backgroundImage,
   ]);
 
   // ==========================================
@@ -4071,6 +4111,50 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-amber-500 text-stone-950 font-bold px-4 py-1.5 rounded-full shadow-2xl text-xs z-50 animate-in fade-in zoom-in-95 duration-150 flex items-center gap-1.5 pointer-events-none">
           <Check className="w-3.5 h-3.5 stroke-[3]" />
           <span>{quickShapeFeedback}</span>
+        </div>
+      )}
+
+      {/* Floating Plan Underlay HUD (Vorlage mit Deckkraft & Löschen) */}
+      {backgroundImage && (
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute bottom-16 left-4 bg-stone-900/90 dark:bg-stone-900/95 backdrop-blur border border-stone-800 rounded-xl px-3 py-2 shadow-2xl flex items-center gap-3 text-xs text-stone-200 z-30 select-none animate-in fade-in slide-in-from-bottom-2 duration-150"
+        >
+          <div className="flex items-center gap-1.5 font-semibold text-amber-400">
+            <ImageIcon className="w-4 h-4" />
+            <span>Plan-Vorlage</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-stone-400 font-mono w-7 text-right">
+              {Math.round((backgroundImage.opacity ?? 0.4) * 100)}%
+            </span>
+            <input
+              type="range"
+              min="0.05"
+              max="1"
+              step="0.05"
+              value={backgroundImage.opacity ?? 0.4}
+              onChange={(e) => {
+                if (onUpdateBackgroundImage) {
+                  onUpdateBackgroundImage({
+                    ...backgroundImage,
+                    opacity: parseFloat(e.target.value),
+                  });
+                }
+              }}
+              className="w-20 accent-amber-500 cursor-pointer h-1.5 bg-stone-700 rounded-lg"
+              title="Deckkraft der Vorlage anpassen"
+            />
+          </div>
+          {onUpdateBackgroundImage && (
+            <button
+              onClick={() => onUpdateBackgroundImage(undefined)}
+              title="Vorlage entfernen"
+              className="p-1 text-stone-400 hover:text-red-400 hover:bg-stone-800 rounded transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       )}
     </div>

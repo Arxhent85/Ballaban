@@ -32,7 +32,9 @@ import {
   PrecisionMode,
   TouchGestureSettings,
   DEFAULT_TOUCH_GESTURE_SETTINGS,
+  BackgroundImage,
 } from './types/cad';
+import { PlanQualityCheckItem, AiImportOptions } from './types/aiImport';
 import {
   createHolidayHouse6x8Template,
   createEmptyProject,
@@ -73,6 +75,8 @@ import { HistoryModal } from './components/dialogs/HistoryModal';
 import { RoomEditModal } from './components/dialogs/RoomEditModal';
 import { RoofConfigModal } from './components/dialogs/RoofConfigModal';
 import { TouchGestureHelpModal } from './components/dialogs/TouchGestureHelpModal';
+import { AiPlanImportModal } from './components/dialogs/AiPlanImportModal';
+import { VoiceTextCorrectionModal } from './components/dialogs/VoiceTextCorrectionModal';
 
 export default function App() {
   // Project state: default to newly designed 6x8m Holiday House
@@ -143,6 +147,9 @@ export default function App() {
   const [showExport, setShowExport] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'standards' | 'snapping' | 'ai'>('standards');
+  const [showAiImport, setShowAiImport] = useState(false);
+  const [showVoiceCorrection, setShowVoiceCorrection] = useState(false);
   const [showFurnitureCatalog, setShowFurnitureCatalog] = useState(false);
   const [showWallNumeric, setShowWallNumeric] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -531,6 +538,157 @@ export default function App() {
     setPanOffset({ x: 50, y: 40 });
     setShowClearConfirm(false);
   }, [updateProject]);
+
+  const handleOpenSettingsWithTab = useCallback((tab: 'standards' | 'snapping' | 'ai') => {
+    setSettingsInitialTab(tab);
+    setShowSettings(true);
+  }, []);
+
+  const handleUpdateBackgroundImage = useCallback((bg?: BackgroundImage) => {
+    updateProject({
+      ...project,
+      backgroundImage: bg,
+    });
+  }, [project, updateProject]);
+
+  const handleImportPlan = useCallback((imported: {
+    walls: Wall[];
+    doors: Door[];
+    windows: Window[];
+    rooms: Room[];
+    furniture: Furniture[];
+    stairs: Stair[];
+    roof?: Roof;
+    backgroundImageUrl?: string;
+    backgroundWidthM?: number;
+    backgroundHeightM?: number;
+    target: AiImportOptions['targetDestination'];
+    qualityChecks: PlanQualityCheckItem[];
+  }) => {
+    const bgImage: BackgroundImage | undefined = (imported.backgroundImageUrl && imported.backgroundWidthM && imported.backgroundHeightM) ? {
+      url: imported.backgroundImageUrl,
+      x: 0,
+      y: 0,
+      widthM: imported.backgroundWidthM,
+      heightM: imported.backgroundHeightM,
+      opacity: 0.40,
+      locked: true,
+    } : project.backgroundImage;
+
+    if (imported.target === 'underlay_only') {
+      updateProject({
+        ...project,
+        backgroundImage: bgImage,
+      });
+      setShowAiImport(false);
+      return;
+    }
+
+    if (imported.target === 'new_project') {
+      const newFloorId = 'fl_' + Date.now();
+      const newProj: CadProject = {
+        ...createEmptyProject(),
+        id: 'proj_' + Date.now(),
+        name: 'KI-Import ' + new Date().toLocaleDateString('de-DE'),
+        updatedAt: new Date().toISOString(),
+        floors: [
+          {
+            id: newFloorId,
+            name: 'Erdgeschoss (EG)',
+            level: 0,
+            elevation: 0,
+            height: 2.60,
+            walls: imported.walls,
+            doors: imported.doors,
+            windows: imported.windows,
+            rooms: imported.rooms,
+            furniture: imported.furniture,
+            stairs: imported.stairs,
+            dimensions: [],
+            annotations: [],
+            shapes: [],
+            roofs: imported.roof ? [imported.roof] : [],
+          },
+        ],
+        activeFloorId: newFloorId,
+        backgroundImage: bgImage,
+      };
+      updateProject(newProj);
+      setShowAiImport(false);
+      setTimeout(handleZoomFit, 100);
+      return;
+    }
+
+    if (imported.target === 'new_floor') {
+      const newFloorId = 'fl_' + Date.now();
+      const level = project.floors.length;
+      const newFloor: Floor = {
+        id: newFloorId,
+        name: `Geschoss ${level}`,
+        level,
+        elevation: level * 2.80,
+        height: 2.60,
+        walls: imported.walls,
+        doors: imported.doors,
+        windows: imported.windows,
+        rooms: imported.rooms,
+        furniture: imported.furniture,
+        stairs: imported.stairs,
+        dimensions: [],
+        annotations: [],
+        shapes: [],
+        roofs: imported.roof ? [imported.roof] : [],
+      };
+      updateProject({
+        ...project,
+        floors: [...project.floors, newFloor],
+        activeFloorId: newFloorId,
+        backgroundImage: bgImage,
+      });
+      setShowAiImport(false);
+      setTimeout(handleZoomFit, 100);
+      return;
+    }
+
+    // Default: 'current_floor'
+    const updatedFloors = project.floors.map((fl) => {
+      if (fl.id === activeFloor.id) {
+        return {
+          ...fl,
+          walls: imported.walls.length > 0 ? imported.walls : fl.walls,
+          doors: imported.doors.length > 0 ? imported.doors : fl.doors,
+          windows: imported.windows.length > 0 ? imported.windows : fl.windows,
+          rooms: imported.rooms.length > 0 ? imported.rooms : fl.rooms,
+          furniture: imported.furniture.length > 0 ? imported.furniture : fl.furniture,
+          stairs: imported.stairs.length > 0 ? imported.stairs : fl.stairs,
+          roofs: imported.roof ? [imported.roof] : fl.roofs,
+        };
+      }
+      return fl;
+    });
+
+    updateProject({
+      ...project,
+      floors: updatedFloors,
+      backgroundImage: bgImage,
+    });
+    setShowAiImport(false);
+    setTimeout(handleZoomFit, 100);
+  }, [project, activeFloor, updateProject, handleZoomFit]);
+
+  const handleVoiceCorrection = useCallback((explanation: string, updatedFloor: Floor) => {
+    const updatedFloors = project.floors.map((fl) => {
+      if (fl.id === activeFloor.id) {
+        return updatedFloor;
+      }
+      return fl;
+    });
+    updateProject({
+      ...project,
+      floors: updatedFloors,
+    });
+    setShowVoiceCorrection(false);
+  }, [project, activeFloor, updateProject]);
 
   // Atomic batch move of all selected elements simultaneously (smooth 60fps)
   const handleMoveSelection = useCallback((dx: number, dy: number, specificIds?: string[]) => {
@@ -1661,6 +1819,8 @@ export default function App() {
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
         onOpenGestureHelp={() => setShowGestureHelp(true)}
+        onOpenAiImport={() => setShowAiImport(true)}
+        onOpenVoiceCorrection={() => setShowVoiceCorrection(true)}
       />
 
       {/* 2. MAIN WORKSPACE */}
@@ -1673,6 +1833,7 @@ export default function App() {
           onOpenFurnitureCatalog={() => setShowFurnitureCatalog(true)}
           onOpenWallNumericModal={() => setShowWallNumeric(true)}
           onOpenRoofModal={() => setShowRoofModal(true)}
+          onOpenAiImport={() => setShowAiImport(true)}
           leftHandedMode={leftHandedMode}
         />
 
@@ -1779,6 +1940,8 @@ export default function App() {
               isLockWallHeights={isLockWallHeights}
               onLockWallHeightsChange={setIsLockWallHeights}
               onDrawingStateChange={setIsDrawingActive}
+              backgroundImage={project.backgroundImage}
+              onUpdateBackgroundImage={handleUpdateBackgroundImage}
             />
           )}
 
@@ -1870,6 +2033,8 @@ export default function App() {
                   isLockWallHeights={isLockWallHeights}
                   onLockWallHeightsChange={setIsLockWallHeights}
                   onDrawingStateChange={setIsDrawingActive}
+                  backgroundImage={project.backgroundImage}
+                  onUpdateBackgroundImage={handleUpdateBackgroundImage}
                 />
               </div>
               <div className="w-1/2 h-full">
@@ -2090,6 +2255,25 @@ export default function App() {
         onUpdateDefaults={handleUpdateDefaults}
         snapSettings={snapSettings}
         onSnapSettingsChange={handleSnapSettingsChange}
+        initialTab={settingsInitialTab}
+      />
+
+      <AiPlanImportModal
+        isOpen={showAiImport}
+        onClose={() => setShowAiImport(false)}
+        project={project}
+        activeFloor={activeFloor}
+        onImportPlan={handleImportPlan}
+        onOpenSettings={handleOpenSettingsWithTab}
+      />
+
+      <VoiceTextCorrectionModal
+        isOpen={showVoiceCorrection}
+        onClose={() => setShowVoiceCorrection(false)}
+        project={project}
+        activeFloor={activeFloor}
+        onApplyCorrection={handleVoiceCorrection}
+        onOpenSettings={() => handleOpenSettingsWithTab('ai')}
       />
 
       <FurnitureCatalogModal

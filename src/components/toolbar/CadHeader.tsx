@@ -45,6 +45,7 @@ import {
   Tablet,
   CheckCircle2,
   Eye,
+  Mic,
 } from 'lucide-react';
 import { ViewMode, Language, CadProject, Floor } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -81,6 +82,8 @@ interface CadHeaderProps {
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onOpenGestureHelp?: () => void;
+  onOpenAiImport?: () => void;
+  onOpenVoiceCorrection?: () => void;
 }
 
 export const CadHeader: React.FC<CadHeaderProps> = ({
@@ -115,6 +118,8 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   isFullscreen = false,
   onToggleFullscreen,
   onOpenGestureHelp,
+  onOpenAiImport,
+  onOpenVoiceCorrection,
 }) => {
   const t = getT(language);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -235,6 +240,46 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
                 <Save className="w-4 h-4 text-emerald-500" />
                 <span>Projekt speichern (Herunterladen)</span>
               </button>
+
+              <div className="border-t border-stone-100 dark:border-stone-800 my-1" />
+
+              {/* SECTION: KI-ASSISTENZ */}
+              <div className="px-3 py-1 text-[10px] font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3" />
+                <span>Künstliche Intelligenz</span>
+              </div>
+
+              {onOpenAiImport && (
+                <button
+                  onClick={() => {
+                    onOpenAiImport();
+                    setShowMainMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 text-stone-800 dark:text-stone-200 cursor-pointer transition-colors"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">Skizze / Plan mit KI importieren...</span>
+                    <span className="text-[10px] text-stone-400">Foto, Scan oder PDF in bearbeitbaren CAD-Plan wandeln</span>
+                  </div>
+                </button>
+              )}
+
+              {onOpenVoiceCorrection && (
+                <button
+                  onClick={() => {
+                    onOpenVoiceCorrection();
+                    setShowMainMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-stone-100 dark:hover:bg-stone-800 flex items-center gap-2.5 text-stone-800 dark:text-stone-200 cursor-pointer"
+                >
+                  <Mic className="w-4 h-4 text-amber-500" />
+                  <div className="flex flex-col">
+                    <span>Plan per Sprache / Text anpassen...</span>
+                    <span className="text-[10px] text-stone-400">Korrektur in Worten mit KI-Vorschau</span>
+                  </div>
+                </button>
+              )}
 
               <div className="border-t border-stone-100 dark:border-stone-800 my-1" />
 
@@ -542,6 +587,18 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           >
             <Maximize2 className="w-3.5 h-3.5 text-amber-500" />
             <span className="hidden lg:inline">Einpassen</span>
+          </button>
+        )}
+
+        {/* KI-Plan-Import Schnell-Button */}
+        {onOpenAiImport && (
+          <button
+            onClick={onOpenAiImport}
+            title="Skizze oder Bauplan mit Gemini KI importieren & digitalisieren"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+            <span className="hidden md:inline">KI-Import</span>
           </button>
         )}
 
