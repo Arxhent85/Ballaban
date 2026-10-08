@@ -39,6 +39,10 @@ import {
   ShieldCheck,
   FileText,
   Compass,
+  Copy,
+  ExternalLink,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { Point2D, CadProject, Floor, Wall, Door, Window, Room, Furniture, Stair, Roof } from '../../types/cad';
 import {
@@ -47,6 +51,7 @@ import {
   AiPlanAnalysisResult,
   AiImportOptions,
   PlanQualityCheckItem,
+  AiDiagnosticData,
 } from '../../types/aiImport';
 import {
   getStoredApiKey,
@@ -57,10 +62,17 @@ import {
   setPrivacyConsent,
   analyzePlanImages,
   testGeminiConnection,
+  AnalysisStageUpdate,
+  getLastDiagnostic,
+  formatDiagnosticForClipboard,
+  cleanApiKey,
+  categorizeGeminiError,
+  CategorizedError,
 } from '../../utils/geminiAi';
 import { loadImageFromFile, processImageToDataUrl } from '../../utils/imageProcessing';
 import { calibrateAndTransformPlan } from '../../utils/aiPlanCalibrator';
 import { convertAiPlanToCadObjects } from '../../utils/aiPlanToCad';
+import { getDemoHolidayHousePlan } from '../../utils/demoPlanData';
 
 interface AiPlanImportModalProps {
   isOpen: boolean;
@@ -121,11 +133,16 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
 
   // Analysis & Gemini states
   const [analysisProgressMsg, setAnalysisProgressMsg] = useState<string>('');
+  const [analysisStage, setAnalysisStage] = useState<AnalysisStageUpdate | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [detailedError, setDetailedError] = useState<CategorizedError | null>(null);
   const [analysisElapsedSec, setAnalysisElapsedSec] = useState<number>(0);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [rawAiResult, setRawAiResult] = useState<AiPlanAnalysisResult | null>(null);
   const [calibratedResult, setCalibratedResult] = useState<AiPlanAnalysisResult | null>(null);
+  const [showDiagnosticModal, setShowDiagnosticModal] = useState<boolean>(false);
+  const [diagnosticData, setDiagnosticData] = useState<AiDiagnosticData | null>(null);
+  const [copiedDiagnostic, setCopiedDiagnostic] = useState<boolean>(false);
 
   // Privacy notice
   const [showPrivacyNotice, setShowPrivacyNotice] = useState<boolean>(false);
@@ -384,9 +401,10 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
     }
   };
 
-  // Trigger analysis
+  // Trigger analysis with honest multi-stage progress, 120s timeout and true abort
   const handleStartAnalysis = async () => {
-    const key = inlineApiKey.trim() || getStoredApiKey();
+    const rawKey = inlineApiKey.trim() || getStoredApiKey();
+    const key = cleanApiKey(rawKey);
     if (!key) {
       setInlineKeyError('Bitte einen Gemini API-Schlüssel eintragen, um die KI-Erkennung zu starten.');
       return;
@@ -399,10 +417,29 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
 
     setStep('analyzing');
     setAnalysisError(null);
+    setDetailedError(null);
     setAnalysisProgressMsg('Bilder werden vorbereitet...');
+    setAnalysisStage({
+      phase: 'Bild wird vorbereitet',
+      stepNumber: 0,
+      totalSteps: 3,
+      percent: 10,
+      elapsedSec: 0,
+      stageName: 'Bildvorbereitung & Filter',
+    });
 
     const controller = new AbortController();
     setAbortController(controller);
+
+    let isTimedOut = false;
+    const timeoutId = setTimeout(() => {
+      isTimedOut = true;
+      controller.abort();
+      const currentModel = getStoredModel();
+      const catTimeout = categorizeGeminiError(408, null, 'Timeout: Zeitüberschreitung nach 120 Sekunden.', currentModel);
+      setDetailedError(catTimeout);
+      setAnalysisError(catTimeout.germanExplanation);
+    }, 120000);
 
     try {
       // 1. Process active images (apply rotation, filters, keystone)
@@ -427,13 +464,16 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
         });
       }
 
-      // 2. Call Gemini
+      // 2. Call Gemini multi-stage analysis engine
       const result = await analyzePlanImages(
         processedImages,
         '',
         key,
         getStoredModel(),
-        (msg) => setAnalysisProgressMsg(msg),
+        (update: AnalysisStageUpdate) => {
+          setAnalysisStage(update);
+          setAnalysisProgressMsg(update.phase);
+        },
         controller.signal
       );
 
@@ -451,15 +491,59 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
       setCalibratedResult(calibrated.calibratedResult);
       setStep('review');
     } catch (err: any) {
-      if (controller.signal.aborted) {
-        setStep('prep');
+      if (controller.signal.aborted && !isTimedOut) {
+        setStep('calibrate');
         return;
       }
-      setAnalysisError(err.message || 'Analyse fehlgeschlagen');
-      setStep('analyzing'); // stay on analyzing to display retry / settings options
+      if (isTimedOut) {
+        // Already handled by timeout timer
+        return;
+      }
+      const lastDiag = getLastDiagnostic();
+      const cat = (err as any)?.categorized || categorizeGeminiError(lastDiag?.httpStatusCode, null, err.message, getStoredModel());
+      setDetailedError(cat);
+      setAnalysisError(cat.germanExplanation || err.message || 'Analyse fehlgeschlagen');
+      setStep('analyzing'); // stay on analyzing to display actionable error & options
     } finally {
+      clearTimeout(timeoutId);
       setAbortController(null);
     }
+  };
+
+  // True cancellation: restores interactive state immediately
+  const handleCancelAnalysis = () => {
+    if (abortController) {
+      abortController.abort();
+    }
+    setAbortController(null);
+    setAnalysisError(null);
+    setDetailedError(null);
+    setAnalysisStage(null);
+    setStep('calibrate');
+  };
+
+  // Demo import handler: load holiday home sample plan directly offline without AI
+  const handleLoadDemoPlan = () => {
+    const demoResult = getDemoHolidayHousePlan();
+    setRawAiResult(demoResult);
+    const calibrated = calibrateAndTransformPlan(demoResult, calibrationData || undefined, {
+      autoStraighten: importOptions.autoStraightenWalls,
+      roundDimensions: importOptions.roundDimensions,
+      useDefaultThickness: importOptions.useDefaultWallThickness,
+      defaultExteriorThickness: project.defaults?.exteriorWallThickness,
+      defaultInteriorThickness: project.defaults?.interiorWallThickness,
+    });
+    setCalibratedResult(calibrated.calibratedResult);
+    setStep('review');
+  };
+
+  // Copy diagnostic information to clipboard
+  const handleCopyDiagnostic = () => {
+    const diag = diagnosticData || getLastDiagnostic();
+    const text = formatDiagnosticForClipboard(diag);
+    navigator.clipboard.writeText(text);
+    setCopiedDiagnostic(true);
+    setTimeout(() => setCopiedDiagnostic(false), 2500);
   };
 
   // Draw Review Canvas (Overlaid image + CAD vectors)
@@ -710,6 +794,17 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => {
+                setDiagnosticData(getLastDiagnostic());
+                setShowDiagnosticModal(true);
+              }}
+              title="Letzte KI-Diagnose anzeigen"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 text-slate-300 hover:text-white cursor-pointer transition-colors flex items-center gap-1.5 text-xs"
+            >
+              <FileText className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[11px] font-medium hidden sm:inline">Diagnose</span>
+            </button>
+            <button
               onClick={() => onOpenSettings('ai')}
               title="KI-Einstellungen (API-Schlüssel)"
               className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 text-slate-300 hover:text-white cursor-pointer transition-colors"
@@ -777,6 +872,18 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                 >
                   <Upload className="w-5 h-5 text-amber-400" />
                   <span>Aus Fotos / Dateien wählen</span>
+                </button>
+              </div>
+
+              {/* Offline Demo Plan Import */}
+              <div className="mt-3 w-full max-w-md">
+                <button
+                  onClick={handleLoadDemoPlan}
+                  className="w-full p-3 rounded-2xl bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-600/60 text-emerald-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98"
+                  title="Kompletten Musterplan eines Ferienhauses sofort ohne Netzwerk und ohne API-Schlüssel testen"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>Demo-Import (ohne KI) – Vollständigen Musterplan sofort testen</span>
                 </button>
               </div>
 
@@ -1022,76 +1129,155 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
 
           {/* STEP 4: ANALYZING SPINNER & PROGRESS */}
           {step === 'analyzing' && (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 text-center overflow-y-auto">
               {!analysisError ? (
                 <>
-                  <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-6 shadow-xl animate-pulse">
+                  <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-5 shadow-xl animate-pulse">
                     <Loader2 className="w-10 h-10 animate-spin" />
                   </div>
-                  <h3 className="text-base sm:text-lg font-bold text-white mb-2">
-                    Grundriss wird analysiert...
+                  <h3 className="text-base sm:text-lg font-bold text-white mb-1.5">
+                    {analysisStage ? analysisStage.phase : (analysisProgressMsg || 'Grundriss wird analysiert...')}
                   </h3>
-                  <p className="text-xs text-amber-400 font-medium mb-3">
-                    {analysisProgressMsg || 'Wände, Türen, Fenster & Räume werden erkannt...'}
+                  <p className="text-xs text-amber-300 font-medium mb-3">
+                    {analysisStage && analysisStage.stepNumber > 0
+                      ? `Schritt ${analysisStage.stepNumber} von ${analysisStage.totalSteps}: ${analysisStage.stageName}`
+                      : (analysisProgressMsg || 'Wände, Türen, Fenster & Räume werden erkannt...')}
                   </p>
 
                   <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-slate-800/80 rounded-full border border-slate-700/60 text-[11px] text-slate-300 mb-6 shadow-inner">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                    <span>Laufzeit: <strong className="text-white font-mono">{analysisElapsedSec}s</strong></span>
+                    <span>Laufzeit: <strong className="text-white font-mono">{analysisElapsedSec}s</strong> <span className="text-slate-400">/ max. 120s</span></span>
                     <span className="text-slate-500">•</span>
                     <span className="text-slate-400">Modell: <span className="font-mono text-amber-300">{getStoredModel() || DEFAULT_GEMINI_MODEL}</span></span>
                   </div>
 
-                  <div className="w-full max-w-sm bg-slate-800 rounded-full h-2 mb-8 overflow-hidden">
-                    <div className="bg-amber-500 h-full rounded-full animate-progress w-2/3" />
+                  {/* Real Dynamic Progress Bar */}
+                  <div className="w-full max-w-sm bg-slate-800 rounded-full h-2.5 mb-8 overflow-hidden border border-slate-700/60 p-0.5">
+                    <div
+                      className="bg-gradient-to-r from-amber-500 to-amber-400 h-full rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${Math.min(100, Math.max(8, analysisStage?.percent ?? 15))}%` }}
+                    />
                   </div>
 
                   <button
-                    onClick={() => {
-                      abortController?.abort();
-                      setStep('calibrate');
-                    }}
-                    className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
+                    onClick={handleCancelAnalysis}
+                    className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer transition-colors flex items-center gap-2 shadow-sm"
                   >
-                    Analyse abbrechen
+                    <X className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Analyse abbrechen</span>
                   </button>
                 </>
               ) : (
-                <div className="max-w-md bg-slate-900 border border-rose-800/80 p-6 rounded-2xl flex flex-col items-center text-center shadow-2xl">
-                  <AlertCircle className="w-12 h-12 text-rose-500 mb-3" />
-                  <h3 className="text-base font-bold text-white mb-1.5">Analyse fehlgeschlagen</h3>
-                  <p className="text-xs text-rose-300 leading-relaxed mb-6">
-                    {analysisError}
+                <div className="max-w-lg w-full bg-slate-900 border border-rose-800/80 p-5 sm:p-6 rounded-2xl flex flex-col items-center text-center shadow-2xl overflow-y-auto max-h-[80vh]">
+                  <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-3 shadow-inner">
+                    <AlertCircle className="w-8 h-8" />
+                  </div>
+
+                  {/* HTTP Status and Error Code Badges */}
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 mb-2.5">
+                    {detailedError?.httpStatus && (
+                      <span className="px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-rose-950/80 border border-rose-700 text-rose-300">
+                        HTTP {detailedError.httpStatus}
+                      </span>
+                    )}
+                    <span className="px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-amber-950/80 border border-amber-700 text-amber-300">
+                      {detailedError?.errorCode || 'API_FEHLER'}
+                    </span>
+                  </div>
+
+                  <h3 className="text-base sm:text-lg font-bold text-white mb-2">
+                    Analyse nicht möglich
+                  </h3>
+
+                  <p className="text-xs text-rose-200 leading-relaxed max-w-md mb-3 font-medium">
+                    {detailedError?.germanExplanation || analysisError}
                   </p>
 
-                  <div className="flex flex-col gap-2.5 w-full">
+                  {/* Concrete Actionable Solution */}
+                  {detailedError?.suggestedAction && (
+                    <div className="p-3 bg-slate-850 border border-slate-700/80 rounded-xl text-left text-xs text-slate-300 max-w-md w-full mb-3.5">
+                      <strong className="text-amber-400 block mb-1">Empfohlene Lösung:</strong>
+                      <span>{detailedError.suggestedAction}</span>
+                    </div>
+                  )}
+
+                  {/* Original Google Error Message (Sanitized, no keys) */}
+                  {detailedError?.originalMessage && detailedError.originalMessage !== detailedError.germanExplanation && (
+                    <div className="text-[11px] text-slate-400 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-left max-w-md w-full mb-4 font-mono break-all">
+                      <span className="text-slate-500 block text-[10px] uppercase font-sans font-bold">Google API Originalmeldung:</span>
+                      {detailedError.originalMessage}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2 w-full max-w-md">
                     <button
-                      onClick={() => {
-                        setStoredModel(DEFAULT_GEMINI_MODEL);
-                        handleStartAnalysis();
-                      }}
+                      onClick={handleStartAnalysis}
                       className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-colors"
                     >
-                      <Sparkles className="w-4 h-4 text-amber-200" />
-                      <span>Mit schnellem Standard-Modell ({DEFAULT_GEMINI_MODEL}) wiederholen</span>
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Erneut versuchen</span>
                     </button>
 
-                    <div className="flex gap-2 w-full">
+                    <div className="grid grid-cols-2 gap-2">
+                      {detailedError?.isOpenModelList || detailedError?.errorCode === 'MODEL_NOT_FOUND' ? (
+                        <button
+                          onClick={() => onOpenSettings('ai')}
+                          className="py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>Modellliste öffnen</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onOpenSettings('ai')}
+                          className="py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <Settings className="w-3.5 h-3.5 text-amber-400" />
+                          <span>KI-Einstellungen</span>
+                        </button>
+                      )}
+
                       <button
-                        onClick={() => onOpenSettings('ai')}
-                        className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                        onClick={() => {
+                          setDiagnosticData(getLastDiagnostic());
+                          setShowDiagnosticModal(true);
+                        }}
+                        className="py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                       >
-                        <Settings className="w-3.5 h-3.5 text-amber-400" />
-                        <span>API-Schlüssel prüfen</span>
+                        <FileText className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Diagnose anzeigen</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={handleLoadDemoPlan}
+                        className="py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                        title="Vollständigen Ferienhaus-Musterplan offline ohne KI testen"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+                        <span>Demo-Plan laden</span>
                       </button>
 
                       <button
                         onClick={handleUseAsManualUnderlay}
-                        className="flex-1 py-2 bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                        className="py-2.5 bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                       >
-                        <span>Als Zeichenvorlage öffnen</span>
+                        <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Als Zeichenvorlage</span>
                       </button>
                     </div>
+
+                    <button
+                      onClick={() => {
+                        setAnalysisError(null);
+                        setDetailedError(null);
+                        setStep('calibrate');
+                      }}
+                      className="mt-1 text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                    >
+                      Zurück zur Kalibrierung
+                    </button>
                   </div>
                 </div>
               )}
@@ -1292,6 +1478,128 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                   Zustimmen & Fortfahren
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* KI-DIAGNOSE MODAL */}
+        {showDiagnosticModal && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-5">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-5 text-slate-100 flex flex-col gap-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                  <FileText className="w-5 h-5" />
+                  <span>KI-Diagnose (Letzte Anfrage)</span>
+                </div>
+                <button
+                  onClick={() => setShowDiagnosticModal(false)}
+                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {(() => {
+                const diag = diagnosticData || getLastDiagnostic();
+                if (!diag) {
+                  return (
+                    <div className="p-8 text-center text-slate-400 text-xs">
+                      Noch keine Diagnose-Daten vorhanden. Führen Sie zuerst eine KI-Anfrage aus.
+                    </div>
+                  );
+                }
+                return (
+                  <div className="flex flex-col gap-3 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <div className="p-2.5 bg-slate-850 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block mb-0.5">Status:</span>
+                        <span className={`font-bold ${diag.status.includes('OK') || diag.status.includes('200') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {diag.status}
+                        </span>
+                      </div>
+                      <div className="p-2.5 bg-slate-850 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block mb-0.5">Modell:</span>
+                        <span className="font-mono text-amber-300 font-semibold">{diag.model}</span>
+                      </div>
+                      <div className="p-2.5 bg-slate-850 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block mb-0.5">Laufzeit:</span>
+                        <span className="font-mono text-white">{diag.durationSec}s</span>
+                      </div>
+                      <div className="p-2.5 bg-slate-850 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block mb-0.5">Bildgröße:</span>
+                        <span className="text-white">
+                          {diag.imageDimensions ? `${diag.imageDimensions.width}×${diag.imageDimensions.height} px` : 'k.A.'}
+                          {diag.imageSizeBytes ? ` (${Math.round(diag.imageSizeBytes / 1024)} KB)` : ''}
+                        </span>
+                      </div>
+                      <div className="p-2.5 bg-slate-850 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block mb-0.5">Abschlussgrund:</span>
+                        <span className="font-mono text-sky-400">{diag.finishReason || 'N/A'}</span>
+                      </div>
+                      <div className="p-2.5 bg-slate-850 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block mb-0.5">Tokens (Gesamt):</span>
+                        <span className="font-mono text-white">
+                          {diag.tokenUsage?.totalTokens || (diag.tokenUsage?.promptTokens ? (diag.tokenUsage.promptTokens + (diag.tokenUsage.candidatesTokens || 0)) : 'N/A')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {diag.stagesCompleted && diag.stagesCompleted.length > 0 && (
+                      <div className="p-2.5 bg-slate-850 rounded-xl border border-slate-800 text-[11px]">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">Erfolgreiche Teilschritte:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {diag.stagesCompleted.map((stg, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-emerald-950/80 border border-emerald-700 text-emerald-300 rounded font-medium text-[11px]">
+                              ✓ {stg}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {diag.errorMessage && (
+                      <div className="p-2.5 bg-rose-950/40 border border-rose-800 rounded-xl text-rose-300 text-[11px]">
+                        <span className="text-rose-400 text-[10px] uppercase font-bold block mb-0.5">Fehlermeldung:</span>
+                        <p className="font-mono text-[11px] leading-relaxed break-words">{diag.errorMessage}</p>
+                      </div>
+                    )}
+
+                    <div>
+                      <span className="text-slate-400 text-[10px] uppercase font-bold block mb-1">
+                        Rohantwort der API (Erste 2000 Zeichen – bereinigt ohne Schlüssel):
+                      </span>
+                      <pre className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-slate-300 text-[11px] font-mono max-h-44 overflow-y-auto whitespace-pre-wrap select-all">
+                        {diag.rawResponseSnippet || '(Keine Rohdaten)'}
+                      </pre>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-800 mt-1">
+                      <button
+                        onClick={handleCopyDiagnostic}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
+                      >
+                        {copiedDiagnostic ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-white" />
+                            <span>Diagnose kopiert!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-amber-200" />
+                            <span>Diagnose kopieren</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setShowDiagnosticModal(false)}
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium cursor-pointer"
+                      >
+                        Schließen
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

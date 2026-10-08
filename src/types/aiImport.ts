@@ -175,3 +175,34 @@ export interface PlanQualityCheckItem {
   location?: Point2D;
   severity: 'error' | 'warning' | 'info';
 }
+
+export type AiThinkingLevel = 'low' | 'medium' | 'high';
+
+export interface AiDiagnosticData {
+  timestamp: string;
+  model: string;
+  imageDimensions?: { width: number; height: number };
+  imageSizeBytes?: number;
+  durationSec: number;
+  status: string; // e.g. "200 OK", "400 API_KEY_INVALID", etc.
+  httpStatusCode?: number;
+  errorCode?: string;
+  errorMessage?: string;
+  finishReason?: string; // "STOP", "MAX_TOKENS", "SAFETY", etc.
+  tokenUsage?: {
+    promptTokens?: number;
+    candidatesTokens?: number;
+    totalTokens?: number;
+  };
+  rawResponseSnippet?: string; // First 2000 chars of raw output (no keys)
+  stagesCompleted?: string[];
+  stepsCount?: { current: number; total: number };
+}
+
+export interface AiConnectionTestResult {
+  overallSuccess: boolean;
+  step1KeyValid: { success: boolean; message: string; details?: string };
+  step2TextResponse: { success: boolean; message: string; details?: string };
+  step3ImageResponse: { success: boolean; message: string; details?: string };
+  modelsFound?: { id: string; name: string; description?: string }[];
+}

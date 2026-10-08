@@ -1,0 +1,423 @@
+/**
+ * Demo Architectural Plan Dataset (Offline Fallback & Validation)
+ * Provides an authentic, perfectly structured holiday house floor plan (ca. 7.00 x 9.00 m)
+ * that tests all pipeline phases (walls, doors, windows, rooms, furniture, roof, dimensions)
+ * without needing an active internet connection or API quota.
+ */
+
+import { AiPlanAnalysisResult } from '../types/aiImport';
+
+export function getDemoHolidayHousePlan(): AiPlanAnalysisResult {
+  return {
+    unit: 'm',
+    imageWidth: 1000,
+    imageHeight: 1000,
+    northAngleDeg: 0,
+    detectedTotalWidthM: 7.20,
+    detectedTotalDepthM: 9.00,
+    scalePxPerMeter: 100,
+    timestamp: new Date().toISOString(),
+    warnings: [],
+    rawResponse: '/* DEMO IMPORT PLAN - Integriertes Beispielhaus */',
+    // 1. Exterior & Interior Walls (Normalized 0..1000 coords, representing 7.20m x 9.00m)
+    walls: [
+      // Exterior: North wall
+      {
+        id: 'demo_w_ext_n',
+        startX: 140,
+        startY: 100,
+        endX: 860,
+        endY: 100,
+        thickness: 0.30,
+        height: 2.60,
+        isExterior: true,
+        material: 'brick',
+        confidence: 0.98,
+        selected: true,
+      },
+      // Exterior: East wall
+      {
+        id: 'demo_w_ext_e',
+        startX: 860,
+        startY: 100,
+        endX: 860,
+        endY: 900,
+        thickness: 0.30,
+        height: 2.60,
+        isExterior: true,
+        material: 'brick',
+        confidence: 0.98,
+        selected: true,
+      },
+      // Exterior: South wall
+      {
+        id: 'demo_w_ext_s',
+        startX: 860,
+        startY: 900,
+        endX: 140,
+        endY: 900,
+        thickness: 0.30,
+        height: 2.60,
+        isExterior: true,
+        material: 'brick',
+        confidence: 0.98,
+        selected: true,
+      },
+      // Exterior: West wall
+      {
+        id: 'demo_w_ext_w',
+        startX: 140,
+        startY: 900,
+        endX: 140,
+        endY: 100,
+        thickness: 0.30,
+        height: 2.60,
+        isExterior: true,
+        material: 'brick',
+        confidence: 0.98,
+        selected: true,
+      },
+      // Interior: Horizontal dividing wall between Living (South) and Bed/Bath (North)
+      {
+        id: 'demo_w_int_h1',
+        startX: 140,
+        startY: 520,
+        endX: 860,
+        endY: 520,
+        thickness: 0.175,
+        height: 2.60,
+        isExterior: false,
+        material: 'brick',
+        confidence: 0.95,
+        selected: true,
+      },
+      // Interior: Vertical dividing wall between Bedroom (North-West) and Bathroom/Entry (North-East)
+      {
+        id: 'demo_w_int_v1',
+        startX: 500,
+        startY: 100,
+        endX: 500,
+        endY: 520,
+        thickness: 0.115,
+        height: 2.60,
+        isExterior: false,
+        material: 'drywall',
+        confidence: 0.94,
+        selected: true,
+      },
+      // Interior: Small horizontal wall separating Entry/Corridor from Bathroom
+      {
+        id: 'demo_w_int_h2',
+        startX: 500,
+        startY: 320,
+        endX: 860,
+        endY: 320,
+        thickness: 0.115,
+        height: 2.60,
+        isExterior: false,
+        material: 'drywall',
+        confidence: 0.92,
+        selected: true,
+      },
+    ],
+
+    // 2. Doors
+    doors: [
+      // Haustür (East wall, Entry corridor)
+      {
+        id: 'demo_door_entry',
+        x: 860,
+        y: 420,
+        width: 1.00,
+        height: 2.10,
+        type: 'entry',
+        swingDirection: 'left',
+        openDirection: 'inside',
+        confidence: 0.96,
+        selected: true,
+      },
+      // Terrassentür / Balkontür (South wall, Living room)
+      {
+        id: 'demo_door_patio',
+        x: 500,
+        y: 900,
+        width: 1.80,
+        height: 2.15,
+        type: 'patio',
+        swingDirection: 'right',
+        openDirection: 'inside',
+        confidence: 0.95,
+        selected: true,
+      },
+      // Zimmertür Wohnzimmer <-> Flur
+      {
+        id: 'demo_door_living',
+        x: 680,
+        y: 520,
+        width: 0.885,
+        height: 2.05,
+        type: 'single',
+        swingDirection: 'left',
+        openDirection: 'inside',
+        confidence: 0.92,
+        selected: true,
+      },
+      // Zimmertür Schlafzimmer <-> Flur
+      {
+        id: 'demo_door_bed',
+        x: 320,
+        y: 520,
+        width: 0.885,
+        height: 2.05,
+        type: 'single',
+        swingDirection: 'right',
+        openDirection: 'inside',
+        confidence: 0.91,
+        selected: true,
+      },
+      // Badezimmertür <-> Flur
+      {
+        id: 'demo_door_bath',
+        x: 680,
+        y: 320,
+        width: 0.76,
+        height: 2.05,
+        type: 'single',
+        swingDirection: 'left',
+        openDirection: 'inside',
+        confidence: 0.93,
+        selected: true,
+      },
+    ],
+
+    // 3. Windows
+    windows: [
+      // Fenster Wohnzimmer (West)
+      {
+        id: 'demo_win_living_w',
+        x: 140,
+        y: 710,
+        width: 1.40,
+        height: 1.30,
+        parapetHeight: 0.90,
+        type: 'turn_tilt',
+        confidence: 0.94,
+        selected: true,
+      },
+      // Fenster Wohnzimmer (Ost)
+      {
+        id: 'demo_win_living_e',
+        x: 860,
+        y: 710,
+        width: 1.40,
+        height: 1.30,
+        parapetHeight: 0.90,
+        type: 'turn_tilt',
+        confidence: 0.94,
+        selected: true,
+      },
+      // Fenster Schlafzimmer (Nord)
+      {
+        id: 'demo_win_bed_n',
+        x: 320,
+        y: 100,
+        width: 1.20,
+        height: 1.25,
+        parapetHeight: 0.90,
+        type: 'turn_tilt',
+        confidence: 0.93,
+        selected: true,
+      },
+      // Fenster Bad (Nord)
+      {
+        id: 'demo_win_bath_n',
+        x: 680,
+        y: 100,
+        width: 0.90,
+        height: 1.00,
+        parapetHeight: 1.20,
+        type: 'turn_tilt',
+        confidence: 0.91,
+        selected: true,
+      },
+    ],
+
+    // 4. Rooms with German Labels & Polygons
+    rooms: [
+      {
+        id: 'demo_rm_living',
+        name: 'Wohnen / Essen / Kochen',
+        category: 'living',
+        areaM2: 24.5,
+        polygon: [
+          { x: 140, y: 520 },
+          { x: 860, y: 520 },
+          { x: 860, y: 900 },
+          { x: 140, y: 900 },
+        ],
+        confidence: 0.97,
+        selected: true,
+      },
+      {
+        id: 'demo_rm_bed',
+        name: 'Schlafzimmer',
+        category: 'sleeping',
+        areaM2: 13.8,
+        polygon: [
+          { x: 140, y: 100 },
+          { x: 500, y: 100 },
+          { x: 500, y: 520 },
+          { x: 140, y: 520 },
+        ],
+        confidence: 0.96,
+        selected: true,
+      },
+      {
+        id: 'demo_rm_bath',
+        name: 'Badezimmer (WC / Dusche)',
+        category: 'bath',
+        areaM2: 6.8,
+        polygon: [
+          { x: 500, y: 100 },
+          { x: 860, y: 100 },
+          { x: 860, y: 320 },
+          { x: 500, y: 320 },
+        ],
+        confidence: 0.95,
+        selected: true,
+      },
+      {
+        id: 'demo_rm_hall',
+        name: 'Diele / Eingang',
+        category: 'corridor',
+        areaM2: 6.2,
+        polygon: [
+          { x: 500, y: 320 },
+          { x: 860, y: 320 },
+          { x: 860, y: 520 },
+          { x: 500, y: 520 },
+        ],
+        confidence: 0.94,
+        selected: true,
+      },
+    ],
+
+    // 5. Furniture Items
+    furniture: [
+      {
+        id: 'demo_furn_bed',
+        name: 'Doppelbett',
+        type: 'bed_double',
+        category: 'sleeping',
+        x: 320,
+        y: 220,
+        width: 1.80,
+        depth: 2.00,
+        rotation: 0,
+        confidence: 0.92,
+        selected: true,
+      },
+      {
+        id: 'demo_furn_sofa',
+        name: 'Ecksofa',
+        type: 'sofa',
+        category: 'living',
+        x: 300,
+        y: 780,
+        width: 2.20,
+        depth: 0.95,
+        rotation: 0,
+        confidence: 0.90,
+        selected: true,
+      },
+      {
+        id: 'demo_furn_table',
+        name: 'Esstisch mit 4 Stühlen',
+        type: 'table_dining',
+        category: 'living',
+        x: 700,
+        y: 760,
+        width: 1.40,
+        depth: 0.90,
+        rotation: 0,
+        confidence: 0.89,
+        selected: true,
+      },
+      {
+        id: 'demo_furn_kitchen',
+        name: 'Küchenzeile',
+        type: 'kitchen_counter',
+        category: 'kitchen',
+        x: 700,
+        y: 560,
+        width: 2.40,
+        depth: 0.65,
+        rotation: 0,
+        confidence: 0.91,
+        selected: true,
+      },
+      {
+        id: 'demo_furn_shower',
+        name: 'Dusche (bodengleich)',
+        type: 'shower',
+        category: 'bath',
+        x: 800,
+        y: 160,
+        width: 0.90,
+        depth: 0.90,
+        rotation: 0,
+        confidence: 0.93,
+        selected: true,
+      },
+      {
+        id: 'demo_furn_toilet',
+        name: 'WC',
+        type: 'toilet',
+        category: 'bath',
+        x: 560,
+        y: 160,
+        width: 0.45,
+        depth: 0.60,
+        rotation: 0,
+        confidence: 0.94,
+        selected: true,
+      },
+    ],
+
+    // 6. Stairs (None for bungalow, but supported)
+    stairs: [],
+
+    // 7. Roof
+    roof: {
+      type: 'gable',
+      pitchDegrees: 35,
+      ridgeHeight: 2.60,
+      ridgeDirection: 'horizontal',
+      confidence: 0.92,
+    },
+
+    // 8. Dimension Lines
+    readDimensions: [
+      {
+        id: 'demo_dim_width',
+        label: '7.20',
+        valueMeters: 7.20,
+        startX: 140,
+        startY: 70,
+        endX: 860,
+        endY: 70,
+        confidence: 0.97,
+      },
+      {
+        id: 'demo_dim_depth',
+        label: '9.00',
+        valueMeters: 9.00,
+        startX: 90,
+        startY: 100,
+        endX: 90,
+        endY: 900,
+        confidence: 0.97,
+      },
+    ],
+  };
+}
