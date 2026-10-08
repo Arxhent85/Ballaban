@@ -1707,28 +1707,55 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                   </div>
                 </div>
 
-                {/* MAßE & SKALIERUNG */}
+                {/* MAßE & SKALIERUNG / VERZERRUNG */}
                 <div className="border-t border-stone-200 dark:border-stone-800 pt-2 flex flex-col gap-2">
-                  <span className="text-[11px] font-semibold text-stone-600 dark:text-stone-300">Reale Maße im Plan</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-stone-600 dark:text-stone-300">Maße & Verzerrung</span>
+                    <button
+                      type="button"
+                      onClick={() => onUpdateBackgroundImage?.({
+                        ...backgroundImage,
+                        lockAspectRatio: !backgroundImage.lockAspectRatio,
+                      })}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium flex items-center gap-1 border transition-colors cursor-pointer ${
+                        backgroundImage.lockAspectRatio
+                          ? 'bg-amber-100 dark:bg-amber-950/80 border-amber-400 text-amber-800 dark:text-amber-300'
+                          : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-700 text-stone-600 dark:text-stone-300'
+                      }`}
+                      title={backgroundImage.lockAspectRatio ? 'Seitenverhältnis gesperrt. Klicken für freie Verzerrung.' : 'Frei verzerren aktiv. Klicken für proportionales Skalieren.'}
+                    >
+                      {backgroundImage.lockAspectRatio ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5 text-emerald-500" />}
+                      <span>{backgroundImage.lockAspectRatio ? 'Proportional' : 'Frei verzerren'}</span>
+                    </button>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div className="flex flex-col gap-1">
                       <label className="text-[10px] text-stone-400 font-medium">Breite (m)</label>
                       <input
                         type="number"
-                        step={0.1}
-                        min={0.5}
+                        step={0.05}
+                        min={0.2}
                         max={100}
                         value={Math.round((backgroundImage.widthM || 10) * 100) / 100}
                         onChange={(e) => {
-                          const newW = Math.max(0.5, parseFloat(e.target.value) || 10);
-                          const currentW = backgroundImage.widthM || 10;
-                          const currentH = backgroundImage.heightM || 8;
-                          const ratio = currentH / currentW;
-                          onUpdateBackgroundImage?.({
-                            ...backgroundImage,
-                            widthM: newW,
-                            heightM: Math.round(newW * ratio * 100) / 100,
-                          });
+                          const newW = Math.max(0.2, parseFloat(e.target.value) || 10);
+                          if (backgroundImage.lockAspectRatio) {
+                            const currentW = backgroundImage.widthM || 10;
+                            const currentH = backgroundImage.heightM || 8;
+                            const ratio = currentH / currentW;
+                            onUpdateBackgroundImage?.({
+                              ...backgroundImage,
+                              widthM: newW,
+                              heightM: Math.round(newW * ratio * 100) / 100,
+                            });
+                          } else {
+                            // Frei in die Breite ziehen!
+                            onUpdateBackgroundImage?.({
+                              ...backgroundImage,
+                              widthM: newW,
+                            });
+                          }
                         }}
                         className="w-full bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-2 py-1 text-xs font-mono font-semibold"
                       />
@@ -1738,28 +1765,133 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                       <label className="text-[10px] text-stone-400 font-medium">Höhe (m)</label>
                       <input
                         type="number"
-                        step={0.1}
-                        min={0.5}
+                        step={0.05}
+                        min={0.2}
                         max={100}
                         value={Math.round((backgroundImage.heightM || 8) * 100) / 100}
                         onChange={(e) => {
-                          const newH = Math.max(0.5, parseFloat(e.target.value) || 8);
-                          const currentW = backgroundImage.widthM || 10;
-                          const currentH = backgroundImage.heightM || 8;
-                          const ratio = currentW / currentH;
-                          onUpdateBackgroundImage?.({
-                            ...backgroundImage,
-                            heightM: newH,
-                            widthM: Math.round(newH * ratio * 100) / 100,
-                          });
+                          const newH = Math.max(0.2, parseFloat(e.target.value) || 8);
+                          if (backgroundImage.lockAspectRatio) {
+                            const currentW = backgroundImage.widthM || 10;
+                            const currentH = backgroundImage.heightM || 8;
+                            const ratio = currentW / currentH;
+                            onUpdateBackgroundImage?.({
+                              ...backgroundImage,
+                              heightM: newH,
+                              widthM: Math.round(newH * ratio * 100) / 100,
+                            });
+                          } else {
+                            // Frei in die Höhe ziehen!
+                            onUpdateBackgroundImage?.({
+                              ...backgroundImage,
+                              heightM: newH,
+                            });
+                          }
                         }}
                         className="w-full bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-2 py-1 text-xs font-mono font-semibold"
                       />
                     </div>
                   </div>
 
+                  {/* Schnell-Verzerrung */}
+                  <div className="flex items-center justify-between text-[10px] pt-1 border-t border-stone-200 dark:border-stone-800">
+                    <span className="text-stone-500">Breite ziehen:</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curW = backgroundImage.widthM || 10;
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            widthM: Math.max(0.2, Math.round(curW * 0.95 * 100) / 100),
+                          });
+                        }}
+                        className="px-1.5 py-0.5 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded text-stone-600 dark:text-stone-300 cursor-pointer"
+                        title="Breite um 5% stauchen"
+                      >
+                        -5%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curW = backgroundImage.widthM || 10;
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            widthM: Math.round(curW * 1.05 * 100) / 100,
+                          });
+                        }}
+                        className="px-1.5 py-0.5 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded text-stone-600 dark:text-stone-300 cursor-pointer"
+                        title="Breite um 5% dehnen"
+                      >
+                        +5%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curW = backgroundImage.widthM || 10;
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            widthM: Math.round(curW * 1.10 * 100) / 100,
+                          });
+                        }}
+                        className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/80 border border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-bold rounded cursor-pointer"
+                        title="Breite um 10% dehnen"
+                      >
+                        +10% ↔
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-stone-500">Höhe ziehen:</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curH = backgroundImage.heightM || 8;
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            heightM: Math.max(0.2, Math.round(curH * 0.95 * 100) / 100),
+                          });
+                        }}
+                        className="px-1.5 py-0.5 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded text-stone-600 dark:text-stone-300 cursor-pointer"
+                        title="Höhe um 5% stauchen"
+                      >
+                        -5%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curH = backgroundImage.heightM || 8;
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            heightM: Math.round(curH * 1.05 * 100) / 100,
+                          });
+                        }}
+                        className="px-1.5 py-0.5 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded text-stone-600 dark:text-stone-300 cursor-pointer"
+                        title="Höhe um 5% dehnen"
+                      >
+                        +5%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const curH = backgroundImage.heightM || 8;
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            heightM: Math.round(curH * 1.10 * 100) / 100,
+                          });
+                        }}
+                        className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/80 border border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-bold rounded cursor-pointer"
+                        title="Höhe um 10% dehnen"
+                      >
+                        +10% ↕
+                      </button>
+                    </div>
+                  </div>
+
                   <p className="text-[10px] text-stone-400 leading-normal bg-stone-50 dark:bg-stone-850 p-2 rounded-lg border border-stone-200 dark:border-stone-800">
-                    💡 Tipp: Bei entsperrter Vorlage kannst du die Ecken direkt im 2D-Plan anfassen, oder die 2-Punkt-Kalibrierung im Plan-HUD nutzen.
+                    💡 Tipp: Ziehe an den blauen seitlichen Anfassern im Plan, um die Vorlage gezielt nur in die Breite oder Höhe zu ziehen. An den Ecken kannst du den Plan frei verzerren.
                   </p>
                 </div>
               </div>

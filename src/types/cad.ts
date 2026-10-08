@@ -331,6 +331,7 @@ export interface BackgroundImage {
   heightM: number; // in meters (world height)
   opacity: number; // 0.05 .. 1.0 (default 0.40)
   locked: boolean; // whether template position & scale are locked
+  lockAspectRatio?: boolean; // whether scaling maintains aspect ratio (false = free distortion in all directions)
   contrast?: number; // 50 .. 200 %, default 100
   brightness?: number; // 50 .. 200 %, default 100
   rotationDeg?: number; // 0, 90, 180, 270 (or any angle)

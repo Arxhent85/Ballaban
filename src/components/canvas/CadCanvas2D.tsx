@@ -422,7 +422,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const [isDraggingPlot, setIsDraggingPlot] = useState<boolean>(false);
 
   // Underlay (Plan-Vorlage) Manipulation & Calibration states
-  const [draggingUnderlayHandle, setDraggingUnderlayHandle] = useState<'move' | 'nw' | 'ne' | 'se' | 'sw' | null>(null);
+  const [draggingUnderlayHandle, setDraggingUnderlayHandle] = useState<'move' | 'nw' | 'ne' | 'se' | 'sw' | 'w' | 'e' | 'n' | 's' | null>(null);
+  const [hoveredUnderlayHandle, setHoveredUnderlayHandle] = useState<'move' | 'nw' | 'ne' | 'se' | 'sw' | 'w' | 'e' | 'n' | 's' | null>(null);
   const underlayDragStartRef = useRef<{ clientX: number; clientY: number; startX: number; startY: number; startWM: number; startHM: number } | null>(null);
   const [isUnderlayHudExpanded, setIsUnderlayHudExpanded] = useState<boolean>(false);
   const [showCropModal, setShowCropModal] = useState<boolean>(false);
@@ -909,7 +910,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
         ctx.restore();
 
-        // 2. If UNLOCKED, draw selection outline, dimensions, and 4 corner handles
+        // 2. If UNLOCKED, draw selection outline, dimensions, and 8 distortion handles
         if (!backgroundImage.locked && !isUnderlayLayerLocked) {
           ctx.save();
           ctx.strokeStyle = '#f59e0b';
@@ -918,19 +919,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           ctx.strokeRect(sp1.x, sp1.y, w, h);
           ctx.setLineDash([]);
 
-          // Dimension badge top
-          ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+          // Dimension badge top (Breite)
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.95)';
           ctx.font = 'bold 11px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
-          ctx.fillText(`${(backgroundImage.widthM || 10).toFixed(2)} m`, sp1.x + w / 2, sp1.y - 4);
+          ctx.fillText(`Breite: ${(backgroundImage.widthM || 10).toFixed(2)} m`, sp1.x + w / 2, sp1.y - 6);
 
-          // Dimension badge right
+          // Dimension badge right (Höhe)
           ctx.save();
-          ctx.translate(sp1.x + w + 14, sp1.y + h / 2);
+          ctx.translate(sp1.x + w + 16, sp1.y + h / 2);
           ctx.rotate(Math.PI / 2);
-          ctx.fillText(`${(backgroundImage.heightM || 10).toFixed(2)} m`, 0, 0);
+          ctx.fillText(`Höhe: ${(backgroundImage.heightM || 10).toFixed(2)} m`, 0, 0);
           ctx.restore();
+
+          // 8 Handles: 4 corners + 4 edge pills (W, E for width stretching; N, S for height stretching)
+          const cornerRadius = 8;
 
           // Corner handles: NW, NE, SE, SW
           const corners = [
@@ -941,12 +945,77 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           ];
 
           for (const c of corners) {
-            ctx.fillStyle = '#f59e0b';
+            const isHover = hoveredUnderlayHandle === c.id || draggingUnderlayHandle === c.id;
+            ctx.fillStyle = isHover ? '#fbbf24' : '#f59e0b';
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 2.5;
             ctx.beginPath();
-            ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
+            ctx.arc(c.x, c.y, cornerRadius, 0, Math.PI * 2);
             ctx.fill();
+            ctx.stroke();
+          }
+
+          // Edge handles for horizontal width stretching (W, E)
+          const edgeWidthHandles = [
+            { id: 'w', x: sp1.x, y: sp1.y + h / 2 },
+            { id: 'e', x: sp1.x + w, y: sp1.y + h / 2 },
+          ];
+          for (const eh of edgeWidthHandles) {
+            const isHover = hoveredUnderlayHandle === eh.id || draggingUnderlayHandle === eh.id;
+            ctx.fillStyle = isHover ? '#38bdf8' : '#0284c7';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            const pw = 10;
+            const ph = 26;
+            ctx.beginPath();
+            if (ctx.roundRect) {
+              ctx.roundRect(eh.x - pw / 2, eh.y - ph / 2, pw, ph, 4);
+            } else {
+              ctx.rect(eh.x - pw / 2, eh.y - ph / 2, pw, ph);
+            }
+            ctx.fill();
+            ctx.stroke();
+
+            // Grip lines inside pill
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(eh.x - 2, eh.y - 4);
+            ctx.lineTo(eh.x + 2, eh.y - 4);
+            ctx.moveTo(eh.x - 2, eh.y + 4);
+            ctx.lineTo(eh.x + 2, eh.y + 4);
+            ctx.stroke();
+          }
+
+          // Edge handles for vertical height stretching (N, S)
+          const edgeHeightHandles = [
+            { id: 'n', x: sp1.x + w / 2, y: sp1.y },
+            { id: 's', x: sp1.x + w / 2, y: sp1.y + h },
+          ];
+          for (const eh of edgeHeightHandles) {
+            const isHover = hoveredUnderlayHandle === eh.id || draggingUnderlayHandle === eh.id;
+            ctx.fillStyle = isHover ? '#38bdf8' : '#0284c7';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            const pw = 26;
+            const ph = 10;
+            ctx.beginPath();
+            if (ctx.roundRect) {
+              ctx.roundRect(eh.x - pw / 2, eh.y - ph / 2, pw, ph, 4);
+            } else {
+              ctx.rect(eh.x - pw / 2, eh.y - ph / 2, pw, ph);
+            }
+            ctx.fill();
+            ctx.stroke();
+
+            // Grip lines inside pill
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(eh.x - 4, eh.y - 2);
+            ctx.lineTo(eh.x - 4, eh.y + 2);
+            ctx.moveTo(eh.x + 4, eh.y - 2);
+            ctx.lineTo(eh.x + 4, eh.y + 2);
             ctx.stroke();
           }
 
@@ -3115,14 +3184,18 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           y: e.clientY - canvas.getBoundingClientRect().top,
         };
 
-        // Check 4 corner resize handles
-        const corners = [
+        // Check 8 distortion handles (4 corners + 4 edge stretch pills)
+        const handles = [
           { id: 'nw', x: sp1.x, y: sp1.y },
+          { id: 'n', x: sp1.x + w / 2, y: sp1.y },
           { id: 'ne', x: sp1.x + w, y: sp1.y },
+          { id: 'e', x: sp1.x + w, y: sp1.y + h / 2 },
           { id: 'se', x: sp1.x + w, y: sp1.y + h },
+          { id: 's', x: sp1.x + w / 2, y: sp1.y + h },
           { id: 'sw', x: sp1.x, y: sp1.y + h },
+          { id: 'w', x: sp1.x, y: sp1.y + h / 2 },
         ];
-        const hitHandle = corners.find((c) => Math.hypot(screenClick.x - c.x, screenClick.y - c.y) <= 24);
+        const hitHandle = handles.find((c) => Math.hypot(screenClick.x - c.x, screenClick.y - c.y) <= 24);
 
         if (hitHandle) {
           setDraggingUnderlayHandle(hitHandle.id as any);
@@ -3603,11 +3676,12 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       }, 400);
     }
 
-    // Dragging / Scaling Underlay (Plan-Vorlage)
+    // Dragging / Scaling / Distorting Underlay (Plan-Vorlage)
     if (draggingUnderlayHandle && underlayDragStartRef.current && backgroundImage && onUpdateBackgroundImage) {
       const dxM = (e.clientX - underlayDragStartRef.current.clientX) / zoom;
       const dyM = (e.clientY - underlayDragStartRef.current.clientY) / zoom;
       const init = underlayDragStartRef.current;
+      const isLocked = (backgroundImage.lockAspectRatio ?? false) || e.shiftKey;
       const aspect = init.startHM / init.startWM;
 
       if (draggingUnderlayHandle === 'move') {
@@ -3616,17 +3690,49 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           x: Math.round((init.startX + dxM) * 100) / 100,
           y: Math.round((init.startY + dyM) * 100) / 100,
         });
+      } else if (draggingUnderlayHandle === 'e') {
+        // Stretch only in width from right
+        const newW = Math.max(0.2, init.startWM + dxM);
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          widthM: Math.round(newW * 100) / 100,
+        });
+      } else if (draggingUnderlayHandle === 'w') {
+        // Stretch only in width from left
+        const newW = Math.max(0.2, init.startWM - dxM);
+        const newX = init.startX + (init.startWM - newW);
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          x: Math.round(newX * 100) / 100,
+          widthM: Math.round(newW * 100) / 100,
+        });
+      } else if (draggingUnderlayHandle === 's') {
+        // Stretch only in height from bottom
+        const newH = Math.max(0.2, init.startHM + dyM);
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          heightM: Math.round(newH * 100) / 100,
+        });
+      } else if (draggingUnderlayHandle === 'n') {
+        // Stretch only in height from top
+        const newH = Math.max(0.2, init.startHM - dyM);
+        const newY = init.startY + (init.startHM - newH);
+        onUpdateBackgroundImage({
+          ...backgroundImage,
+          y: Math.round(newY * 100) / 100,
+          heightM: Math.round(newH * 100) / 100,
+        });
       } else if (draggingUnderlayHandle === 'se') {
-        const newW = Math.max(0.5, init.startWM + dxM);
-        const newH = newW * aspect;
+        const newW = Math.max(0.2, init.startWM + dxM);
+        const newH = isLocked ? newW * aspect : Math.max(0.2, init.startHM + dyM);
         onUpdateBackgroundImage({
           ...backgroundImage,
           widthM: Math.round(newW * 100) / 100,
           heightM: Math.round(newH * 100) / 100,
         });
       } else if (draggingUnderlayHandle === 'sw') {
-        const newW = Math.max(0.5, init.startWM - dxM);
-        const newH = newW * aspect;
+        const newW = Math.max(0.2, init.startWM - dxM);
+        const newH = isLocked ? newW * aspect : Math.max(0.2, init.startHM + dyM);
         const newX = init.startX + (init.startWM - newW);
         onUpdateBackgroundImage({
           ...backgroundImage,
@@ -3635,8 +3741,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           heightM: Math.round(newH * 100) / 100,
         });
       } else if (draggingUnderlayHandle === 'ne') {
-        const newW = Math.max(0.5, init.startWM + dxM);
-        const newH = newW * aspect;
+        const newW = Math.max(0.2, init.startWM + dxM);
+        const newH = isLocked ? newW * aspect : Math.max(0.2, init.startHM - dyM);
         const newY = init.startY + (init.startHM - newH);
         onUpdateBackgroundImage({
           ...backgroundImage,
@@ -3645,8 +3751,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           heightM: Math.round(newH * 100) / 100,
         });
       } else if (draggingUnderlayHandle === 'nw') {
-        const newW = Math.max(0.5, init.startWM - dxM);
-        const newH = newW * aspect;
+        const newW = Math.max(0.2, init.startWM - dxM);
+        const newH = isLocked ? newW * aspect : Math.max(0.2, init.startHM - dyM);
         const newX = init.startX + (init.startWM - newW);
         const newY = init.startY + (init.startHM - newH);
         onUpdateBackgroundImage({
@@ -3703,6 +3809,52 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         isCrossing,
       });
       return;
+    }
+
+    // Underlay Handle Hover detection (for proper resize cursor)
+    const underlayLayer = layers.find((l) => l.id === 'underlay');
+    const isUnderlayVisible = underlayLayer ? underlayLayer.visible : true;
+    const isUnderlayLayerLocked = underlayLayer ? underlayLayer.locked : false;
+    if (
+      backgroundImage &&
+      backgroundImage.url &&
+      isUnderlayVisible &&
+      backgroundImage.visible !== false &&
+      !backgroundImage.locked &&
+      !isUnderlayLayerLocked &&
+      canvasRef.current
+    ) {
+      const sp1 = worldToScreen({ x: backgroundImage.x, y: backgroundImage.y });
+      const sp2 = worldToScreen({
+        x: backgroundImage.x + (backgroundImage.widthM || 10),
+        y: backgroundImage.y + (backgroundImage.heightM || 10),
+      });
+      const w = sp2.x - sp1.x;
+      const h = sp2.y - sp1.y;
+      const screenClick = {
+        x: e.clientX - canvasRef.current.getBoundingClientRect().left,
+        y: e.clientY - canvasRef.current.getBoundingClientRect().top,
+      };
+      const handles = [
+        { id: 'nw', x: sp1.x, y: sp1.y },
+        { id: 'n', x: sp1.x + w / 2, y: sp1.y },
+        { id: 'ne', x: sp1.x + w, y: sp1.y },
+        { id: 'e', x: sp1.x + w, y: sp1.y + h / 2 },
+        { id: 'se', x: sp1.x + w, y: sp1.y + h },
+        { id: 's', x: sp1.x + w / 2, y: sp1.y + h },
+        { id: 'sw', x: sp1.x, y: sp1.y + h },
+        { id: 'w', x: sp1.x, y: sp1.y + h / 2 },
+      ];
+      const hitHandle = handles.find((c) => Math.hypot(screenClick.x - c.x, screenClick.y - c.y) <= 20);
+      if (hitHandle) {
+        setHoveredUnderlayHandle(hitHandle.id as any);
+      } else if (screenClick.x >= sp1.x && screenClick.x <= sp1.x + w && screenClick.y >= sp1.y && screenClick.y <= sp1.y + h) {
+        setHoveredUnderlayHandle('move');
+      } else {
+        setHoveredUnderlayHandle(null);
+      }
+    } else {
+      setHoveredUnderlayHandle(null);
     }
 
     // Hover detection
@@ -4144,15 +4296,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const cursorStyle = useMemo(() => {
     if (isCalibratingUnderlay) return 'crosshair';
     if (draggingUnderlayHandle === 'move') return 'grabbing';
+    if (draggingUnderlayHandle === 'w' || draggingUnderlayHandle === 'e') return 'ew-resize';
+    if (draggingUnderlayHandle === 'n' || draggingUnderlayHandle === 's') return 'ns-resize';
     if (draggingUnderlayHandle === 'nw' || draggingUnderlayHandle === 'se') return 'nwse-resize';
     if (draggingUnderlayHandle === 'ne' || draggingUnderlayHandle === 'sw') return 'nesw-resize';
+    if (hoveredUnderlayHandle === 'w' || hoveredUnderlayHandle === 'e') return 'ew-resize';
+    if (hoveredUnderlayHandle === 'n' || hoveredUnderlayHandle === 's') return 'ns-resize';
+    if (hoveredUnderlayHandle === 'nw' || hoveredUnderlayHandle === 'se') return 'nwse-resize';
+    if (hoveredUnderlayHandle === 'ne' || hoveredUnderlayHandle === 'sw') return 'nesw-resize';
+    if (hoveredUnderlayHandle === 'move') return 'move';
     if (isPanning || activeTool === 'hand') return 'grab';
     if (activeTool === 'wall' || activeTool === 'rect_room' || activeTool === 'dimension' || activeTool === 'plot') return 'crosshair';
     if (activeTool === 'eraser') return 'not-allowed';
     if (isDraggingSelection) return 'grabbing';
     if (activeTool === 'select' && isHoveringSelection) return 'move';
     return 'default';
-  }, [isCalibratingUnderlay, draggingUnderlayHandle, isPanning, activeTool, isDraggingSelection, isHoveringSelection]);
+  }, [isCalibratingUnderlay, draggingUnderlayHandle, hoveredUnderlayHandle, isPanning, activeTool, isDraggingSelection, isHoveringSelection]);
 
   return (
     <div
@@ -4599,27 +4758,67 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             <div className="flex flex-col gap-3 pt-2 border-t border-stone-800 text-[11px] animate-in fade-in duration-150">
               {/* SECTION: Maße & Skalierung */}
               <div className="bg-stone-950/70 p-2.5 rounded-xl border border-stone-800 flex flex-col gap-2">
-                <span className="font-semibold text-stone-300">Maße der Vorlage (Meter):</span>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-stone-300">Maße der Vorlage (Meter):</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onUpdateBackgroundImage) {
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          lockAspectRatio: !backgroundImage.lockAspectRatio,
+                        });
+                      }
+                    }}
+                    title={backgroundImage.lockAspectRatio ? 'Seitenverhältnis gesperrt (proportional). Klicken für freies Verzerren.' : 'Frei verzerren aktiv (Breite/Höhe separat). Klicken für proportionales Skalieren.'}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer border ${
+                      backgroundImage.lockAspectRatio
+                        ? 'bg-amber-950/80 border-amber-600 text-amber-300'
+                        : 'bg-stone-850 border-stone-700 text-stone-300 hover:text-white'
+                    }`}
+                  >
+                    {backgroundImage.lockAspectRatio ? (
+                      <>
+                        <Lock className="w-2.5 h-2.5 text-amber-400" />
+                        <span>Proportional</span>
+                      </>
+                    ) : (
+                      <>
+                        <Unlock className="w-2.5 h-2.5 text-emerald-400" />
+                        <span>Frei verzerren</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-stone-400">Breite:</span>
+                    <span className="text-stone-400 font-medium">Breite:</span>
                     <input
                       type="number"
-                      step="0.1"
-                      min="0.5"
+                      step="0.05"
+                      min="0.2"
                       max="200"
                       value={backgroundImage.widthM || 10}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value);
                         if (val > 0 && onUpdateBackgroundImage) {
-                          const curW = backgroundImage.widthM || 10;
-                          const curH = backgroundImage.heightM || 10;
-                          const aspect = curH / curW;
-                          onUpdateBackgroundImage({
-                            ...backgroundImage,
-                            widthM: val,
-                            heightM: Math.round(val * aspect * 100) / 100,
-                          });
+                          if (backgroundImage.lockAspectRatio) {
+                            const curW = backgroundImage.widthM || 10;
+                            const curH = backgroundImage.heightM || 10;
+                            const aspect = curH / curW;
+                            onUpdateBackgroundImage({
+                              ...backgroundImage,
+                              widthM: val,
+                              heightM: Math.round(val * aspect * 100) / 100,
+                            });
+                          } else {
+                            // Frei verzerren: nur in die Breite ziehen!
+                            onUpdateBackgroundImage({
+                              ...backgroundImage,
+                              widthM: val,
+                            });
+                          }
                         }
                       }}
                       className="w-18 bg-stone-900 border border-stone-700 rounded px-1.5 py-0.5 text-white font-mono font-bold text-right"
@@ -4628,29 +4827,134 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    <span className="text-stone-400">Höhe:</span>
+                    <span className="text-stone-400 font-medium">Höhe:</span>
                     <input
                       type="number"
-                      step="0.1"
-                      min="0.5"
+                      step="0.05"
+                      min="0.2"
                       max="200"
                       value={backgroundImage.heightM || 10}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value);
                         if (val > 0 && onUpdateBackgroundImage) {
-                          const curW = backgroundImage.widthM || 10;
-                          const curH = backgroundImage.heightM || 10;
-                          const aspect = curW / curH;
-                          onUpdateBackgroundImage({
-                            ...backgroundImage,
-                            heightM: val,
-                            widthM: Math.round(val * aspect * 100) / 100,
-                          });
+                          if (backgroundImage.lockAspectRatio) {
+                            const curW = backgroundImage.widthM || 10;
+                            const curH = backgroundImage.heightM || 10;
+                            const aspect = curW / curH;
+                            onUpdateBackgroundImage({
+                              ...backgroundImage,
+                              heightM: val,
+                              widthM: Math.round(val * aspect * 100) / 100,
+                            });
+                          } else {
+                            // Frei verzerren: nur in die Höhe ziehen!
+                            onUpdateBackgroundImage({
+                              ...backgroundImage,
+                              heightM: val,
+                            });
+                          }
                         }
                       }}
                       className="w-18 bg-stone-900 border border-stone-700 rounded px-1.5 py-0.5 text-white font-mono font-bold text-right"
                     />
                     <span className="text-stone-500">m</span>
+                  </div>
+                </div>
+
+                {/* Schnell-Verzerrungs-Schaltflächen */}
+                <div className="flex items-center justify-between text-[10px] pt-1 border-t border-stone-850">
+                  <span className="text-stone-400">Breite ziehen:</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const curW = backgroundImage.widthM || 10;
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          widthM: Math.max(0.2, Math.round(curW * 0.95 * 100) / 100),
+                        });
+                      }}
+                      className="px-1.5 py-0.5 bg-stone-850 hover:bg-stone-800 border border-stone-700 rounded text-stone-300 cursor-pointer"
+                      title="Plan um 5% schmaler stauchen"
+                    >
+                      -5%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const curW = backgroundImage.widthM || 10;
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          widthM: Math.round(curW * 1.05 * 100) / 100,
+                        });
+                      }}
+                      className="px-1.5 py-0.5 bg-stone-850 hover:bg-stone-800 border border-stone-700 rounded text-stone-300 cursor-pointer"
+                      title="Plan um 5% in die Breite ziehen (dehnen)"
+                    >
+                      +5%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const curW = backgroundImage.widthM || 10;
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          widthM: Math.round(curW * 1.10 * 100) / 100,
+                        });
+                      }}
+                      className="px-2 py-0.5 bg-amber-950/70 hover:bg-amber-900 border border-amber-700 text-amber-300 rounded font-bold cursor-pointer"
+                      title="Plan um 10% in die Breite ziehen (dehnen)"
+                    >
+                      +10% ↔
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-stone-400">Höhe ziehen:</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const curH = backgroundImage.heightM || 8;
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          heightM: Math.max(0.2, Math.round(curH * 0.95 * 100) / 100),
+                        });
+                      }}
+                      className="px-1.5 py-0.5 bg-stone-850 hover:bg-stone-800 border border-stone-700 rounded text-stone-300 cursor-pointer"
+                      title="Plan in der Höhe stauchen (-5%)"
+                    >
+                      -5%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const curH = backgroundImage.heightM || 8;
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          heightM: Math.round(curH * 1.05 * 100) / 100,
+                        });
+                      }}
+                      className="px-1.5 py-0.5 bg-stone-850 hover:bg-stone-800 border border-stone-700 rounded text-stone-300 cursor-pointer"
+                      title="Plan um 5% in die Höhe ziehen"
+                    >
+                      +5%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const curH = backgroundImage.heightM || 8;
+                        onUpdateBackgroundImage?.({
+                          ...backgroundImage,
+                          heightM: Math.round(curH * 1.10 * 100) / 100,
+                        });
+                      }}
+                      className="px-2 py-0.5 bg-amber-950/70 hover:bg-amber-900 border border-amber-700 text-amber-300 rounded font-bold cursor-pointer"
+                      title="Plan um 10% in die Höhe ziehen"
+                    >
+                      +10% ↕
+                    </button>
                   </div>
                 </div>
 
