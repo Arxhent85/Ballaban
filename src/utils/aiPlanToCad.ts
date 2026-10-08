@@ -37,13 +37,15 @@ export function convertAiPlanToCadObjects(
   const qualityChecks: PlanQualityCheckItem[] = [];
   const baseTimestamp = Date.now();
 
+  const extThickness = options.exteriorWallThickness ?? projectDefaults?.exteriorWallThickness ?? 0.24;
+  const intThickness = options.interiorWallThickness ?? projectDefaults?.interiorWallThickness ?? 0.115;
+
   // 1. Generate Walls
-  const selectedWalls = plan.walls.filter((w) => w.selected !== false);
+  const shouldIncludeWalls = options.includeWalls !== false;
+  const selectedWalls = shouldIncludeWalls ? plan.walls.filter((w) => w.selected !== false) : [];
   const walls: Wall[] = selectedWalls.map((w, idx) => {
-    const defaultThickness = w.isExterior
-      ? projectDefaults?.exteriorWallThickness || 0.30
-      : projectDefaults?.interiorWallThickness || 0.115;
-    const thickness = options.useDefaultWallThickness ? defaultThickness : w.thickness;
+    const defaultThickness = w.isExterior ? extThickness : intThickness;
+    const thickness = options.useDefaultWallThickness ? defaultThickness : (w.thickness || defaultThickness);
 
     return {
       id: `wall_${baseTimestamp}_${idx + 1}`,
@@ -59,7 +61,8 @@ export function convertAiPlanToCadObjects(
   });
 
   // 2. Attach Doors to Walls
-  const selectedDoors = plan.doors.filter((d) => d.selected !== false);
+  const shouldIncludeDoors = options.includeDoors !== false && shouldIncludeWalls && walls.length > 0;
+  const selectedDoors = shouldIncludeDoors ? plan.doors.filter((d) => d.selected !== false) : [];
   const doors: Door[] = [];
 
   for (let i = 0; i < selectedDoors.length; i++) {
@@ -94,7 +97,8 @@ export function convertAiPlanToCadObjects(
   }
 
   // 3. Attach Windows to Walls
-  const selectedWindows = plan.windows.filter((w) => w.selected !== false);
+  const shouldIncludeWindows = options.includeWindows !== false && shouldIncludeWalls && walls.length > 0;
+  const selectedWindows = shouldIncludeWindows ? plan.windows.filter((w) => w.selected !== false) : [];
   const windows: Window[] = [];
 
   for (let i = 0; i < selectedWindows.length; i++) {
@@ -129,7 +133,8 @@ export function convertAiPlanToCadObjects(
   }
 
   // 4. Generate Rooms
-  const selectedRooms = plan.rooms.filter((r) => r.selected !== false);
+  const shouldIncludeRooms = options.includeRooms !== false;
+  const selectedRooms = shouldIncludeRooms ? plan.rooms.filter((r) => r.selected !== false) : [];
   const rooms: Room[] = selectedRooms.map((r, idx) => {
     const category = r.category || 'living';
     const floorFinish =
@@ -166,8 +171,9 @@ export function convertAiPlanToCadObjects(
     };
   });
 
-  // 5. Generate Furniture
-  const selectedFurniture = plan.furniture.filter((f) => f.selected !== false);
+  // 5. Generate Furniture (Included unless explicitly set to false in options)
+  const shouldIncludeFurniture = options.includeFurniture !== false;
+  const selectedFurniture = shouldIncludeFurniture ? plan.furniture.filter((f) => f.selected !== false) : [];
   const furniture: Furniture[] = selectedFurniture.map((f, idx) => {
     let catalogItem = FURNITURE_CATALOG.find(
       (c) => c.id.toLowerCase() === f.type.toLowerCase() || c.name.toLowerCase().includes(f.name.toLowerCase())
@@ -194,7 +200,8 @@ export function convertAiPlanToCadObjects(
   });
 
   // 6. Generate Stairs
-  const selectedStairs = plan.stairs.filter((s) => s.selected !== false);
+  const shouldIncludeStairs = options.includeStairs !== false;
+  const selectedStairs = shouldIncludeStairs ? plan.stairs.filter((s) => s.selected !== false) : [];
   const stairs: Stair[] = selectedStairs.map((s, idx) => ({
     id: `stair_${baseTimestamp}_${idx + 1}`,
     type: s.type || 'straight',

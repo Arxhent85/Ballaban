@@ -270,4 +270,87 @@ describe('AI Plan Calibrator & Orthogonal Snapper', () => {
     expect(cad.rooms[0].name).toBe('Wohnbereich');
     expect(cad.rooms[0].areaM2).toBe(24.0);
   });
+
+  it('6. Test selective element extraction: exclude furniture and doors if deselected by user', () => {
+    const mockCalibrated: AiPlanAnalysisResult = {
+      imageWidth: 1000,
+      imageHeight: 1000,
+      confidence: 0.95,
+      readDimensions: [],
+      walls: [
+        { id: 'w1', startX: 0, startY: 0, endX: 6.0, endY: 0, thickness: 0.24, isExterior: true, selected: true },
+        { id: 'w2', startX: 6.0, startY: 0, endX: 6.0, endY: 4.0, thickness: 0.24, isExterior: true, selected: true },
+      ],
+      doors: [
+        { id: 'd1', x: 2.0, y: 0.0, width: 0.9, height: 2.05, type: 'single', swingDirection: 'left', openDirection: 'inside', confidence: 0.9, selected: true },
+      ],
+      windows: [
+        { id: 'win1', x: 4.0, y: 0.0, width: 1.2, height: 1.25, parapetHeight: 0.9, type: 'turn_tilt', confidence: 0.9, selected: true },
+      ],
+      rooms: [
+        { id: 'r1', name: 'Schlafzimmer', category: 'sleeping', polygon: [{ x: 0, y: 0 }, { x: 6, y: 0 }, { x: 6, y: 4 }, { x: 0, y: 4 }], areaM2: 24.0, confidence: 0.95, selected: true },
+      ],
+      furniture: [
+        { id: 'f1', name: 'Doppelbett', type: 'bed_double', category: 'sleeping', x: 2.0, y: 2.0, width: 2.0, depth: 1.8, rotation: 0, confidence: 0.9, selected: true },
+      ],
+      stairs: [],
+    };
+
+    const cad = convertAiPlanToCadObjects(
+      mockCalibrated,
+      {
+        autoStraightenWalls: true,
+        roundDimensions: '5cm',
+        replaceWithLibraryFurniture: true,
+        useDefaultWallThickness: true,
+        keepUnderlayInProject: true,
+        targetDestination: 'new_project',
+        includeWalls: true,
+        includeDoors: false,      // User deselected doors
+        includeWindows: true,
+        includeRooms: true,
+        includeFurniture: false,  // User deselected furniture
+      }
+    );
+
+    expect(cad.walls.length).toBe(2);
+    expect(cad.windows.length).toBe(1);
+    expect(cad.rooms.length).toBe(1);
+    expect(cad.doors.length).toBe(0);      // Completely excluded
+    expect(cad.furniture.length).toBe(0);  // Completely excluded
+  });
+
+  it('7. Test custom wall thickness and targetBuildingWidthM scaling', () => {
+    const rawResult: AiPlanAnalysisResult = {
+      imageWidth: 1000,
+      imageHeight: 800,
+      confidence: 0.95,
+      readDimensions: [{ label: '9.00', valueMeters: 9.0 }],
+      walls: [
+        { id: 'w1', startX: 100, startY: 100, endX: 900, endY: 100, thickness: 0.35, isExterior: true, selected: true },
+        { id: 'w2', startX: 900, startY: 100, endX: 900, endY: 700, thickness: 0.35, isExterior: true, selected: true },
+      ],
+      doors: [],
+      windows: [],
+      rooms: [],
+      furniture: [],
+      stairs: [],
+    };
+
+    // User overrides building width to 9.00 m and exterior thickness to 0.20 m
+    const calibrated = calibrateAndTransformPlan(rawResult, undefined, {
+      autoStraighten: true,
+      roundDimensions: '5cm',
+      useDefaultThickness: true,
+      defaultExteriorThickness: 0.20,
+      defaultInteriorThickness: 0.10,
+      targetBuildingWidthM: 9.00,
+    });
+
+    // Wall span from 100 to 900 (span = 800px) should scale to exactly 9.00 m
+    const w1 = calibrated.calibratedResult.walls[0];
+    const buildingWidth = Math.abs(w1.endX - w1.startX);
+    expect(buildingWidth).toBeCloseTo(9.00, 1);
+    expect(w1.thickness).toBe(0.20); // Slimmer wall thickness applied
+  });
 });

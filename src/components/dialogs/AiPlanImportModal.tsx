@@ -155,21 +155,32 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
 
   // Review & options states
   const [blendAlpha, setBlendAlpha] = useState<number>(0.65); // 0 = original image, 1 = CAD vectors
+  const [customExteriorThickness, setCustomExteriorThickness] = useState<number>(0.24);
+  const [customInteriorThickness, setCustomInteriorThickness] = useState<number>(0.115);
+  const [reviewBuildingWidthM, setReviewBuildingWidthM] = useState<string>('');
   const [importOptions, setImportOptions] = useState<AiImportOptions>({
     autoStraightenWalls: true,
     roundDimensions: '5cm',
     replaceWithLibraryFurniture: true,
     useDefaultWallThickness: true,
+    exteriorWallThickness: 0.24,
+    interiorWallThickness: 0.115,
     keepUnderlayInProject: true,
     targetDestination: 'new_project',
+    includeWalls: true,
+    includeDoors: true,
+    includeWindows: true,
+    includeRooms: true,
+    includeFurniture: false, // Default false to prevent furniture clutter
+    includeStairs: false,
   });
   const [filterGroups, setFilterGroups] = useState({
     walls: true,
     doors: true,
     windows: true,
     rooms: true,
-    furniture: true,
-    stairs: true,
+    furniture: false, // Default false: cleanly focus on architecture
+    stairs: false,
   });
 
   // Quality check report
@@ -474,21 +485,31 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
           setAnalysisStage(update);
           setAnalysisProgressMsg(update.phase);
         },
-        controller.signal
+        controller.signal,
+        {
+          includeOpenings: filterGroups.doors || filterGroups.windows,
+          includeRooms: filterGroups.rooms,
+          includeFurniture: filterGroups.furniture,
+        }
       );
 
       setRawAiResult(result);
 
       // 3. Calibrate and transform plan
+      const targetW = parseFloat(totalBuildingWidthM) || undefined;
       const calibrated = calibrateAndTransformPlan(result, calibrationData || undefined, {
         autoStraighten: importOptions.autoStraightenWalls,
         roundDimensions: importOptions.roundDimensions,
-        useDefaultThickness: importOptions.useDefaultWallThickness,
-        defaultExteriorThickness: project.defaults?.exteriorWallThickness,
-        defaultInteriorThickness: project.defaults?.interiorWallThickness,
+        useDefaultThickness: true,
+        defaultExteriorThickness: customExteriorThickness,
+        defaultInteriorThickness: customInteriorThickness,
+        targetBuildingWidthM: targetW,
       });
 
       setCalibratedResult(calibrated.calibratedResult);
+      if (calibrated.calibratedResult.detectedTotalWidthM) {
+        setReviewBuildingWidthM(calibrated.calibratedResult.detectedTotalWidthM.toFixed(2));
+      }
       setStep('review');
     } catch (err: any) {
       if (controller.signal.aborted && !isTimedOut) {
@@ -510,6 +531,27 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
     }
   };
 
+  // Live recalculate calibration when user changes wall thickness, dimensions or building width in review
+  const updatePlanCalibration = (
+    extThick = customExteriorThickness,
+    intThick = customInteriorThickness,
+    widthM?: number,
+    straighten = importOptions.autoStraightenWalls,
+    round = importOptions.roundDimensions
+  ) => {
+    if (!rawAiResult) return;
+    const targetW = widthM !== undefined ? widthM : (parseFloat(reviewBuildingWidthM) || undefined);
+    const calibrated = calibrateAndTransformPlan(rawAiResult, calibrationData || undefined, {
+      autoStraighten: straighten,
+      roundDimensions: round,
+      useDefaultThickness: true,
+      defaultExteriorThickness: extThick,
+      defaultInteriorThickness: intThick,
+      targetBuildingWidthM: targetW,
+    });
+    setCalibratedResult(calibrated.calibratedResult);
+  };
+
   // True cancellation: restores interactive state immediately
   const handleCancelAnalysis = () => {
     if (abortController) {
@@ -526,14 +568,19 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
   const handleLoadDemoPlan = () => {
     const demoResult = getDemoHolidayHousePlan();
     setRawAiResult(demoResult);
+    const targetW = parseFloat(totalBuildingWidthM) || undefined;
     const calibrated = calibrateAndTransformPlan(demoResult, calibrationData || undefined, {
       autoStraighten: importOptions.autoStraightenWalls,
       roundDimensions: importOptions.roundDimensions,
-      useDefaultThickness: importOptions.useDefaultWallThickness,
-      defaultExteriorThickness: project.defaults?.exteriorWallThickness,
-      defaultInteriorThickness: project.defaults?.interiorWallThickness,
+      useDefaultThickness: true,
+      defaultExteriorThickness: customExteriorThickness,
+      defaultInteriorThickness: customInteriorThickness,
+      targetBuildingWidthM: targetW,
     });
     setCalibratedResult(calibrated.calibratedResult);
+    if (calibrated.calibratedResult.detectedTotalWidthM) {
+      setReviewBuildingWidthM(calibrated.calibratedResult.detectedTotalWidthM.toFixed(2));
+    }
     setStep('review');
   };
 
@@ -688,16 +735,30 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
   const handleCommitPlanCreation = () => {
     if (!calibratedResult) return;
 
-    const conversion = convertAiPlanToCadObjects(calibratedResult, importOptions, project.defaults);
+    const conversion = convertAiPlanToCadObjects(
+      calibratedResult,
+      {
+        ...importOptions,
+        includeWalls: filterGroups.walls,
+        includeDoors: filterGroups.doors,
+        includeWindows: filterGroups.windows,
+        includeRooms: filterGroups.rooms,
+        includeFurniture: filterGroups.furniture,
+        includeStairs: filterGroups.stairs,
+        exteriorWallThickness: customExteriorThickness,
+        interiorWallThickness: customInteriorThickness,
+      },
+      project.defaults
+    );
     setQualityChecks(conversion.qualityChecks);
 
     onImportPlan({
-      walls: conversion.walls,
-      doors: conversion.doors,
-      windows: conversion.windows,
-      rooms: conversion.rooms,
-      furniture: conversion.furniture,
-      stairs: conversion.stairs,
+      walls: filterGroups.walls ? conversion.walls : [],
+      doors: (filterGroups.walls && filterGroups.doors) ? conversion.doors : [],
+      windows: (filterGroups.walls && filterGroups.windows) ? conversion.windows : [],
+      rooms: filterGroups.rooms ? conversion.rooms : [],
+      furniture: filterGroups.furniture ? conversion.furniture : [],
+      stairs: filterGroups.stairs ? conversion.stairs : [],
       roof: conversion.roof,
       backgroundImageUrl: importOptions.keepUnderlayInProject && activeImage ? activeImage.dataUrl : undefined,
       backgroundWidthM: calibratedResult.detectedTotalWidthM,
@@ -1105,6 +1166,66 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                   </span>
                 </div>
 
+                {/* Element Pre-Selection Profile */}
+                <div className="bg-slate-850 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-2 text-xs">
+                  <span className="font-semibold text-white">Was soll ausgelesen werden?</span>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    <button
+                      onClick={() => setFilterGroups({ walls: true, doors: true, windows: true, rooms: true, furniture: false, stairs: false })}
+                      className={`p-2 rounded-xl border text-left flex items-center justify-between cursor-pointer transition-all ${
+                        filterGroups.walls && filterGroups.doors && !filterGroups.furniture
+                          ? 'bg-amber-950/50 border-amber-500 text-amber-200'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-semibold text-xs flex items-center gap-1.5">
+                          <span>🏢</span>
+                          <span>Wände, Türen & Fenster (Empfohlen)</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">Sauberer CAD-Grundriss ohne störende Möbel</div>
+                      </div>
+                      {filterGroups.walls && filterGroups.doors && !filterGroups.furniture && <Check className="w-4 h-4 text-amber-400 shrink-0" />}
+                    </button>
+
+                    <button
+                      onClick={() => setFilterGroups({ walls: true, doors: false, windows: false, rooms: false, furniture: false, stairs: false })}
+                      className={`p-2 rounded-xl border text-left flex items-center justify-between cursor-pointer transition-all ${
+                        filterGroups.walls && !filterGroups.doors && !filterGroups.furniture
+                          ? 'bg-amber-950/50 border-amber-500 text-amber-200'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-semibold text-xs flex items-center gap-1.5">
+                          <span>🧱</span>
+                          <span>Nur Wände (Rohbau)</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">Reine Wandachsen zum freien Weiterplanen</div>
+                      </div>
+                      {filterGroups.walls && !filterGroups.doors && !filterGroups.furniture && <Check className="w-4 h-4 text-amber-400 shrink-0" />}
+                    </button>
+
+                    <button
+                      onClick={() => setFilterGroups({ walls: true, doors: true, windows: true, rooms: true, furniture: true, stairs: true })}
+                      className={`p-2 rounded-xl border text-left flex items-center justify-between cursor-pointer transition-all ${
+                        filterGroups.furniture
+                          ? 'bg-amber-950/50 border-amber-500 text-amber-200'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-600'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-semibold text-xs flex items-center gap-1.5">
+                          <span>🛋️</span>
+                          <span>Alles inklusive Möbel</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">Mit Betten, Sofas & Sanitärobjekten</div>
+                      </div>
+                      {filterGroups.furniture && <Check className="w-4 h-4 text-amber-400 shrink-0" />}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Actions */}
                 <div className="mt-auto flex flex-col gap-2 pt-2">
                   <button
@@ -1312,60 +1433,272 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
 
               {/* Review Sidebar Controls */}
               <div className="w-full md:w-80 bg-slate-900 border-t md:border-t-0 md:border-l border-slate-800 p-4 flex flex-col gap-3.5 shrink-0 overflow-y-auto">
-                <span className="text-xs font-bold text-white uppercase tracking-wider">Erkannte Elemente</span>
-
-                {/* Stats Chips */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl bg-slate-850 border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400">Wände:</span>
-                    <span className="font-bold text-amber-400">{calibratedResult.walls.length}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-850 border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400">Türen:</span>
-                    <span className="font-bold text-emerald-400">{calibratedResult.doors.length}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-850 border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400">Fenster:</span>
-                    <span className="font-bold text-sky-400">{calibratedResult.windows.length}</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-850 border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400">Räume:</span>
-                    <span className="font-bold text-amber-500">{calibratedResult.rooms.length}</span>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">Erkannte Elemente</span>
+                  <span className="text-[10px] text-amber-400 font-semibold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
+                    {calibratedResult.walls.length} Wände
+                  </span>
                 </div>
 
-                {/* Layer Toggles */}
-                <div className="bg-slate-850 p-3 rounded-xl border border-slate-800 flex flex-col gap-1.5 text-xs">
-                  <span className="font-semibold text-slate-300 mb-1">Objektgruppen einbinden:</span>
-                  {[
-                    { key: 'walls', label: 'Wände' },
-                    { key: 'doors', label: 'Türen' },
-                    { key: 'windows', label: 'Fenster' },
-                    { key: 'rooms', label: 'Räume & Beschriftung' },
-                    { key: 'furniture', label: 'Möbel & Sanitärobjekte' },
-                  ].map(({ key, label }) => (
-                    <label key={key} className="flex items-center gap-2 py-0.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={(filterGroups as any)[key]}
-                        onChange={(e) => setFilterGroups({ ...filterGroups, [key]: e.target.checked })}
-                        className="rounded accent-amber-500"
-                      />
-                      <span className="text-slate-300">{label}</span>
-                    </label>
-                  ))}
-                </div>
-
-                {/* Import Quality Options */}
+                {/* 1. LAYER & ELEMENT GROUP SELECTION (TEIL 4 / USER OPTIONEN) */}
                 <div className="bg-slate-850 p-3 rounded-xl border border-slate-800 flex flex-col gap-2 text-xs">
-                  <span className="font-semibold text-slate-300">Optionen vor Erstellung:</span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-white">Was soll importiert werden?</span>
+                  </div>
+
+                  {/* 1-Tap Quick Profiles */}
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      onClick={() => setFilterGroups({ walls: true, doors: false, windows: false, rooms: false, furniture: false, stairs: false })}
+                      className={`py-1.5 px-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                        filterGroups.walls && !filterGroups.doors && !filterGroups.furniture
+                          ? 'bg-amber-600 text-white shadow-sm'
+                          : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-750'
+                      }`}
+                    >
+                      Nur Wände
+                    </button>
+                    <button
+                      onClick={() => setFilterGroups({ walls: true, doors: true, windows: true, rooms: true, furniture: false, stairs: false })}
+                      className={`py-1.5 px-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                        filterGroups.walls && filterGroups.doors && !filterGroups.furniture
+                          ? 'bg-amber-600 text-white shadow-sm'
+                          : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-750'
+                      }`}
+                    >
+                      Plan (Empf.)
+                    </button>
+                    <button
+                      onClick={() => setFilterGroups({ walls: true, doors: true, windows: true, rooms: true, furniture: true, stairs: true })}
+                      className={`py-1.5 px-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                        filterGroups.furniture
+                          ? 'bg-amber-600 text-white shadow-sm'
+                          : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-750'
+                      }`}
+                    >
+                      Inkl. Möbel
+                    </button>
+                  </div>
+
+                  {/* Individual Group Toggles with Object Counts */}
+                  <div className="flex flex-col gap-1 pt-1.5 border-t border-slate-800">
+                    {[
+                      { key: 'walls', label: 'Wände', count: calibratedResult.walls.length, icon: '🧱' },
+                      { key: 'doors', label: 'Türen', count: calibratedResult.doors.length, icon: '🚪' },
+                      { key: 'windows', label: 'Fenster', count: calibratedResult.windows.length, icon: '🪟' },
+                      { key: 'rooms', label: 'Räume & Raumnamen', count: calibratedResult.rooms.length, icon: '🏷️' },
+                      { key: 'furniture', label: 'Möbel & Sanitärobjekte', count: calibratedResult.furniture.length, icon: '🛋️' },
+                      { key: 'stairs', label: 'Treppen', count: calibratedResult.stairs.length, icon: '🪜' },
+                    ].map(({ key, label, count, icon }) => (
+                      <label key={key} className="flex items-center justify-between py-1 px-1.5 rounded-lg hover:bg-slate-800/60 cursor-pointer transition-colors">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={(filterGroups as any)[key]}
+                            onChange={(e) => setFilterGroups({ ...filterGroups, [key]: e.target.checked })}
+                            className="rounded accent-amber-500 w-3.5 h-3.5 cursor-pointer"
+                          />
+                          <span className="text-slate-300 flex items-center gap-1.5 text-xs">
+                            <span>{icon}</span>
+                            <span>{label}</span>
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono font-bold text-amber-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                          {count}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. LIVE WALL THICKNESS CONTROLS (GEGEN "WÄNDE ZU DICK") */}
+                <div className="bg-slate-850 p-3 rounded-xl border border-slate-800 flex flex-col gap-2.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-white">Wandstärken einstellen</span>
+                    <span className="text-[10px] text-amber-400 font-medium">Live-Vorschau</span>
+                  </div>
+
+                  {/* Exterior Walls */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span>Außenwandstärke:</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.10"
+                          max="0.60"
+                          value={customExteriorThickness}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0.24;
+                            setCustomExteriorThickness(val);
+                            updatePlanCalibration(val, customInteriorThickness);
+                          }}
+                          className="w-16 bg-slate-950 border border-slate-700 rounded-lg px-2 py-0.5 text-right font-mono text-white font-bold"
+                        />
+                        <span className="text-slate-400 font-mono">m</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1 mt-0.5">
+                      {[
+                        { label: '17.5 cm', val: 0.175 },
+                        { label: '20 cm', val: 0.20 },
+                        { label: '24 cm (Schlank)', val: 0.24 },
+                        { label: '30 cm', val: 0.30 },
+                      ].map((p) => (
+                        <button
+                          key={p.val}
+                          onClick={() => {
+                            setCustomExteriorThickness(p.val);
+                            updatePlanCalibration(p.val, customInteriorThickness);
+                          }}
+                          className={`py-1 text-[10px] rounded border transition-colors cursor-pointer ${
+                            Math.abs(customExteriorThickness - p.val) < 0.005
+                              ? 'bg-amber-600 text-white border-amber-500 font-bold'
+                              : 'bg-slate-900 text-slate-400 border-slate-750 hover:text-white'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Interior Walls */}
+                  <div className="flex flex-col gap-1 pt-1.5 border-t border-slate-800">
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span>Innenwandstärke:</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.005"
+                          min="0.08"
+                          max="0.40"
+                          value={customInteriorThickness}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0.115;
+                            setCustomInteriorThickness(val);
+                            updatePlanCalibration(customExteriorThickness, val);
+                          }}
+                          className="w-16 bg-slate-950 border border-slate-700 rounded-lg px-2 py-0.5 text-right font-mono text-white font-bold"
+                        />
+                        <span className="text-slate-400 font-mono">m</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 mt-0.5">
+                      {[
+                        { label: '10 cm', val: 0.10 },
+                        { label: '11.5 cm (Standard)', val: 0.115 },
+                        { label: '15 cm', val: 0.15 },
+                      ].map((p) => (
+                        <button
+                          key={p.val}
+                          onClick={() => {
+                            setCustomInteriorThickness(p.val);
+                            updatePlanCalibration(customExteriorThickness, p.val);
+                          }}
+                          className={`py-1 text-[10px] rounded border transition-colors cursor-pointer ${
+                            Math.abs(customInteriorThickness - p.val) < 0.005
+                              ? 'bg-amber-600 text-white border-amber-500 font-bold'
+                              : 'bg-slate-900 text-slate-400 border-slate-750 hover:text-white'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. BUILDING WIDTH & SCALE ADJUSTMENT (GEGEN "ZU ENG") */}
+                <div className="bg-slate-850 p-3 rounded-xl border border-slate-800 flex flex-col gap-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-white">Gebäudebreite (Maßstab)</span>
+                    <span className="text-[10px] text-slate-400">Gegen Verengung</span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Echte Hausbreite:</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="2.0"
+                        max="50.0"
+                        value={reviewBuildingWidthM}
+                        onChange={(e) => {
+                          setReviewBuildingWidthM(e.target.value);
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val) && val >= 2.0) {
+                            updatePlanCalibration(customExteriorThickness, customInteriorThickness, val);
+                          }
+                        }}
+                        className="w-20 bg-slate-950 border border-slate-700 rounded-lg px-2 py-0.5 text-right font-mono text-white font-bold"
+                      />
+                      <span className="text-slate-400 font-mono">m</span>
+                    </div>
+                  </div>
+
+                  {/* 1-Tap Stretch/Shrink Buttons */}
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      { label: '−5%', factor: 0.95 },
+                      { label: '+5%', factor: 1.05 },
+                      { label: '+10%', factor: 1.10 },
+                    ].map((btn) => (
+                      <button
+                        key={btn.label}
+                        onClick={() => {
+                          const current = parseFloat(reviewBuildingWidthM) || calibratedResult.detectedTotalWidthM || 9.0;
+                          const next = Math.round(current * btn.factor * 100) / 100;
+                          setReviewBuildingWidthM(next.toFixed(2));
+                          updatePlanCalibration(customExteriorThickness, customInteriorThickness, next);
+                        }}
+                        className="py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white rounded text-[11px] font-semibold cursor-pointer transition-colors"
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Detected Plan Dimensions Suggestion */}
+                  {calibratedResult.readDimensions && calibratedResult.readDimensions.filter((d) => d.valueMeters >= 4.0 && d.valueMeters <= 35.0).length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-slate-800">
+                      <span className="text-[10px] text-slate-400">Im Plan erkannt:</span>
+                      {calibratedResult.readDimensions
+                        .filter((d) => d.valueMeters >= 4.0 && d.valueMeters <= 35.0)
+                        .slice(0, 3)
+                        .map((d, i) => (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              setReviewBuildingWidthM(d.valueMeters.toFixed(2));
+                              updatePlanCalibration(customExteriorThickness, customInteriorThickness, d.valueMeters);
+                            }}
+                            className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700 text-emerald-300 text-[10px] font-medium hover:bg-emerald-900 cursor-pointer transition-colors"
+                            title={`Maß ${d.valueMeters.toFixed(2)} m aus Planbeschriftung übernehmen`}
+                          >
+                            {d.valueMeters.toFixed(2)} m
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. IMPORT QUALITY OPTIONS */}
+                <div className="bg-slate-850 p-3 rounded-xl border border-slate-800 flex flex-col gap-2 text-xs">
+                  <span className="font-semibold text-slate-300">Ausrichtung & Vorlage:</span>
 
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={importOptions.autoStraightenWalls}
-                      onChange={(e) => setImportOptions({ ...importOptions, autoStraightenWalls: e.target.checked })}
-                      className="rounded accent-amber-500"
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setImportOptions({ ...importOptions, autoStraightenWalls: next });
+                        updatePlanCalibration(customExteriorThickness, customInteriorThickness, undefined, next);
+                      }}
+                      className="rounded accent-amber-500 cursor-pointer"
                     />
                     <span className="text-slate-300">Wände begradigen (0°/90° Einrasten)</span>
                   </label>
@@ -1373,41 +1706,21 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={importOptions.useDefaultWallThickness}
-                      onChange={(e) => setImportOptions({ ...importOptions, useDefaultWallThickness: e.target.checked })}
-                      className="rounded accent-amber-500"
-                    />
-                    <span className="text-slate-300">Standard-Wandstärken anwenden</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={importOptions.replaceWithLibraryFurniture}
-                      onChange={(e) => setImportOptions({ ...importOptions, replaceWithLibraryFurniture: e.target.checked })}
-                      className="rounded accent-amber-500"
-                    />
-                    <span className="text-slate-300">Möbel durch Bibliothek ersetzen</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
                       checked={importOptions.keepUnderlayInProject}
                       onChange={(e) => setImportOptions({ ...importOptions, keepUnderlayInProject: e.target.checked })}
-                      className="rounded accent-amber-500"
+                      className="rounded accent-amber-500 cursor-pointer"
                     />
-                    <span className="text-slate-300">Originalbild als Vorlage behalten</span>
+                    <span className="text-slate-300">Originalbild als Vorlage im Projekt behalten</span>
                   </label>
                 </div>
 
-                {/* Target Destination */}
+                {/* 5. TARGET DESTINATION */}
                 <div className="bg-slate-850 p-3 rounded-xl border border-slate-800 flex flex-col gap-1.5 text-xs">
                   <span className="font-semibold text-slate-300">Ziel des Plans:</span>
                   <select
                     value={importOptions.targetDestination}
                     onChange={(e) => setImportOptions({ ...importOptions, targetDestination: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white outline-none cursor-pointer"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white outline-none cursor-pointer text-xs"
                   >
                     <option value="new_project">Neues Projekt (Zeichenfläche ersetzen)</option>
                     <option value="current_floor">In aktuelles Geschoss einfügen</option>
@@ -1416,19 +1729,21 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                   </select>
                 </div>
 
-                {/* Actions */}
+                {/* ACTIONS */}
                 <div className="mt-auto flex flex-col gap-2 pt-2">
                   <button
                     onClick={handleCommitPlanCreation}
                     className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
-                    <span>Vollständigen CAD-Plan erstellen</span>
+                    <span>
+                      CAD-Plan erstellen {filterGroups.furniture ? '(inkl. Möbel)' : '(sauber ohne Möbel)'}
+                    </span>
                   </button>
 
                   <button
                     onClick={() => setStep('calibrate')}
-                    className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-400 hover:text-white text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-400 hover:text-white text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Neu kalibrieren</span>

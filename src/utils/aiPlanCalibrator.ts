@@ -31,46 +31,79 @@ export function calibrateAndTransformPlan(
     useDefaultThickness: boolean;
     defaultExteriorThickness?: number;
     defaultInteriorThickness?: number;
+    targetBuildingWidthM?: number;
   } = {
     autoStraighten: true,
     roundDimensions: '5cm',
     useDefaultThickness: true,
+    defaultExteriorThickness: 0.24,
+    defaultInteriorThickness: 0.115,
   }
 ): CalibratedPlanResult {
   const imgW = rawResult.imageWidth || 1000;
   const imgH = rawResult.imageHeight || 1000;
 
+  // Calculate actual bounding box of walls in normalized space (0..1000)
+  let minWallX = 1000;
+  let maxWallX = 0;
+  if (rawResult.walls && rawResult.walls.length > 0) {
+    for (const w of rawResult.walls) {
+      minWallX = Math.min(minWallX, w.startX, w.endX);
+      maxWallX = Math.max(maxWallX, w.startX, w.endX);
+    }
+  } else {
+    minWallX = 0;
+    maxWallX = 1000;
+  }
+  const wallSpanNormX = (maxWallX > minWallX + 40) ? (maxWallX - minWallX) / 1000 : 1.0;
+
   // 1. Calculate Pixels per Meter based on Hierarchy of Scale (Teil 3)
   let scalePxPerMeter = 100;
   let scaleSource: CalibratedPlanResult['scaleSource'] = 'plausible_estimate';
 
-  // Check Rank 1: In Plan beschriftete Maße
-  const validPlanDims = rawResult.readDimensions.filter(
-    (d) => d.valueMeters > 0.5 && d.startX !== undefined && d.endX !== undefined && d.startY !== undefined && d.endY !== undefined
-  );
-
-  if (validPlanDims.length > 0) {
-    // Pick the longest labeled dimension for maximum accuracy
-    validPlanDims.sort((a, b) => b.valueMeters - a.valueMeters);
-    const bestDim = validPlanDims[0];
-    const pxDist = Math.hypot((bestDim.endX! - bestDim.startX!) * (imgW / 1000), (bestDim.endY! - bestDim.startY!) * (imgH / 1000));
-    if (pxDist > 30) {
-      scalePxPerMeter = pxDist / bestDim.valueMeters;
-      scaleSource = 'plan_dimension';
-    }
-  }
-
-  // Check Rank 2: Benutzer-Referenzmaß (overrides estimate if user calibrated)
-  if (userCalibration && userCalibration.isCalibrated && userCalibration.pixelsPerMeter > 1) {
-    scalePxPerMeter = userCalibration.pixelsPerMeter;
+  // Check 0: Explicit user target building width (highest priority if set in Review)
+  if (options.targetBuildingWidthM && options.targetBuildingWidthM >= 2.0 && options.targetBuildingWidthM <= 40.0) {
+    const realWidthM = options.targetBuildingWidthM / wallSpanNormX;
+    scalePxPerMeter = imgW / realWidthM;
     scaleSource = 'user_reference';
-  } else if (scaleSource === 'plausible_estimate') {
-    // Check Rank 3: Plausible architectural estimate
-    if (rawResult.detectedTotalWidthM && rawResult.detectedTotalWidthM >= 4 && rawResult.detectedTotalWidthM <= 30) {
-      scalePxPerMeter = imgW / rawResult.detectedTotalWidthM;
-    } else {
-      // Estimate house as approx 10.0 meters wide
-      scalePxPerMeter = imgW / 10.0;
+  } else {
+    // Check Rank 1: In Plan beschriftete Maße
+    const validPlanDims = rawResult.readDimensions.filter(
+      (d) => d.valueMeters > 0.5 && d.startX !== undefined && d.endX !== undefined && d.startY !== undefined && d.endY !== undefined
+    );
+
+    if (validPlanDims.length > 0) {
+      // Pick the longest labeled dimension for maximum accuracy
+      validPlanDims.sort((a, b) => b.valueMeters - a.valueMeters);
+      const bestDim = validPlanDims[0];
+      const pxDist = Math.hypot((bestDim.endX! - bestDim.startX!) * (imgW / 1000), (bestDim.endY! - bestDim.startY!) * (imgH / 1000));
+      if (pxDist > 30) {
+        scalePxPerMeter = pxDist / bestDim.valueMeters;
+        scaleSource = 'plan_dimension';
+      }
+    }
+
+    // Check Rank 2: Benutzer-Referenzmaß (overrides estimate if user calibrated)
+    if (userCalibration && userCalibration.isCalibrated && userCalibration.pixelsPerMeter > 1) {
+      scalePxPerMeter = userCalibration.pixelsPerMeter;
+      scaleSource = 'user_reference';
+    } else if (scaleSource === 'plausible_estimate') {
+      // Check Rank 3: Plausible architectural estimate
+      // If we have an unanchored large dimension from readDimensions (e.g. 9.00 m from plan title), consider it
+      const unanchoredLargeDim = rawResult.readDimensions
+        .filter((d) => d.valueMeters >= 4.0 && d.valueMeters <= 35.0)
+        .sort((a, b) => b.valueMeters - a.valueMeters)[0];
+
+      const estBuildingWidthM = unanchoredLargeDim ? unanchoredLargeDim.valueMeters : (rawResult.detectedTotalWidthM || 9.0);
+
+      if (estBuildingWidthM >= 4 && estBuildingWidthM <= 35) {
+        // Adjust for building occupying only wallSpanNormX portion of the image
+        const realWidthM = estBuildingWidthM / wallSpanNormX;
+        scalePxPerMeter = imgW / realWidthM;
+      } else {
+        // Estimate house as approx 10.0 meters wide
+        scalePxPerMeter = imgW / 10.0;
+      }
     }
   }
 
@@ -82,6 +115,9 @@ export function calibrateAndTransformPlan(
   const toMetersX = (valNorm: number) => (valNorm / 1000) * realWidthM;
   const toMetersY = (valNorm: number) => (valNorm / 1000) * realDepthM;
 
+  const extThickness = options.defaultExteriorThickness ?? 0.24;
+  const intThickness = options.defaultInteriorThickness ?? 0.115;
+
   // 2. Clone and convert items to meter space
   const walls: AiDetectedWall[] = rawResult.walls.map((w) => ({
     ...w,
@@ -90,8 +126,8 @@ export function calibrateAndTransformPlan(
     endX: toMetersX(w.endX),
     endY: toMetersY(w.endY),
     thickness: options.useDefaultThickness
-      ? (w.isExterior ? options.defaultExteriorThickness || 0.30 : options.defaultInteriorThickness || 0.115)
-      : w.thickness,
+      ? (w.isExterior ? extThickness : intThickness)
+      : (w.thickness ? Math.min(w.thickness, w.isExterior ? 0.30 : 0.15) : (w.isExterior ? extThickness : intThickness)),
   }));
 
   // 3. Begradigen (Orthogonalize Wände & schließen Ecken)

@@ -730,20 +730,20 @@ export interface AnalysisStageUpdate {
 
 const STAGE_1_WALLS_PROMPT = `
 Du bist ein erfahrener Architekt und CAD-Konstrukteur.
-AUFGABE SCHRITT 1 VON 3: Analysiere den Grundriss und extrahiere NUR die Gebäude-Außenmaße, alle Wände und alle Wandachsen.
+AUFGABE SCHRITT 1 VON 3: Analysiere den Grundriss und extrahiere die Gebäude-Außenmaße, alle Wände und alle Wandachsen.
 
 REGELN:
 1. Normalisiere alle Koordinaten auf den Bereich 0 bis 1000 (0,0 = oben links, 1000 = rechts unten).
 2. Alle Wände müssen rechtwinklig oder exakt ausgerichtet sein und an Ecken nahtlos schließen.
-3. Unterscheide klar zwischen Außenwänden (isExterior: true, typisch 0.30m - 0.365m) und Innenwänden (isExterior: false, 0.115m - 0.175m).
-4. Lies alle Maßketten und Zahlen ab (readDimensions), um detectedTotalWidthM und detectedTotalDepthM in Metern zu ermitteln.
+3. Unterscheide klar zwischen Außenwänden (isExterior: true, schlank: Standard 0.24m) und Innenwänden (isExterior: false, Standard 0.115m). Wände zwischen zwei Innenräumen sind IMMER Innenwände. Wähle keine übertrieben dicken Wände!
+4. Lies alle Maßketten und Zahlen ab (readDimensions). Wenn Gesamtabmessungen im Plan beschriftet sind (z. B. 9,00 m oder 12,00 m), setze detectedTotalWidthM exakt auf diesen realen Wert in Metern.
 
 Antworte ausschließlich mit JSON:
 {
   "unit": "m",
   "northAngleDeg": 0,
-  "detectedTotalWidthM": 8.0,
-  "detectedTotalDepthM": 6.0,
+  "detectedTotalWidthM": 9.0,
+  "detectedTotalDepthM": 7.5,
   "walls": [
     {
       "id": "w1",
@@ -751,7 +751,7 @@ Antworte ausschließlich mit JSON:
       "startY": 100,
       "endX": 900,
       "endY": 100,
-      "thickness": 0.30,
+      "thickness": 0.24,
       "height": 2.60,
       "isExterior": true,
       "confidence": 0.95
@@ -760,8 +760,8 @@ Antworte ausschließlich mit JSON:
   "readDimensions": [
     {
       "id": "dim1",
-      "label": "8.00",
-      "valueMeters": 8.00,
+      "label": "9.00",
+      "valueMeters": 9.00,
       "startX": 100,
       "startY": 80,
       "endX": 900,
@@ -847,6 +847,39 @@ Antworte ausschließlich mit JSON:
       "confidence": 0.88
     }
   ],
+  "stairs": [],
+  "roof": {
+    "type": "gable",
+    "pitchDegrees": 35,
+    "ridgeHeight": 2.60,
+    "ridgeDirection": "horizontal",
+    "confidence": 0.85
+  }
+}
+`;
+
+const STAGE_3_ROOMS_ONLY_PROMPT = `
+Du bist ein erfahrener Architekt und CAD-Konstrukteur.
+AUFGABE SCHRITT 3 VON 3: Analysiere denselben Grundriss und extrahiere NUR die Räume und Raumnamen (KEINE Möbel!).
+
+REGELN:
+1. Räume (rooms): Name (z.B. "Wohnen", "Küche", "Schlafen", "Bad", "Flur", "Garage", "Terrasse"), category ('living'|'sleeping'|'kitchen'|'bath'|'corridor'|'storage'|'outdoor'), polygon (Kette von Punkten [{x, y}] im 0..1000 System), areaM2 falls lesbar.
+2. Keine Möbel extrahieren (furniture bleibt ein leeres Array []).
+3. Dach (roof): type ('gable'|'shed'|'hip'|'flat'), pitchDegrees (z.B. 35), ridgeHeight (z.B. 2.50).
+
+Antworte ausschließlich mit JSON:
+{
+  "rooms": [
+    {
+      "id": "r1",
+      "name": "Wohnzimmer",
+      "category": "living",
+      "polygon": [{"x": 100, "y": 100}, {"x": 500, "y": 100}, {"x": 500, "y": 500}, {"x": 100, "y": 500}],
+      "areaM2": 20.0,
+      "confidence": 0.95
+    }
+  ],
+  "furniture": [],
   "stairs": [],
   "roof": {
     "type": "gable",
@@ -1048,7 +1081,12 @@ export async function analyzePlanImages(
   apiKey?: string,
   model?: string,
   onStageUpdate?: (update: AnalysisStageUpdate) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  extractOptions?: {
+    includeOpenings?: boolean;
+    includeRooms?: boolean;
+    includeFurniture?: boolean;
+  }
 ): Promise<AiPlanAnalysisResult> {
   const overallStart = Date.now();
   const key = cleanApiKey(apiKey || getStoredApiKey());
@@ -1067,12 +1105,14 @@ export async function analyzePlanImages(
   const imageSizeBytes = Math.round((primaryImage.dataUrl.length * 3) / 4);
 
   // Helper to report stage
+  const totalStages = (extractOptions?.includeOpenings !== false ? 1 : 0) + 
+                      ((extractOptions?.includeRooms !== false || extractOptions?.includeFurniture === true) ? 1 : 0) + 1;
   const report = (phase: string, stepNumber: number, percent: number) => {
     const elapsed = (Date.now() - overallStart) / 1000;
     onStageUpdate?.({
       phase,
       stepNumber,
-      totalSteps: 3,
+      totalSteps: totalStages,
       percent,
       elapsedSec: Math.round(elapsed),
       stageName: phase,
@@ -1100,8 +1140,8 @@ export async function analyzePlanImages(
   let rawTextCombined = '';
 
   // Data accumulators
-  let detectedWidthM = 8.0;
-  let detectedDepthM = 6.0;
+  let detectedWidthM = 9.0;
+  let detectedDepthM = 7.5;
   let northAngleDeg = 0;
   let walls: AiDetectedWall[] = [];
   let readDimensions: AiDetectedDimension[] = [];
@@ -1114,9 +1154,9 @@ export async function analyzePlanImages(
 
   try {
     // --------------------------------------------------------------------
-    // STAGE 1: WÄNDE, ECKEN & MAßE (Schritt 1 von 3)
+    // STAGE 1: WÄNDE, ECKEN & MAßE (Schritt 1)
     // --------------------------------------------------------------------
-    report('Schritt 1 von 3: Wände, Ecken & Außenmaße', 1, 30);
+    report('Schritt 1: Wände, Wandachsen & Außenmaße', 1, 30);
 
     const stage1Parts = [
       { text: STAGE_1_WALLS_PROMPT + (customPromptAddition ? `\nHinweis: ${customPromptAddition}` : '') },
@@ -1131,7 +1171,7 @@ export async function analyzePlanImages(
         thinkingLevel,
         signal,
       },
-      (msg) => report(`Schritt 1 von 3: ${msg}`, 1, 30)
+      (msg) => report(`Schritt 1: ${msg}`, 1, 30)
     );
 
     stagesCompleted.push('Schritt 1 (Wände)');
@@ -1156,7 +1196,7 @@ export async function analyzePlanImages(
           startY: Number(w.startY) || 0,
           endX: Number(w.endX) || 0,
           endY: Number(w.endY) || 0,
-          thickness: Number(w.thickness) > 0 ? Number(w.thickness) : w.isExterior ? 0.30 : 0.115,
+          thickness: Number(w.thickness) > 0 ? Number(w.thickness) : w.isExterior ? 0.24 : 0.115,
           height: Number(w.height) > 0 ? Number(w.height) : 2.60,
           endHeight: w.endHeight ? Number(w.endHeight) : undefined,
           isExterior: Boolean(w.isExterior),
@@ -1181,110 +1221,114 @@ export async function analyzePlanImages(
     }
 
     // --------------------------------------------------------------------
-    // STAGE 2: TÜREN & FENSTER (Schritt 2 von 3)
+    // STAGE 2: TÜREN & FENSTER (Schritt 2)
     // --------------------------------------------------------------------
-    report('Schritt 2 von 3: Türen & Fenster', 2, 60);
+    if (extractOptions?.includeOpenings !== false) {
+      report('Schritt 2: Türen & Fenster', 2, 60);
 
-    try {
-      const stage2Parts = [{ text: STAGE_2_OPENINGS_PROMPT }, inlinePart];
-      const res2 = await callGeminiApiWithRetries(
-        {
-          key,
-          model: selectedModel,
-          parts: stage2Parts,
-          thinkingLevel,
-          signal,
-        },
-        (msg) => report(`Schritt 2 von 3: ${msg}`, 2, 60)
-      );
+      try {
+        const stage2Parts = [{ text: STAGE_2_OPENINGS_PROMPT }, inlinePart];
+        const res2 = await callGeminiApiWithRetries(
+          {
+            key,
+            model: selectedModel,
+            parts: stage2Parts,
+            thinkingLevel,
+            signal,
+          },
+          (msg) => report(`Schritt 2: ${msg}`, 2, 60)
+        );
 
-      stagesCompleted.push('Schritt 2 (Öffnungen)');
-      rawTextCombined += `\n--- STAGE 2 (OPENINGS) ---\n` + res2.rawText;
-      if (res2.tokenUsage) {
-        totalTokenUsage.promptTokens += res2.tokenUsage.promptTokens || 0;
-        totalTokenUsage.candidatesTokens += res2.tokenUsage.candidatesTokens || 0;
-        totalTokenUsage.totalTokens += res2.tokenUsage.totalTokens || 0;
-      }
-
-      const parsed2 = cleanAndParseJson(res2.rawText);
-      if (parsed2) {
-        if (Array.isArray(parsed2.doors)) {
-          doors = parsed2.doors.map((d: any, idx: number) => ({
-            id: d.id || `ai_door_${idx + 1}`,
-            x: Number(d.x) || 0,
-            y: Number(d.y) || 0,
-            width: Number(d.width) > 0 ? Number(d.width) : 0.885,
-            height: Number(d.height) > 0 ? Number(d.height) : 2.05,
-            type: (d.type as any) || 'single',
-            swingDirection: d.swingDirection === 'right' ? 'right' : 'left',
-            openDirection: d.openDirection === 'outside' ? 'outside' : 'inside',
-            confidence: Math.max(0, Math.min(1, Number(d.confidence) || 0.85)),
-            selected: true,
-          }));
+        stagesCompleted.push('Schritt 2 (Öffnungen)');
+        rawTextCombined += `\n--- STAGE 2 (OPENINGS) ---\n` + res2.rawText;
+        if (res2.tokenUsage) {
+          totalTokenUsage.promptTokens += res2.tokenUsage.promptTokens || 0;
+          totalTokenUsage.candidatesTokens += res2.tokenUsage.candidatesTokens || 0;
+          totalTokenUsage.totalTokens += res2.tokenUsage.totalTokens || 0;
         }
 
-        if (Array.isArray(parsed2.windows)) {
-          windows = parsed2.windows.map((win: any, idx: number) => ({
-            id: win.id || `ai_win_${idx + 1}`,
-            x: Number(win.x) || 0,
-            y: Number(win.y) || 0,
-            width: Number(win.width) > 0 ? Number(win.width) : 1.20,
-            height: Number(win.height) > 0 ? Number(win.height) : 1.25,
-            parapetHeight: typeof win.parapetHeight === 'number' ? Number(win.parapetHeight) : 0.90,
-            type: (win.type as any) || 'turn_tilt',
-            confidence: Math.max(0, Math.min(1, Number(win.confidence) || 0.85)),
-            selected: true,
-          }));
+        const parsed2 = cleanAndParseJson(res2.rawText);
+        if (parsed2) {
+          if (Array.isArray(parsed2.doors)) {
+            doors = parsed2.doors.map((d: any, idx: number) => ({
+              id: d.id || `ai_door_${idx + 1}`,
+              x: Number(d.x) || 0,
+              y: Number(d.y) || 0,
+              width: Number(d.width) > 0 ? Number(d.width) : 0.885,
+              height: Number(d.height) > 0 ? Number(d.height) : 2.05,
+              type: (d.type as any) || 'single',
+              swingDirection: d.swingDirection === 'right' ? 'right' : 'left',
+              openDirection: d.openDirection === 'outside' ? 'outside' : 'inside',
+              confidence: Math.max(0, Math.min(1, Number(d.confidence) || 0.85)),
+              selected: true,
+            }));
+          }
+
+          if (Array.isArray(parsed2.windows)) {
+            windows = parsed2.windows.map((win: any, idx: number) => ({
+              id: win.id || `ai_win_${idx + 1}`,
+              x: Number(win.x) || 0,
+              y: Number(win.y) || 0,
+              width: Number(win.width) > 0 ? Number(win.width) : 1.20,
+              height: Number(win.height) > 0 ? Number(win.height) : 1.25,
+              parapetHeight: typeof win.parapetHeight === 'number' ? Number(win.parapetHeight) : 0.90,
+              type: (win.type as any) || 'turn_tilt',
+              confidence: Math.max(0, Math.min(1, Number(win.confidence) || 0.85)),
+              selected: true,
+            }));
+          }
         }
+      } catch (stage2Err) {
+        console.warn('Stage 2 (Öffnungen) konnte nicht abgeschlossen werden:', stage2Err);
       }
-    } catch (stage2Err) {
-      console.warn('Stage 2 (Öffnungen) konnte nicht abgeschlossen werden:', stage2Err);
-      // Non-fatal: Walls are already extracted! Continue to Stage 3 or finish.
     }
 
     // --------------------------------------------------------------------
-    // STAGE 3: RÄUME, MÖBEL & DACH (Schritt 3 von 3)
+    // STAGE 3: RÄUME, MÖBEL & DACH (Schritt 3)
     // --------------------------------------------------------------------
-    report('Schritt 3 von 3: Räume, Möbel & Dach', 3, 85);
+    const shouldRunStage3 = extractOptions?.includeRooms !== false || extractOptions?.includeFurniture === true;
+    if (shouldRunStage3) {
+      const promptToUse = extractOptions?.includeFurniture === true ? STAGE_3_ROOMS_FURNITURE_PROMPT : STAGE_3_ROOMS_ONLY_PROMPT;
+      report(extractOptions?.includeFurniture === true ? 'Schritt 3: Räume & Möbel' : 'Schritt 3: Räume & Raumnamen', 3, 85);
 
-    try {
-      const stage3Parts = [{ text: STAGE_3_ROOMS_FURNITURE_PROMPT }, inlinePart];
-      const res3 = await callGeminiApiWithRetries(
-        {
-          key,
-          model: selectedModel,
-          parts: stage3Parts,
-          thinkingLevel,
-          signal,
-        },
-        (msg) => report(`Schritt 3 von 3: ${msg}`, 3, 85)
-      );
+      try {
+        const stage3Parts = [{ text: promptToUse }, inlinePart];
+        const res3 = await callGeminiApiWithRetries(
+          {
+            key,
+            model: selectedModel,
+            parts: stage3Parts,
+            thinkingLevel,
+            signal,
+          },
+          (msg) => report(`Schritt 3: ${msg}`, 3, 85)
+        );
 
-      stagesCompleted.push('Schritt 3 (Räume & Möbel)');
-      rawTextCombined += `\n--- STAGE 3 (ROOMS) ---\n` + res3.rawText;
-      if (res3.tokenUsage) {
-        totalTokenUsage.promptTokens += res3.tokenUsage.promptTokens || 0;
-        totalTokenUsage.candidatesTokens += res3.tokenUsage.candidatesTokens || 0;
-        totalTokenUsage.totalTokens += res3.tokenUsage.totalTokens || 0;
-      }
-
-      const parsed3 = cleanAndParseJson(res3.rawText);
-      if (parsed3) {
-        if (Array.isArray(parsed3.rooms)) {
-          rooms = parsed3.rooms.map((r: any, idx: number) => ({
-            id: r.id || `ai_room_${idx + 1}`,
-            name: String(r.name || `Raum ${idx + 1}`),
-            category: (r.category as any) || 'living',
-            polygon: Array.isArray(r.polygon)
-              ? r.polygon.map((p: any) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 }))
-              : [],
-            areaM2: Number(r.areaM2) || undefined,
-            confidence: Math.max(0, Math.min(1, Number(r.confidence) || 0.85)),
-            selected: true,
-          }));
+        stagesCompleted.push('Schritt 3 (Räume)');
+        rawTextCombined += `\n--- STAGE 3 (ROOMS) ---\n` + res3.rawText;
+        if (res3.tokenUsage) {
+          totalTokenUsage.promptTokens += res3.tokenUsage.promptTokens || 0;
+          totalTokenUsage.candidatesTokens += res3.tokenUsage.candidatesTokens || 0;
+          totalTokenUsage.totalTokens += res3.tokenUsage.totalTokens || 0;
         }
 
-        if (Array.isArray(parsed3.furniture)) {
+        const parsed3 = cleanAndParseJson(res3.rawText);
+        if (parsed3) {
+          if (Array.isArray(parsed3.rooms)) {
+            rooms = parsed3.rooms.map((r: any, idx: number) => ({
+              id: r.id || `ai_room_${idx + 1}`,
+              name: String(r.name || `Raum ${idx + 1}`),
+              category: (r.category as any) || 'living',
+              polygon: Array.isArray(r.polygon)
+                ? r.polygon.map((p: any) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 }))
+                : [],
+              areaM2: Number(r.areaM2) || undefined,
+              confidence: Math.max(0, Math.min(1, Number(r.confidence) || 0.85)),
+              selected: true,
+            }));
+          }
+
+          if (Array.isArray(parsed3.furniture) && extractOptions?.includeFurniture === true) {
           furniture = parsed3.furniture.map((f: any, idx: number) => ({
             id: f.id || `ai_furn_${idx + 1}`,
             name: String(f.name || 'Möbel'),
@@ -1327,8 +1371,9 @@ export async function analyzePlanImages(
     } catch (stage3Err) {
       console.warn('Stage 3 (Räume & Möbel) konnte nicht abgeschlossen werden:', stage3Err);
     }
+  }
 
-    report('Plan wird erstellt & geprüft', 3, 100);
+  report('Plan wird erstellt & geprüft', 3, 100);
 
     const totalDuration = (Date.now() - overallStart) / 1000;
 

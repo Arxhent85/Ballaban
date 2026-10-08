@@ -163,8 +163,18 @@ export interface AiImportOptions {
   roundDimensions: 'none' | '1cm' | '5cm';
   replaceWithLibraryFurniture: boolean;
   useDefaultWallThickness: boolean;
+  exteriorWallThickness?: number;
+  interiorWallThickness?: number;
+  targetBuildingWidthM?: number;
   keepUnderlayInProject: boolean;
   targetDestination: 'new_project' | 'current_floor' | 'new_floor' | 'underlay_only';
+  // Granular object selection
+  includeWalls?: boolean;
+  includeDoors?: boolean;
+  includeWindows?: boolean;
+  includeRooms?: boolean;
+  includeFurniture?: boolean;
+  includeStairs?: boolean;
 }
 
 export interface PlanQualityCheckItem {
