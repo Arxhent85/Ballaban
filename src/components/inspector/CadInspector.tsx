@@ -1653,20 +1653,44 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                       </span>
                       <span className="font-mono text-stone-500 font-semibold">{Math.round((backgroundImage.opacity ?? 0.5) * 100)}%</span>
                     </div>
-                    <input
-                      type="range"
-                      min={10}
-                      max={100}
-                      step={5}
-                      value={Math.round((backgroundImage.opacity ?? 0.5) * 100)}
-                      onChange={(e) => {
-                        onUpdateBackgroundImage?.({
-                          ...backgroundImage,
-                          opacity: parseInt(e.target.value, 10) / 100,
-                        });
-                      }}
-                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none"
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={5}
+                        max={100}
+                        step={5}
+                        value={Math.round((backgroundImage.opacity ?? 0.5) * 100)}
+                        onChange={(e) => {
+                          onUpdateBackgroundImage?.({
+                            ...backgroundImage,
+                            opacity: parseInt(e.target.value, 10) / 100,
+                          });
+                        }}
+                        className="flex-1 accent-amber-500 cursor-pointer h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none"
+                      />
+                      {/* One-Tap Presets */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {[0.25, 0.5, 0.75].map((opVal) => (
+                          <button
+                            key={opVal}
+                            type="button"
+                            onClick={() => {
+                              onUpdateBackgroundImage?.({
+                                ...backgroundImage,
+                                opacity: opVal,
+                              });
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                              Math.abs((backgroundImage.opacity ?? 0.5) - opVal) < 0.04
+                                ? 'bg-amber-600 border-amber-500 text-white'
+                                : 'bg-stone-100 dark:bg-stone-800 border-stone-250 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:text-amber-600'
+                            }`}
+                          >
+                            {Math.round(opVal * 100)}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Skizzen-Modus & Invertieren Toggles */}

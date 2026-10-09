@@ -4724,19 +4724,25 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             </div>
           </div>
 
-          {/* Quick Slider: Opacity (always visible in compact mode) */}
-          <div className="flex items-center justify-between gap-2 pt-0.5">
-            <span className="text-[11px] text-stone-400 flex items-center gap-1">
-              <Sun className="w-3.5 h-3.5 text-amber-400/80" />
-              <span>Deckkraft:</span>
-            </span>
+          {/* Quick Slider: Opacity / Transparenz */}
+          <div className="flex flex-col gap-1.5 pt-0.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-stone-300 flex items-center gap-1.5">
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <span>Transparenz / Deckkraft:</span>
+              </span>
+              <span className="text-[11px] text-amber-400 font-mono font-bold">
+                {Math.round((backgroundImage.opacity ?? 0.5) * 100)}%
+              </span>
+            </div>
+
             <div className="flex items-center gap-2">
               <input
                 type="range"
                 min="0.05"
                 max="1"
                 step="0.05"
-                value={backgroundImage.opacity ?? 0.45}
+                value={backgroundImage.opacity ?? 0.5}
                 onChange={(e) => {
                   if (onUpdateBackgroundImage) {
                     onUpdateBackgroundImage({
@@ -4745,11 +4751,30 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                     });
                   }
                 }}
-                className="w-24 accent-amber-500 cursor-pointer h-1.5 bg-stone-700 rounded-lg"
+                className="flex-1 accent-amber-500 cursor-pointer h-2 bg-stone-700 rounded-lg"
               />
-              <span className="text-[11px] text-stone-300 font-mono w-7 text-right">
-                {Math.round((backgroundImage.opacity ?? 0.45) * 100)}%
-              </span>
+              {/* One-Tap Presets */}
+              <div className="flex items-center gap-1 shrink-0">
+                {[0.25, 0.5, 0.75].map((opVal) => (
+                  <button
+                    key={opVal}
+                    type="button"
+                    onClick={() => {
+                      onUpdateBackgroundImage?.({
+                        ...backgroundImage,
+                        opacity: opVal,
+                      });
+                    }}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                      Math.abs((backgroundImage.opacity ?? 0.5) - opVal) < 0.04
+                        ? 'bg-amber-600 border-amber-500 text-white'
+                        : 'bg-stone-800 border-stone-700 text-stone-300 hover:text-white'
+                    }`}
+                  >
+                    {Math.round(opVal * 100)}%
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

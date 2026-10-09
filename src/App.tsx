@@ -640,6 +640,47 @@ export default function App() {
     }
   }, [project, updateProject, handleZoomFit]);
 
+  // Drag & Drop image or PDF onto workspace to directly insert as underlay
+  const handleWorkspaceDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const handleWorkspaceDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('image/') || file.name.toLowerCase().endsWith('.pdf')) {
+        handleInsertUnderlayImage(file);
+      }
+    }
+  }, [handleInsertUnderlayImage]);
+
+  // Global clipboard paste for underlay images
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            handleInsertUnderlayImage(file);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [handleInsertUnderlayImage]);
+
   const handleImportPlan = useCallback((imported: {
     walls: Wall[];
     doors: Door[];
@@ -1930,7 +1971,11 @@ export default function App() {
       />
 
       {/* 2. MAIN WORKSPACE */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div
+        onDragOver={handleWorkspaceDragOver}
+        onDrop={handleWorkspaceDrop}
+        className="flex-1 flex overflow-hidden relative"
+      >
         {/* Left Toolbar */}
         <CadToolbar
           activeTool={activeTool}
@@ -1940,6 +1985,7 @@ export default function App() {
           onOpenWallNumericModal={() => setShowWallNumeric(true)}
           onOpenRoofModal={() => setShowRoofModal(true)}
           onOpenAiImport={() => setShowAiImport(true)}
+          onInsertUnderlayImage={handleInsertUnderlayImage}
           leftHandedMode={leftHandedMode}
         />
 
