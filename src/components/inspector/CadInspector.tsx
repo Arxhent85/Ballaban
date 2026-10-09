@@ -1945,13 +1945,10 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                 <p className="text-[10px] text-stone-400">
                   Lade ein Bild oder Foto als Hintergrundebene, um Grundrisse präzise nachzuzeichnen.
                 </p>
-                <label className="mt-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium cursor-pointer transition-colors shadow-xs">
-                  <ImageIcon className="w-3.5 h-3.5" />
-                  <span>Bild als Vorlage wählen...</span>
+                <label className="mt-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium cursor-pointer transition-colors shadow-xs relative overflow-hidden">
                   <input
                     type="file"
-                    accept="image/*,.pdf"
-                    className="hidden"
+                    accept="image/*,application/pdf,.pdf"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file && onInsertUnderlayImage) {
@@ -1959,7 +1956,17 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                       }
                       e.target.value = '';
                     }}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      opacity: 0,
+                      width: '100%',
+                      height: '100%',
+                      cursor: 'pointer',
+                    }}
                   />
+                  <ImageIcon className="w-3.5 h-3.5 pointer-events-none" />
+                  <span className="pointer-events-none">Bild als Vorlage wählen...</span>
                 </label>
               </div>
             )}

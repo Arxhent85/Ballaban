@@ -1,5 +1,5 @@
 // Service Worker for Ferienhaus-Planer (Offline CAD)
-const CACHE_NAME = 'ferienhaus-planer-v2';
+const CACHE_NAME = 'ferienhaus-planer-v12';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

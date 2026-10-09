@@ -31,14 +31,38 @@ export async function loadImageFromFile(
       const dataUrl = e.target?.result as string;
       const img = new Image();
       img.onload = () => {
+        let finalDataUrl = dataUrl;
+        let finalWidth = img.naturalWidth || img.width;
+        let finalHeight = img.naturalHeight || img.height;
+
+        // Downscale photos that exceed 2560px to preserve iPad browser memory & fast rendering
+        const maxDim = 2560;
+        if (finalWidth > maxDim || finalHeight > maxDim) {
+          const factor = Math.min(maxDim / finalWidth, maxDim / finalHeight);
+          const tw = Math.round(finalWidth * factor);
+          const th = Math.round(finalHeight * factor);
+          const canvas = document.createElement('canvas');
+          canvas.width = tw;
+          canvas.height = th;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, tw, th);
+            finalDataUrl = canvas.toDataURL(file.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.92);
+            finalWidth = tw;
+            finalHeight = th;
+          }
+        }
+
         const item: ImportImageItem = {
           id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           name: file.name,
           role,
-          dataUrl,
+          dataUrl: finalDataUrl,
           mimeType: file.type || 'image/jpeg',
-          width: img.naturalWidth || img.width,
-          height: img.naturalHeight || img.height,
+          width: finalWidth,
+          height: finalHeight,
           rotationDeg: 0,
         };
         resolve([item]);

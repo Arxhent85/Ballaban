@@ -622,15 +622,31 @@ export default function App() {
         visible: true,
       };
 
-      const hasUnderlayLayer = project.layers.some((l) => l.id === 'underlay');
-      const nextLayers = hasUnderlayLayer
-        ? project.layers.map((l) => (l.id === 'underlay' ? { ...l, visible: true, locked: false } : l))
-        : [...project.layers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: false }];
+      setProject((currentProj) => {
+        const currentLayers = currentProj.layers || [];
+        const hasUnderlayLayer = currentLayers.some((l) => l.id === 'underlay');
+        const nextLayers = hasUnderlayLayer
+          ? currentLayers.map((l) => (l.id === 'underlay' ? { ...l, visible: true, locked: false } : l))
+          : [...currentLayers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: false }];
 
-      updateProject({
-        ...project,
-        layers: nextLayers,
-        backgroundImage: newBg,
+        const updatedProj = {
+          ...currentProj,
+          layers: nextLayers,
+          backgroundImage: newBg,
+          updatedAt: new Date().toISOString(),
+        };
+
+        const newHistory = history.slice(0, historyIndex + 1);
+        newHistory.push(updatedProj);
+        if (newHistory.length > 50) newHistory.shift();
+        setHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+
+        try {
+          localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(updatedProj));
+        } catch {}
+
+        return updatedProj;
       });
 
       setViewMode('2d');
@@ -638,7 +654,7 @@ export default function App() {
     } catch (err: any) {
       alert('Fehler beim Laden der Plan-Vorlage: ' + (err?.message || err));
     }
-  }, [project, updateProject, handleZoomFit]);
+  }, [history, historyIndex, handleZoomFit]);
 
   // Drag & Drop image or PDF onto workspace to directly insert as underlay
   const handleWorkspaceDragOver = useCallback((e: React.DragEvent) => {

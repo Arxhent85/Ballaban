@@ -70,7 +70,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
   isFullscreen = false,
 }) => {
   const t = getT(language);
-  const underlayInputRef = useRef<HTMLInputElement>(null);
+
   const [showWallSubmenu, setShowWallSubmenu] = useState(false);
   const [showShapesSubmenu, setShowShapesSubmenu] = useState(false);
 
@@ -303,25 +303,30 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
         {onInsertUnderlayImage && (
           <>
             <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
-            <input
-              type="file"
-              ref={underlayInputRef}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) onInsertUnderlayImage(file);
-                e.target.value = '';
-              }}
-              accept="image/*,.pdf"
-              className="hidden"
-            />
             <div className="relative group flex items-center justify-center">
-              <button
-                onClick={() => underlayInputRef.current?.click()}
+              <label
                 title="Plan, Foto oder PDF als Vorlage zum Nachzeichnen einfügen"
-                className="w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer bg-amber-600/15 hover:bg-amber-600/25 text-amber-600 dark:text-amber-400 border border-amber-600/40 shadow-xs active:scale-95"
+                className="w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer bg-amber-600/15 hover:bg-amber-600/25 text-amber-600 dark:text-amber-400 border border-amber-600/40 shadow-xs active:scale-95 relative overflow-hidden"
               >
-                <ImageIcon className={iconClass} />
-              </button>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf,.pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onInsertUnderlayImage(file);
+                    e.target.value = '';
+                  }}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    opacity: 0,
+                    width: '100%',
+                    height: '100%',
+                    cursor: 'pointer',
+                  }}
+                />
+                <ImageIcon className={`${iconClass} pointer-events-none`} />
+              </label>
               <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
                 <span>Vorlage einfügen (zum Nachzeichnen)</span>
               </div>
