@@ -649,18 +649,26 @@ export default function App() {
     stairs: Stair[];
     roof?: Roof;
     backgroundImageUrl?: string;
+    originalImageUrl?: string;
     backgroundWidthM?: number;
     backgroundHeightM?: number;
+    contrast?: number;
+    brightness?: number;
+    sketchMode?: boolean;
     target: AiImportOptions['targetDestination'];
     qualityChecks: PlanQualityCheckItem[];
   }) => {
     const bgImage: BackgroundImage | undefined = (imported.backgroundImageUrl && imported.backgroundWidthM && imported.backgroundHeightM) ? {
       url: imported.backgroundImageUrl,
+      originalUrl: imported.originalImageUrl || imported.backgroundImageUrl,
       x: 0,
       y: 0,
       widthM: imported.backgroundWidthM,
       heightM: imported.backgroundHeightM,
-      opacity: 0.40,
+      opacity: 0.50,
+      contrast: imported.contrast ?? 100,
+      brightness: imported.brightness ?? 100,
+      sketchMode: imported.sketchMode ?? false,
       locked: false,
     } : project.backgroundImage;
 

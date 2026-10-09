@@ -286,44 +286,53 @@ export async function processImageToDataUrl(
       // 6. Contrast, Brightness & Skizzen-Modus (Pixel manipulations)
       const filters = imageItem.filterSettings;
       if (filters && ctx) {
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imgData.data;
-        const brightnessMul = (filters.brightness ?? 100) / 100;
-        const contrastVal = (filters.contrast ?? 100) / 100;
-        const contrastFactor = (259 * (contrastVal * 255 + 255)) / (255 * (259 - contrastVal * 255));
+        const brightness = filters.brightness ?? 100;
+        const contrast = filters.contrast ?? 100;
         const sketch = Boolean(filters.sketchMode);
 
-        for (let i = 0; i < data.length; i += 4) {
-          let r = data[i];
-          let g = data[i + 1];
-          let b = data[i + 2];
+        // Only manipulate pixels if non-default adjustments or sketch mode is requested
+        if (brightness !== 100 || contrast !== 100 || sketch) {
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imgData.data;
+          const brightnessMul = brightness / 100;
+          // Linear contrast factor: 100% is 1.0 (neutral), 120% is 1.2, 80% is 0.8
+          const contrastFactor = contrast / 100;
 
-          // Brightness
-          r *= brightnessMul;
-          g *= brightnessMul;
-          b *= brightnessMul;
+          for (let i = 0; i < data.length; i += 4) {
+            let r = data[i];
+            let g = data[i + 1];
+            let b = data[i + 2];
 
-          // Contrast
-          r = contrastFactor * (r - 128) + 128;
-          g = contrastFactor * (g - 128) + 128;
-          b = contrastFactor * (b - 128) + 128;
+            // 1. Contrast centered around middle gray (128)
+            if (contrastFactor !== 1.0) {
+              r = (r - 128) * contrastFactor + 128;
+              g = (g - 128) * contrastFactor + 128;
+              b = (b - 128) * contrastFactor + 128;
+            }
 
-          if (sketch) {
-            // Grayscale luminance
-            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-            // High-pass sketch binarization
-            const threshold = gray > 140 ? 255 : gray < 70 ? 0 : gray;
-            r = threshold;
-            g = threshold;
-            b = threshold;
+            // 2. Brightness multiplier
+            if (brightnessMul !== 1.0) {
+              r *= brightnessMul;
+              g *= brightnessMul;
+              b *= brightnessMul;
+            }
+
+            // 3. Clean Black/White Sketch Mode (grayscale, zero color fringes)
+            if (sketch) {
+              const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+              const threshold = gray > 155 ? 255 : gray < 85 ? 15 : gray;
+              r = threshold;
+              g = threshold;
+              b = threshold;
+            }
+
+            data[i] = Math.max(0, Math.min(255, Math.round(r)));
+            data[i + 1] = Math.max(0, Math.min(255, Math.round(g)));
+            data[i + 2] = Math.max(0, Math.min(255, Math.round(b)));
           }
 
-          data[i] = Math.max(0, Math.min(255, r));
-          data[i + 1] = Math.max(0, Math.min(255, g));
-          data[i + 2] = Math.max(0, Math.min(255, b));
+          ctx.putImageData(imgData, 0, 0);
         }
-
-        ctx.putImageData(imgData, 0, 0);
       }
 
       resolve({

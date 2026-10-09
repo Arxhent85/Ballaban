@@ -425,7 +425,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const [draggingUnderlayHandle, setDraggingUnderlayHandle] = useState<'move' | 'nw' | 'ne' | 'se' | 'sw' | 'w' | 'e' | 'n' | 's' | null>(null);
   const [hoveredUnderlayHandle, setHoveredUnderlayHandle] = useState<'move' | 'nw' | 'ne' | 'se' | 'sw' | 'w' | 'e' | 'n' | 's' | null>(null);
   const underlayDragStartRef = useRef<{ clientX: number; clientY: number; startX: number; startY: number; startWM: number; startHM: number } | null>(null);
-  const [isUnderlayHudExpanded, setIsUnderlayHudExpanded] = useState<boolean>(false);
+  const [isUnderlayHudExpanded, setIsUnderlayHudExpanded] = useState<boolean>(true);
   const [showCropModal, setShowCropModal] = useState<boolean>(false);
   const [isCalibratingUnderlay, setIsCalibratingUnderlay] = useState<boolean>(false);
   const [underlayCalibPointA, setUnderlayCalibPointA] = useState<Point2D | null>(null);
@@ -846,7 +846,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
     if (isUnderlayActive && backgroundImage) {
       let cached = bgImgCacheRef.current;
-      const sourceUrl = backgroundImage.originalUrl || backgroundImage.url;
+      const sourceUrl = backgroundImage.url || backgroundImage.originalUrl;
       if (!cached || cached.url !== sourceUrl) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -5090,6 +5090,27 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                     <span>+90°</span>
                   </button>
                 </div>
+
+                {/* Reset to Original Colors */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onUpdateBackgroundImage) {
+                      onUpdateBackgroundImage({
+                        ...backgroundImage,
+                        contrast: 100,
+                        brightness: 100,
+                        sketchMode: false,
+                        inverted: false,
+                      });
+                    }
+                  }}
+                  className="w-full py-1.5 px-2 rounded-lg bg-stone-900 hover:bg-stone-850 border border-stone-700/80 text-stone-300 hover:text-white text-[10px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  title="Kontrast, Helligkeit und Farben auf Normalzustand zurücksetzen"
+                >
+                  <RotateCcw className="w-3 h-3 text-emerald-400" />
+                  <span>Original-Farben wiederherstellen (Reset)</span>
+                </button>
               </div>
 
               {/* SECTION: Zuschneiden (Crop) */}

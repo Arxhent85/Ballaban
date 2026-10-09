@@ -43,11 +43,11 @@ export const FALLBACK_GEMINI_MODELS = [
 ];
 
 export const AVAILABLE_GEMINI_MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Empfohlen – Hohe Erkennung & Geschwindigkeit)' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Empfohlen – Hohes Kontingent & Schnelligkeit)' },
   { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite (Sehr schnell & ressourcenschonend)' },
   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Solides bewährtes Standardmodell)' },
   { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Klassisches Flash-Modell)' },
-  { id: 'gemini-flash-latest', name: 'gemini-flash-latest (Alias – dynamischer Google-Verweis)' },
+  { id: 'gemini-flash-latest', name: 'gemini-flash-latest (Zeigt auf 3.8-Flash: max. 20 Anfragen/Tag im Free-Tier)' },
 ];
 
 const STORAGE_KEY_API_KEY = 'cad_gemini_api_key_v1';
@@ -583,6 +583,8 @@ export interface CategorizedError {
   suggestedAction: string;
   isRetryable: boolean;
   isOpenModelList?: boolean;
+  isDailyQuotaExhausted?: boolean;
+  suggestedAlternativeModels?: string[];
 }
 
 export function categorizeGeminiError(
@@ -631,6 +633,7 @@ export function categorizeGeminiError(
       suggestedAction: 'Tippen Sie auf "Verfügbare Modelle laden", um ein aktuelles funktionierendes Flash-Modell auszuwählen.',
       isRetryable: false,
       isOpenModelList: true,
+      suggestedAlternativeModels: ['gemini-2.5-flash', 'gemini-2.0-flash'],
     };
   }
 
@@ -648,13 +651,30 @@ export function categorizeGeminiError(
 
   // 5. RESOURCE EXHAUSTED / RATE LIMIT
   if (status === 429 || original.includes('RESOURCE_EXHAUSTED') || original.includes('Quota exceeded')) {
+    const isDaily = original.includes('free_tier_requests') || original.includes('limit: 20') || original.includes('Please retry in');
+    if (isDaily) {
+      return {
+        httpStatus: 429,
+        errorCode: 'RESOURCE_EXHAUSTED_DAILY',
+        originalMessage: original,
+        germanExplanation: `Das tägliche Kontingent der kostenlosen Google AI Studio Teststufe für das Modell "${model}" ist erschöpft (Limit: max. 20 Anfragen pro Tag). Google sperrt dieses spezifische Modell für heute.`,
+        suggestedAction: 'Wechseln Sie jetzt sofort auf ein anderes Modell wie gemini-2.5-flash oder gemini-2.0-flash (diese haben eigene Kontingente), tragen Sie einen weiteren API-Schlüssel ein, oder nutzen Sie den Plan als Vorlage zum Nachzeichnen.',
+        isRetryable: false,
+        isOpenModelList: true,
+        isDailyQuotaExhausted: true,
+        suggestedAlternativeModels: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'],
+      };
+    }
+
     return {
       httpStatus: 429,
       errorCode: 'RESOURCE_EXHAUSTED',
       originalMessage: original,
-      germanExplanation: 'Das Google API-Kontingent für diesen Schlüssel oder dieses Modell ist vorübergehend erschöpft (Rate Limit).',
-      suggestedAction: 'Bitte warten Sie etwa 30 bis 60 Sekunden, oder wechseln Sie in den Einstellungen auf ein anderes Modell.',
+      germanExplanation: 'Das Google API-Kontingent für diesen Schlüssel oder dieses Modell ist vorübergehend erschöpft (Rate Limit / RPM).',
+      suggestedAction: 'Bitte warten Sie etwa 30 bis 60 Sekunden, oder wechseln Sie auf ein anderes Modell wie gemini-2.5-flash.',
       isRetryable: true,
+      isOpenModelList: true,
+      suggestedAlternativeModels: ['gemini-2.5-flash', 'gemini-2.0-flash'],
     };
   }
 
@@ -1005,8 +1025,14 @@ async function callGeminiApiWithRetries(
           continue;
         }
 
-        // Rate limit 429: wait if not last attempt
-        if (status === 429 && attempt < maxAttempts) {
+        // Rate limit 429: wait if not last attempt (unless daily free tier quota is exhausted)
+        const isDailyQuota =
+          errDetail.includes('free_tier_requests') ||
+          errDetail.includes('limit: 20') ||
+          errDetail.includes('Quota exceeded') ||
+          errDetail.includes('Please retry in');
+
+        if (status === 429 && !isDailyQuota && attempt < maxAttempts) {
           onAttempt?.(`Rate Limit (429) erreicht – warte 5s vor Neuversuch...`);
           await new Promise((r) => setTimeout(r, 5000));
           continue;

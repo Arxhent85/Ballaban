@@ -1705,6 +1705,25 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                       {backgroundImage.inverted && <Check className="w-3 h-3 text-emerald-400" />}
                     </button>
                   </div>
+
+                  {/* Reset to Original Colors */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateBackgroundImage?.({
+                        ...backgroundImage,
+                        contrast: 100,
+                        brightness: 100,
+                        sketchMode: false,
+                        inverted: false,
+                      });
+                    }}
+                    className="w-full py-1.5 px-2 rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-750 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    title="Kontrast, Helligkeit und Farben auf Normalzustand zurücksetzen"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Original-Farben wiederherstellen (Reset)</span>
+                  </button>
                 </div>
 
                 {/* MAßE & SKALIERUNG / VERZERRUNG */}

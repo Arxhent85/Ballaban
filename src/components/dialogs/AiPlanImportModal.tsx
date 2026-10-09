@@ -88,8 +88,12 @@ interface AiPlanImportModalProps {
     stairs: Stair[];
     roof?: Roof;
     backgroundImageUrl?: string;
+    originalImageUrl?: string;
     backgroundWidthM?: number;
     backgroundHeightM?: number;
+    contrast?: number;
+    brightness?: number;
+    sketchMode?: boolean;
     target: AiImportOptions['targetDestination'];
     qualityChecks: PlanQualityCheckItem[];
   }) => void;
@@ -313,7 +317,16 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
       canvas.width = img.naturalWidth || img.width;
       canvas.height = img.naturalHeight || img.height;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Live non-destructive filter preview
+      ctx.save();
+      const filterTokens: string[] = [];
+      if (contrast !== 100) filterTokens.push(`contrast(${contrast}%)`);
+      if (brightness !== 100) filterTokens.push(`brightness(${brightness}%)`);
+      if (sketchMode) filterTokens.push('grayscale(100%) contrast(140%)');
+      if (filterTokens.length > 0) ctx.filter = filterTokens.join(' ');
       ctx.drawImage(img, 0, 0);
+      ctx.restore();
 
       // Render perspective pins if in perspective mode
       if (prepMode === 'perspective' && perspectivePins) {
@@ -378,7 +391,7 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
       }
     };
     img.src = activeImage.dataUrl;
-  }, [step, activeImage, prepMode, perspectivePins, calibrationPointA, calibrationPointB]);
+  }, [step, activeImage, prepMode, perspectivePins, calibrationPointA, calibrationPointB, contrast, brightness, sketchMode]);
 
   // Handle tap on calibrate canvas to set points A and B
   const handleCalibrateCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -774,16 +787,14 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
   const handleUseAsManualUnderlay = async () => {
     if (!activeImage) return;
     try {
+      // Process geometric orientation (rotation, perspective, crop) without baking destructive pixel filters
       const proc = await processImageToDataUrl({
         ...activeImage,
         rotationDeg,
         perspectiveCorners: prepMode === 'perspective' && perspectivePins ? perspectivePins : undefined,
         cropRect: cropBox || undefined,
-        filterSettings: {
-          brightness,
-          contrast,
-          sketchMode,
-        },
+        // Keep raw image natural so canvas filters can be adjusted dynamically
+        filterSettings: undefined,
       });
       const estW = 10.0;
       const estH = Math.round((proc.height / proc.width) * estW * 100) / 100;
@@ -796,15 +807,19 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
         furniture: [],
         stairs: [],
         backgroundImageUrl: proc.dataUrl,
+        originalImageUrl: activeImage.dataUrl,
         backgroundWidthM: estW,
         backgroundHeightM: estH,
+        contrast,
+        brightness,
+        sketchMode,
         target: 'underlay_only',
         qualityChecks: [
           {
             id: 'manual_trace_info',
             type: 'info',
             title: 'Plan als Vorlage eingefügt',
-            description: 'Das Bild liegt als veränderbare Unterlage auf der Zeichenfläche. Sie können die Vorlage frei skalieren, verschieben, zuschneiden und mit Wänden nachzeichnen.',
+            description: 'Das Bild liegt als veränderbare Vorlage auf der Zeichenfläche. Sie können die Vorlage frei skalieren, in die Breite/Höhe ziehen, Kontrast und Helligkeit anpassen und mit Wänden nachzeichnen.',
             severity: 'info',
           },
         ],
@@ -821,8 +836,12 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
         furniture: [],
         stairs: [],
         backgroundImageUrl: activeImage.dataUrl,
+        originalImageUrl: activeImage.dataUrl,
         backgroundWidthM: estW,
         backgroundHeightM: estH,
+        contrast,
+        brightness,
+        sketchMode,
         target: 'underlay_only',
         qualityChecks: [],
       });
@@ -1327,6 +1346,54 @@ export const AiPlanImportModal: React.FC<AiPlanImportModalProps> = ({
                     <div className="text-[11px] text-slate-400 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-left max-w-md w-full mb-4 font-mono break-all">
                       <span className="text-slate-500 block text-[10px] uppercase font-sans font-bold">Google API Originalmeldung:</span>
                       {detailedError.originalMessage}
+                    </div>
+                  )}
+
+                  {/* 1-Click Fast Switch for Quota Exhaustion / Rate Limits */}
+                  {(detailedError?.isDailyQuotaExhausted || detailedError?.errorCode?.includes('RESOURCE_EXHAUSTED')) && (
+                    <div className="bg-amber-950/80 border border-amber-600/80 rounded-xl p-3 text-left max-w-md w-full mb-3 flex flex-col gap-2 shadow-lg animate-in fade-in">
+                      <div className="flex items-center gap-1.5 text-amber-300 font-bold text-xs">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Kostenloses Google Free-Tier Kontingent erreicht</span>
+                      </div>
+                      <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                        Google limitiert experimentelle Modelle (wie <em>gemini-3.8-flash</em> / <em>gemini-flash-latest</em>) im kostenlosen AI Studio auf maximal 20 Anfragen pro Tag.
+                        <br />
+                        <strong>Schnell-Lösung:</strong> Wechseln Sie jetzt sofort auf ein anderes Modell mit separatem Kontingent oder nutzen Sie den Plan direkt als Vorlage:
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStoredModel('gemini-2.5-flash');
+                            setDetailedError(null);
+                            setAnalysisError(null);
+                            setTimeout(() => {
+                              handleStartAnalysis();
+                            }, 50);
+                          }}
+                          className="py-2 px-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold rounded-lg text-[11px] flex items-center justify-center gap-1 shadow-sm cursor-pointer transition-all"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-amber-200" />
+                          <span>Zu Gemini 2.5 Flash</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStoredModel('gemini-2.0-flash');
+                            setDetailedError(null);
+                            setAnalysisError(null);
+                            setTimeout(() => {
+                              handleStartAnalysis();
+                            }, 50);
+                          }}
+                          className="py-2 px-2 bg-slate-800 hover:bg-slate-700 border border-amber-500/50 text-amber-200 font-bold rounded-lg text-[11px] flex items-center justify-center gap-1 cursor-pointer transition-all"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Zu Gemini 2.0 Flash</span>
+                        </button>
+                      </div>
                     </div>
                   )}
 

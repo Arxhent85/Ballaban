@@ -38,10 +38,26 @@ describe('Gemini AI Import, Diagnostics & Demo Plan Tests', () => {
     expect(err404.isOpenModelList).toBe(true);
     expect(err404.germanExplanation).toContain('nicht verfügbar oder veraltet');
 
-    // 429 Rate Limit
+    // 429 Rate Limit (Transient)
     const err429 = categorizeGeminiError(429, { message: 'RESOURCE_EXHAUSTED' }, '', 'gemini-2.5-flash');
     expect(err429.errorCode).toBe('RESOURCE_EXHAUSTED');
     expect(err429.germanExplanation).toContain('Kontingent');
+
+    // 429 Daily Free Tier Quota Exhaustion (20 requests/day on preview model)
+    const err429Daily = categorizeGeminiError(
+      429,
+      {
+        message:
+          'Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash. Please retry in 10h34m44s.',
+      },
+      '',
+      'gemini-flash-latest'
+    );
+    expect(err429Daily.errorCode).toBe('RESOURCE_EXHAUSTED_DAILY');
+    expect(err429Daily.isDailyQuotaExhausted).toBe(true);
+    expect(err429Daily.isRetryable).toBe(false);
+    expect(err429Daily.germanExplanation).toContain('20 Anfragen pro Tag');
+    expect(err429Daily.suggestedAlternativeModels).toContain('gemini-2.5-flash');
 
     // 503 Overloaded
     const err503 = categorizeGeminiError(503, { message: 'The model is overloaded' }, '', 'gemini-2.5-flash');
