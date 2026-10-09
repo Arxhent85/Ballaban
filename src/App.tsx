@@ -597,6 +597,25 @@ export default function App() {
     });
   }, [project, updateProject]);
 
+  const handleSelectTool = useCallback((tool: CadTool) => {
+    setActiveTool(tool);
+    // If switching to any drawing tool while an underlay is unlocked, automatically lock it into background!
+    if (tool !== 'select') {
+      setProject((currentProj) => {
+        if (!currentProj.backgroundImage || currentProj.backgroundImage.locked) return currentProj;
+        const updatedBg = { ...currentProj.backgroundImage, locked: true };
+        const updatedLayers = (currentProj.layers || []).map((l) =>
+          l.id === 'underlay' ? { ...l, locked: true } : l
+        );
+        const updatedProj = { ...currentProj, backgroundImage: updatedBg, layers: updatedLayers };
+        try {
+          localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(updatedProj));
+        } catch {}
+        return updatedProj;
+      });
+    }
+  }, []);
+
   const handleInsertUnderlayImage = useCallback(async (file: File) => {
     try {
       const items = await loadImageFromFile(file, 'floorplan');
@@ -618,7 +637,7 @@ export default function App() {
         contrast: 100,
         brightness: 100,
         rotationDeg: 0,
-        locked: false,
+        locked: true,
         visible: true,
       };
 
@@ -626,8 +645,8 @@ export default function App() {
         const currentLayers = currentProj.layers || [];
         const hasUnderlayLayer = currentLayers.some((l) => l.id === 'underlay');
         const nextLayers = hasUnderlayLayer
-          ? currentLayers.map((l) => (l.id === 'underlay' ? { ...l, visible: true, locked: false } : l))
-          : [...currentLayers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: false }];
+          ? currentLayers.map((l) => (l.id === 'underlay' ? { ...l, visible: true, locked: true } : l))
+          : [...currentLayers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: true }];
 
         const updatedProj = {
           ...currentProj,
@@ -650,6 +669,7 @@ export default function App() {
       });
 
       setViewMode('2d');
+      setActiveTool('wall');
       setTimeout(handleZoomFit, 100);
     } catch (err: any) {
       alert('Fehler beim Laden der Plan-Vorlage: ' + (err?.message || err));
@@ -1995,7 +2015,7 @@ export default function App() {
         {/* Left Toolbar */}
         <CadToolbar
           activeTool={activeTool}
-          onSelectTool={setActiveTool}
+          onSelectTool={handleSelectTool}
           language={language}
           onOpenFurnitureCatalog={() => setShowFurnitureCatalog(true)}
           onOpenWallNumericModal={() => setShowWallNumeric(true)}
@@ -2082,7 +2102,7 @@ export default function App() {
               onDuplicateSelected={handleDuplicateSelected}
               onRotateSelected={handleRotateSelected}
               onFlipHorizontal={handleFlipHorizontal}
-              onSelectTool={setActiveTool}
+              onSelectTool={handleSelectTool}
               onAddWallsAndRoom={handleAddWallsAndRoom}
               onSplitWall={handleSplitWall}
               onSplitSelectedWall={handleSplitSelectedWall}

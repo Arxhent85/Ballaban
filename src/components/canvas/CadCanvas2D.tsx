@@ -910,8 +910,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
         ctx.restore();
 
-        // 2. If UNLOCKED, draw selection outline, dimensions, and 8 distortion handles
-        if (!backgroundImage.locked && !isUnderlayLayerLocked) {
+        // 2. ONLY draw selection outline, dimensions, and 8 distortion handles if UNLOCKED AND in select mode
+        if (!backgroundImage.locked && !isUnderlayLayerLocked && activeTool === 'select') {
           ctx.save();
           ctx.strokeStyle = '#f59e0b';
           ctx.lineWidth = 2;
@@ -3168,7 +3168,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       const underlayLayer = layers.find((l) => l.id === 'underlay');
       const isUnderlayVisible = underlayLayer ? underlayLayer.visible : true;
       const isUnderlayLayerLocked = underlayLayer ? underlayLayer.locked : false;
-      const isUnderlayInteractive = backgroundImage && backgroundImage.url && isUnderlayVisible && (backgroundImage.visible !== false) && !backgroundImage.locked && !isUnderlayLayerLocked;
+      const isUnderlayInteractive = backgroundImage && backgroundImage.url && isUnderlayVisible && (backgroundImage.visible !== false) && !backgroundImage.locked && !isUnderlayLayerLocked && activeTool === 'select';
 
       if (isUnderlayInteractive && backgroundImage) {
         const sp1 = worldToScreen({ x: backgroundImage.x, y: backgroundImage.y });
@@ -3225,7 +3225,10 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         }
       }
 
-      // 10. Clicked on EMPTY SPACE -> Deselect and start Marquee Box
+      // 10. Clicked on EMPTY SPACE -> Deselect and auto-lock underlay into background
+      if (backgroundImage && !backgroundImage.locked && onUpdateBackgroundImage) {
+        onUpdateBackgroundImage({ ...backgroundImage, locked: true });
+      }
       if (!e.shiftKey) {
         onSelect({ type: 'none', ids: [] });
       }
@@ -4193,8 +4196,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     }
   };
 
-  // Double Click / Right Click / Escape to end chains
+  // Double Click / Right Click / Escape to end chains & lock underlay
   const handleDoubleClick = () => {
+    // If underlay is unlocked, double clicking anywhere locks it into the background!
+    if (backgroundImage && !backgroundImage.locked && onUpdateBackgroundImage) {
+      onUpdateBackgroundImage({ ...backgroundImage, locked: true });
+    }
+
     // If in plot drawing mode, close polygon!
     if (activeTool === 'plot' && plotDrawPoints.length >= 3) {
       const finalPolygon = [...plotDrawPoints];
@@ -4221,6 +4229,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     setRectRoomStart(null);
     setShowNumericInput(false);
   };
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (backgroundImage && !backgroundImage.locked && onUpdateBackgroundImage) {
+          onUpdateBackgroundImage({ ...backgroundImage, locked: true });
+        }
+        setWallStartPoint(null);
+        setWallChainPoints([]);
+        setRectRoomStart(null);
+        setShowNumericInput(false);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [backgroundImage, onUpdateBackgroundImage]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -4650,6 +4674,34 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         </div>
       )}
 
+      {/* Floating Top Banner when underlay is in manipulation mode */}
+      {backgroundImage && backgroundImage.url && !backgroundImage.locked && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-stone-900/95 dark:bg-stone-900/98 border border-amber-500/80 shadow-2xl rounded-2xl px-4 py-2 flex items-center gap-3 text-xs text-stone-100 z-40 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-1.5 text-amber-400 font-semibold">
+            <Move className="w-4 h-4 shrink-0" />
+            <span>Vorlage ausrichten: An den Rändern/Ecken ziehen zum Strecken oder Verschieben</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (onUpdateBackgroundImage) {
+                onUpdateBackgroundImage({
+                  ...backgroundImage,
+                  locked: true,
+                });
+              }
+              if (onSelectTool) {
+                onSelectTool('wall');
+              }
+            }}
+            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-md transition-all shrink-0"
+          >
+            <Check className="w-4 h-4" />
+            <span>Auswahl beenden & Wände zeichnen</span>
+          </button>
+        </div>
+      )}
+
       {/* Floating Plan Underlay HUD (Vorlage mit Kontrast, Größe, Position, Zuschnitt & Sperre) */}
       {backgroundImage && backgroundImage.url && (
         <div
@@ -4667,37 +4719,46 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             <div className="flex items-center gap-1.5">
               {/* Lock / Unlock Toggle Button */}
               {onUpdateBackgroundImage && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onUpdateBackgroundImage({
-                      ...backgroundImage,
-                      locked: !backgroundImage.locked,
-                    })
-                  }
-                  className={`px-2 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
-                    backgroundImage.locked
-                      ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
-                      : 'bg-amber-950/60 border-amber-500 text-amber-300 animate-pulse'
-                  }`}
-                  title={
-                    backgroundImage.locked
-                      ? 'Vorlage ist fixiert. Klicken zum Entsperren & Positionieren'
-                      : 'Vorlage ist entsperrt. Klicken zum Fixieren/Sperren'
-                  }
-                >
+                <>
                   {backgroundImage.locked ? (
-                    <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          locked: false,
+                        });
+                        if (onSelectTool) {
+                          onSelectTool('select');
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-750 border border-stone-700 text-stone-300 hover:text-white font-medium text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Vorlage entsperren, um Position, Größe oder Verzerrung anzupassen"
+                    >
                       <Lock className="w-3.5 h-3.5 text-emerald-400" />
                       <span>Fixiert</span>
-                    </>
+                      <span className="text-[10px] text-amber-400 ml-0.5 underline font-semibold">Bearbeiten</span>
+                    </button>
                   ) : (
-                    <>
-                      <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Verschiebbar</span>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdateBackgroundImage({
+                          ...backgroundImage,
+                          locked: true,
+                        });
+                        if (onSelectTool) {
+                          onSelectTool('wall');
+                        }
+                      }}
+                      className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95 animate-pulse"
+                      title="Ausrichtung beenden: Vorlage im Hintergrund fixieren und Wände zeichnen"
+                    >
+                      <Check className="w-3.5 h-3.5 text-white" />
+                      <span>Auswahl beenden (Fixieren)</span>
+                    </button>
                   )}
-                </button>
+                </>
               )}
 
               {/* Expand / Collapse Button */}
