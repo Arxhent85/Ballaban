@@ -159,6 +159,7 @@ export default function App() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showRoofModal, setShowRoofModal] = useState(false);
   const [showUnderlayCropModal, setShowUnderlayCropModal] = useState(false);
+  const [isUnderlayHudOpen, setIsUnderlayHudOpen] = useState(false);
 
   // Tool options state (Wall, Door, Window)
   const [wallMode, setWallMode] = useState<'exterior' | 'interior'>('exterior');
@@ -525,7 +526,7 @@ export default function App() {
       if (prev.layers.some((l) => l.id === 'underlay')) return prev;
       return {
         ...prev,
-        layers: [...prev.layers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: false }],
+        layers: [...prev.layers, { id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: !!prev.backgroundImage?.locked }],
       };
     });
     return () => clearTimeout(timer);
@@ -670,6 +671,7 @@ export default function App() {
 
       setViewMode('2d');
       setActiveTool('wall');
+      setIsUnderlayHudOpen(true);
       setTimeout(handleZoomFit, 100);
     } catch (err: any) {
       alert('Fehler beim Laden der Plan-Vorlage: ' + (err?.message || err));
@@ -2004,6 +2006,8 @@ export default function App() {
         onOpenAiImport={() => setShowAiImport(true)}
         onOpenVoiceCorrection={() => setShowVoiceCorrection(true)}
         onInsertUnderlayImage={handleInsertUnderlayImage}
+        isUnderlayHudOpen={isUnderlayHudOpen}
+        onToggleUnderlayHud={() => setIsUnderlayHudOpen((prev) => !prev)}
       />
 
       {/* 2. MAIN WORKSPACE */}
@@ -2130,6 +2134,8 @@ export default function App() {
               onDrawingStateChange={setIsDrawingActive}
               backgroundImage={project.backgroundImage}
               onUpdateBackgroundImage={handleUpdateBackgroundImage}
+              isUnderlayHudOpen={isUnderlayHudOpen}
+              onToggleUnderlayHud={setIsUnderlayHudOpen}
             />
           )}
 
@@ -2223,6 +2229,8 @@ export default function App() {
                   onDrawingStateChange={setIsDrawingActive}
                   backgroundImage={project.backgroundImage}
                   onUpdateBackgroundImage={handleUpdateBackgroundImage}
+                  isUnderlayHudOpen={isUnderlayHudOpen}
+                  onToggleUnderlayHud={setIsUnderlayHudOpen}
                 />
               </div>
               <div className="w-1/2 h-full">

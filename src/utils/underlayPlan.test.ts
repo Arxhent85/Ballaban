@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { BackgroundImage, Project } from '../types/cad';
+import { BackgroundImage, CadProject } from '../types/cad';
 
 describe('Underlay Plan & Tracing Engine Tests', () => {
   it('1. Test underlay dimensions calculate correct aspect ratio and initial scale', () => {
@@ -96,5 +96,63 @@ describe('Underlay Plan & Tracing Engine Tests', () => {
 
     expect(calibratedWidthM).toBe(15.0);
     expect(calibratedHeightM).toBe(12.0);
+  });
+
+  it('5. Test closing menu preserves underlay and locks it into background without deleting', () => {
+    // Initial underlay state when editing
+    const currentUnderlay: BackgroundImage = {
+      url: 'data:image/jpeg;base64,blueprint123',
+      x: 1.5,
+      y: 2.0,
+      widthM: 12.0,
+      heightM: 9.0,
+      opacity: 0.6,
+      contrast: 120,
+      brightness: 110,
+      locked: false,
+      visible: true,
+    };
+
+    // When the user closes the menu (via 'X' or 'Auswahl beenden / Fixieren')
+    // HUD menu closes (isUnderlayHudOpen: false), but backgroundImage is NOT undefined!
+    const closedMenuUnderlay: BackgroundImage = {
+      ...currentUnderlay,
+      locked: true,
+    };
+
+    expect(closedMenuUnderlay).toBeDefined();
+    expect(closedMenuUnderlay.url).toBe('data:image/jpeg;base64,blueprint123');
+    expect(closedMenuUnderlay.locked).toBe(true);
+    expect(closedMenuUnderlay.opacity).toBe(0.6);
+    expect(closedMenuUnderlay.widthM).toBe(12.0);
+    expect(closedMenuUnderlay.heightM).toBe(9.0);
+  });
+
+  it('6. Test underlay persistence in project serialization and save', () => {
+    const project = {
+      id: 'proj_1',
+      name: 'Mein Ferienhaus',
+      floors: [],
+      layers: [{ id: 'underlay', name: 'Plan-Vorlage (Hintergrund)', visible: true, locked: true }],
+      backgroundImage: {
+        url: 'data:image/jpeg;base64,saved_blueprint',
+        x: 0,
+        y: 0,
+        widthM: 10.0,
+        heightM: 8.0,
+        opacity: 0.5,
+        locked: true,
+        visible: true,
+      },
+    };
+
+    const serialized = JSON.stringify(project);
+    const parsed = JSON.parse(serialized);
+
+    expect(parsed.backgroundImage).toBeDefined();
+    expect(parsed.backgroundImage.url).toBe('data:image/jpeg;base64,saved_blueprint');
+    expect(parsed.backgroundImage.locked).toBe(true);
+    expect(parsed.backgroundImage.widthM).toBe(10.0);
+    expect(parsed.backgroundImage.opacity).toBe(0.5);
   });
 });

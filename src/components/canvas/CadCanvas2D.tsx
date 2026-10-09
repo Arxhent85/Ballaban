@@ -173,6 +173,8 @@ interface CadCanvas2DProps {
   onDrawingStateChange?: (isDrawing: boolean) => void;
   backgroundImage?: BackgroundImage;
   onUpdateBackgroundImage?: (bg?: BackgroundImage) => void;
+  isUnderlayHudOpen?: boolean;
+  onToggleUnderlayHud?: (open: boolean) => void;
 }
 
 export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
@@ -246,6 +248,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   onDrawingStateChange,
   backgroundImage,
   onUpdateBackgroundImage,
+  isUnderlayHudOpen: propsIsUnderlayHudOpen,
+  onToggleUnderlayHud,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -425,6 +429,21 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const [draggingUnderlayHandle, setDraggingUnderlayHandle] = useState<'move' | 'nw' | 'ne' | 'se' | 'sw' | 'w' | 'e' | 'n' | 's' | null>(null);
   const [hoveredUnderlayHandle, setHoveredUnderlayHandle] = useState<'move' | 'nw' | 'ne' | 'se' | 'sw' | 'w' | 'e' | 'n' | 's' | null>(null);
   const underlayDragStartRef = useRef<{ clientX: number; clientY: number; startX: number; startY: number; startWM: number; startHM: number } | null>(null);
+  const [internalIsHudOpen, setInternalIsHudOpen] = useState<boolean>(true);
+  const isHudOpen = propsIsUnderlayHudOpen !== undefined ? propsIsUnderlayHudOpen : internalIsHudOpen;
+  const setHudOpen = useCallback((open: boolean) => {
+    setInternalIsHudOpen(open);
+    onToggleUnderlayHud?.(open);
+  }, [onToggleUnderlayHud]);
+
+  const prevUnderlayUrlRef = useRef<string | undefined>(backgroundImage?.url);
+  useEffect(() => {
+    if (backgroundImage?.url && backgroundImage.url !== prevUnderlayUrlRef.current) {
+      setHudOpen(true);
+    }
+    prevUnderlayUrlRef.current = backgroundImage?.url;
+  }, [backgroundImage?.url, setHudOpen]);
+
   const [isUnderlayHudExpanded, setIsUnderlayHudExpanded] = useState<boolean>(true);
   const [showCropModal, setShowCropModal] = useState<boolean>(false);
   const [isCalibratingUnderlay, setIsCalibratingUnderlay] = useState<boolean>(false);
@@ -4693,6 +4712,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
               if (onSelectTool) {
                 onSelectTool('wall');
               }
+              setHudOpen(false);
             }}
             className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-md transition-all shrink-0"
           >
@@ -4702,8 +4722,37 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         </div>
       )}
 
+      {/* Minimized Underlay Pill (wenn HUD geschlossen ist - Klick öffnet Menü wieder) */}
+      {!isHudOpen && backgroundImage && backgroundImage.url && (
+        <button
+          type="button"
+          onClick={() => setHudOpen(true)}
+          className="absolute bottom-16 left-4 bg-stone-900/95 dark:bg-stone-900/98 backdrop-blur-md border border-stone-700/80 hover:border-amber-500/80 text-stone-200 hover:text-white px-3.5 py-2 rounded-xl shadow-xl flex items-center gap-2.5 text-xs font-semibold transition-all cursor-pointer z-30 select-none group active:scale-95 animate-in fade-in slide-in-from-bottom-2 duration-150"
+          title="Plan-Vorlage Menü öffnen (Transparenz, Größe, Verzerrung, Farben)"
+        >
+          <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+            <ImageIcon className="w-3.5 h-3.5" />
+          </div>
+          <div className="flex flex-col text-left">
+            <div className="flex items-center gap-1.5">
+              <span>Plan-Vorlage</span>
+              <span className="text-[10px] text-amber-400 font-mono font-bold">
+                {Math.round((backgroundImage.opacity ?? 0.5) * 100)}%
+              </span>
+            </div>
+            <div className="text-[10px] text-emerald-400 flex items-center gap-1 font-medium">
+              <Lock className="w-2.5 h-2.5" />
+              <span>Fixiert im Hintergrund</span>
+            </div>
+          </div>
+          <span className="ml-1 text-[11px] font-bold text-amber-400 underline group-hover:text-amber-300">
+            Menü öffnen
+          </span>
+        </button>
+      )}
+
       {/* Floating Plan Underlay HUD (Vorlage mit Kontrast, Größe, Position, Zuschnitt & Sperre) */}
-      {backgroundImage && backgroundImage.url && (
+      {isHudOpen && backgroundImage && backgroundImage.url && (
         <div
           onPointerDown={(e) => e.stopPropagation()}
           className="absolute bottom-16 left-4 bg-stone-900/95 dark:bg-stone-900/98 backdrop-blur-md border border-stone-800 rounded-2xl shadow-2xl flex flex-col gap-2.5 text-xs text-stone-200 z-30 select-none animate-in fade-in slide-in-from-bottom-2 duration-150 max-w-sm w-auto overflow-hidden p-3"
@@ -4750,9 +4799,10 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                         if (onSelectTool) {
                           onSelectTool('wall');
                         }
+                        setHudOpen(false);
                       }}
                       className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95 animate-pulse"
-                      title="Ausrichtung beenden: Vorlage im Hintergrund fixieren und Wände zeichnen"
+                      title="Ausrichtung beenden: Vorlage im Hintergrund fixieren, Menü schließen und Wände zeichnen"
                     >
                       <Check className="w-3.5 h-3.5 text-white" />
                       <span>Auswahl beenden (Fixieren)</span>
@@ -4771,17 +4821,23 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                 {isUnderlayHudExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
               </button>
 
-              {/* Remove Underlay */}
-              {onUpdateBackgroundImage && (
-                <button
-                  type="button"
-                  onClick={() => onUpdateBackgroundImage(undefined)}
-                  title="Vorlage entfernen"
-                  className="p-1 text-stone-400 hover:text-red-400 hover:bg-stone-800 rounded transition-colors cursor-pointer ml-1"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+              {/* Close Menu HUD Button (WICHTIG: Schließt nur das Menü, Vorlage bleibt im Hintergrund aktiv!) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setHudOpen(false);
+                  if (backgroundImage && !backgroundImage.locked && onUpdateBackgroundImage) {
+                    onUpdateBackgroundImage({
+                      ...backgroundImage,
+                      locked: true,
+                    });
+                  }
+                }}
+                title="Menü schließen (Vorlage bleibt im Hintergrund aktiv)"
+                className="p-1 text-stone-400 hover:text-stone-200 hover:bg-stone-800 rounded transition-colors cursor-pointer ml-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -5228,6 +5284,26 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                   </button>
                 )}
               </div>
+
+              {/* Vorlage komplett aus Projekt entfernen (mit Sicherheitsabfrage) */}
+              {onUpdateBackgroundImage && (
+                <div className="pt-1.5 border-t border-stone-850">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Möchtest du diese Plan-Vorlage wirklich komplett aus dem Projekt entfernen?')) {
+                        onUpdateBackgroundImage(undefined);
+                        setHudOpen(false);
+                      }
+                    }}
+                    className="w-full py-1.5 px-3 rounded-lg bg-stone-950/60 hover:bg-red-950/40 border border-stone-800 hover:border-red-800 text-stone-400 hover:text-red-400 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    title="Plan-Vorlage vollständig aus dem Projekt löschen"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-stone-500 hover:text-red-400" />
+                    <span>Vorlage komplett aus Projekt entfernen</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
