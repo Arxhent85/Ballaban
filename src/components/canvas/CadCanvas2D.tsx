@@ -369,6 +369,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const [isShiftDown, setIsShiftDown] = useState<boolean>(false);
   const [isAltDown, setIsAltDown] = useState<boolean>(false);
 
+  // Direct numeric input box state
+  const [numericLength, setNumericLength] = useState<string>('');
+  const [numericAngle, setNumericAngle] = useState<string>('');
+  const [showNumericInput, setShowNumericInput] = useState(false);
+  const [isDirectInputActive, setIsDirectInputActive] = useState(false);
+  const directInputRef = useRef<HTMLInputElement>(null);
+
   // Keyboard modifiers & Tab candidate cycling / Direct Numeric Input trigger
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -468,13 +475,6 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       setWallThicknessM(defaults?.interiorWallThickness || 0.115);
     }
   };
-
-  // Direct numeric input box state
-  const [numericLength, setNumericLength] = useState<string>('');
-  const [numericAngle, setNumericAngle] = useState<string>('');
-  const [showNumericInput, setShowNumericInput] = useState(false);
-  const [isDirectInputActive, setIsDirectInputActive] = useState(false);
-  const directInputRef = useRef<HTMLInputElement>(null);
 
   // Rect Room Drawing state
   const [rectRoomStart, setRectRoomStart] = useState<Point2D | null>(null);
@@ -4854,9 +4854,9 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                 <span className="text-[10px] text-slate-300 bg-white/10 px-1.5 py-0.5 rounded-full font-sans">
                   {wallTag}
                 </span>
-                {smartSnap && smartSnap.active && (
+                {smartSnap && smartSnap.snapped && (
                   <span className="text-[10px] text-emerald-400 font-sans font-semibold flex items-center gap-1">
-                    ● {smartSnap.type === 'endpoint' ? 'Ecke' : smartSnap.type === 'perpendicular' ? 'Lot' : smartSnap.type === 'guideline' ? 'Hilfslinie' : smartSnap.type}
+                    ● {smartSnap.type === 'endpoint' ? 'Ecke' : smartSnap.type === 'guideline' ? 'Hilfslinie' : smartSnap.type}
                   </span>
                 )}
                 <span className="text-[10px] text-slate-400 font-sans hidden sm:inline">
