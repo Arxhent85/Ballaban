@@ -1,14 +1,31 @@
 /**
  * Left CAD Tool Palette (Apple Pro & Adobe Studio Grade)
  * Clean, focused, high-precision dark aesthetic with electric blue accents.
+ * 
+ * Reorganized per user specification:
+ * 1. Auswahl (Select)
+ * 2. Verschieben (Pan / Hand)
+ * 3. Grundstückslinien (Plot)
+ * 4. Wände (Wall) - Räume entfernt
+ * 5. Ausschneidwerkzeug (Split / Schere)
+ * 6. Dach (Roof / Dach-Modul)
+ * 7. Türen (Door)
+ * 8. Fenster (Window)
+ * 9. Treppen (Stairs)
+ * 10. Möbel (Furniture)
+ * 11. Maßband (Measure)
+ * 12. Bemaßung (Dimension)
+ * 13. Text (Annotation)
+ * 14. Radierer / Teil-Löschwerkzeug (Eraser)
+ * 15. Plan-Vorlage (Underlay)
+ * 16. Setup & Aktionen (Vollbild, Einpassen, Export, Einstellungen)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   MousePointer,
   Hand,
   PenTool,
-  Square,
   Scissors,
   DoorOpen,
   AppWindow,
@@ -19,6 +36,14 @@ import {
   Compass,
   Home,
   Image as ImageIcon,
+  Sliders,
+  Maximize2,
+  Maximize,
+  Minimize,
+  Download,
+  Settings,
+  Layers,
+  X,
 } from 'lucide-react';
 import { CadTool, Language } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -48,6 +73,12 @@ interface CadToolbarProps {
   onInsertUnderlayImage?: (file: File) => void;
   leftHandedMode?: boolean;
   isFullscreen?: boolean;
+  onZoomFit?: () => void;
+  onToggleFullscreen?: () => void;
+  onOpenExportDialog?: () => void;
+  onToggleUnderlayHud?: () => void;
+  isUnderlayHudOpen?: boolean;
+  onOpenSettings?: () => void;
 }
 
 export const CadToolbar: React.FC<CadToolbarProps> = ({
@@ -58,8 +89,29 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
   onOpenRoofModal,
   onInsertUnderlayImage,
   leftHandedMode = false,
+  isFullscreen = false,
+  onZoomFit,
+  onToggleFullscreen,
+  onOpenExportDialog,
+  onToggleUnderlayHud,
+  isUnderlayHudOpen = false,
+  onOpenSettings,
 }) => {
   const t = getT(language);
+  const [showSetupMenu, setShowSetupMenu] = useState(false);
+  const setupMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close setup flyout on outside click
+  useEffect(() => {
+    if (!showSetupMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (setupMenuRef.current && !setupMenuRef.current.contains(e.target as Node)) {
+        setShowSetupMenu(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [showSetupMenu]);
 
   const btnClass = (isActive: boolean) =>
     `w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer select-none ${
@@ -71,7 +123,11 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
   const iconClass = 'w-5 h-5 md:w-4 md:h-4';
 
   const Tooltip = ({ label, shortcut }: { label: string; shortcut?: string }) => (
-    <div className="absolute left-13 px-2.5 py-1.5 bg-slate-950/95 backdrop-blur-md border border-slate-800 text-slate-100 text-xs rounded-xl shadow-2xl pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-2">
+    <div
+      className={`absolute ${
+        leftHandedMode ? 'right-13' : 'left-13'
+      } px-2.5 py-1.5 bg-slate-950/95 backdrop-blur-md border border-slate-800 text-slate-100 text-xs rounded-xl shadow-2xl pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-2`}
+    >
       <span className="font-medium">{label}</span>
       {shortcut && (
         <kbd className="px-1.5 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-300 font-mono font-bold border border-slate-700/60">
@@ -85,10 +141,10 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
     <aside
       className={`w-14 md:w-13 ${
         leftHandedMode ? 'border-l order-last' : 'border-r'
-      } border-slate-800/80 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl flex flex-col items-center py-2.5 z-20 shrink-0 select-none shadow-md transition-all`}
+      } border-slate-800/80 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl flex flex-col items-center py-2 z-20 shrink-0 select-none shadow-md transition-all overflow-y-auto no-scrollbar`}
     >
-      <div className="flex flex-col gap-1.5 md:gap-1 w-full px-1.5 items-center">
-        {/* GROUP 1: Selection & Pan */}
+      <div className="flex flex-col gap-1 md:gap-0.5 w-full px-1.5 items-center">
+        {/* 1. AUSWAHL (Select) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('select')}
@@ -99,6 +155,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           <Tooltip label="Auswahl" shortcut="V" />
         </div>
 
+        {/* 2. VERSCHIEBEN (Pan) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('hand')}
@@ -111,37 +168,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
 
         <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
-        {/* GROUP 2: Wall & Room */}
-        <div className="relative group flex items-center justify-center">
-          <button
-            onClick={() => onSelectTool('wall')}
-            className={btnClass(activeTool === 'wall')}
-          >
-            <PenTool className={iconClass} />
-          </button>
-          <Tooltip label="Wand zeichnen" shortcut="W" />
-        </div>
-
-        <div className="relative group flex items-center justify-center">
-          <button
-            onClick={() => onSelectTool('rect_room')}
-            className={btnClass(activeTool === 'rect_room')}
-          >
-            <Square className={iconClass} />
-          </button>
-          <Tooltip label="Rechteckraum (4 Wände)" shortcut="R" />
-        </div>
-
-        <div className="relative group flex items-center justify-center">
-          <button
-            onClick={() => onSelectTool('split')}
-            className={btnClass(activeTool === 'split')}
-          >
-            <Scissors className={iconClass} />
-          </button>
-          <Tooltip label="Wand trennen (Schere)" shortcut="C" />
-        </div>
-
+        {/* 3. GRUNDSTÜCKSLINIEN (Plot) - 3. Stelle */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('plot')}
@@ -149,9 +176,32 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Compass className={iconClass} />
           </button>
-          <Tooltip label="Grundstück & Baugrenzen" shortcut="G" />
+          <Tooltip label="Grundstückslinien & Baugrenzen" shortcut="G" />
         </div>
 
+        {/* 4. WÄNDE (Wall) - 4. Stelle */}
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => onSelectTool('wall')}
+            className={btnClass(activeTool === 'wall')}
+          >
+            <PenTool className={iconClass} />
+          </button>
+          <Tooltip label="Wände zeichnen" shortcut="W" />
+        </div>
+
+        {/* 5. AUSSCHNEIDWERKZEUG (Split / Schere) - 5. Stelle */}
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => onSelectTool('split')}
+            className={btnClass(activeTool === 'split')}
+          >
+            <Scissors className={iconClass} />
+          </button>
+          <Tooltip label="Ausschneiden / Trennen (Schere)" shortcut="C" />
+        </div>
+
+        {/* 6. DACH (Roof / Dach-Modul) - 6. Stelle */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onOpenRoofModal?.()}
@@ -159,12 +209,12 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Home className={iconClass} />
           </button>
-          <Tooltip label="Dach-Modul & Einstellungen" shortcut="U" />
+          <Tooltip label="Dach-Modul (11 Formen & Höhen)" shortcut="U" />
         </div>
 
         <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
-        {/* GROUP 3: Doors, Windows, Stairs */}
+        {/* 7. TÜREN (Doors) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('door')}
@@ -172,9 +222,10 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <DoorOpen className={iconClass} />
           </button>
-          <Tooltip label="Tür einsetzen" shortcut="D" />
+          <Tooltip label="Türen einsetzen" shortcut="D" />
         </div>
 
+        {/* 8. FENSTER (Windows) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('window')}
@@ -185,6 +236,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           <Tooltip label="Fenster einsetzen" shortcut="F" />
         </div>
 
+        {/* 9. TREPPEN (Stairs) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('stairs')}
@@ -192,12 +244,12 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <StairsIcon className={iconClass} />
           </button>
-          <Tooltip label="Treppe" shortcut="T" />
+          <Tooltip label="Treppen" shortcut="T" />
         </div>
 
         <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
-        {/* GROUP 4: Furniture & Catalog */}
+        {/* 10. MÖBEL (Furniture Catalog) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => {
@@ -213,7 +265,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
 
         <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
-        {/* GROUP 5: Dimensions, Measure, Text */}
+        {/* 11. MAßBAND (Quick Measure) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('measure')}
@@ -235,9 +287,10 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
               <path d="M21 10v6" />
             </svg>
           </button>
-          <Tooltip label="Maßband (Quick Measure)" shortcut="M" />
+          <Tooltip label="Maßband (Messen)" shortcut="Q" />
         </div>
 
+        {/* 12. BEMAßUNG (Dimension Line) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('dimension')}
@@ -248,6 +301,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           <Tooltip label="Bemaßung" shortcut="B" />
         </div>
 
+        {/* 13. TEXT / BESCHRIFTUNG (Text) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('text')}
@@ -260,7 +314,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
 
         <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
-        {/* GROUP 6: Eraser */}
+        {/* 14. RADIERER (Eraser / Teil-Löschwerkzeug wie bei Paint) */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('eraser')}
@@ -272,41 +326,177 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Eraser className={iconClass} />
           </button>
-          <Tooltip label="Löschen / Radierer" shortcut="Entf" />
+          <Tooltip label="Radierer (Wandteile wegradieren wie bei Paint)" shortcut="Entf" />
         </div>
 
-        {/* GROUP 7: Plan-Vorlage einfügen (ohne KI) */}
-        {onInsertUnderlayImage && (
-          <>
-            <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
-            <div className="relative group flex items-center justify-center">
-              <label
-                title="Plan, Foto oder PDF als Vorlage zum Nachzeichnen einfügen"
-                className="w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-500/30 shadow-xs active:scale-95 relative overflow-hidden"
-              >
-                <input
-                  type="file"
-                  accept="image/*,application/pdf,.pdf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) onInsertUnderlayImage(file);
-                    e.target.value = '';
+        {/* 15. PLAN-VORLAGE (Underlay Image) */}
+        <div className="relative group flex items-center justify-center">
+          {onToggleUnderlayHud ? (
+            <button
+              onClick={onToggleUnderlayHud}
+              title={isUnderlayHudOpen ? 'Plan-Vorlage Menü schließen' : 'Plan-Vorlage anpassen (Transparenz, Maßstab)'}
+              className={`w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                isUnderlayHudOpen
+                  ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30 font-bold'
+                  : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30'
+              }`}
+            >
+              <ImageIcon className={iconClass} />
+            </button>
+          ) : onInsertUnderlayImage ? (
+            <label
+              title="Plan, Foto oder PDF als Vorlage zum Nachzeichnen einfügen"
+              className="w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 shadow-xs active:scale-95 relative overflow-hidden"
+            >
+              <input
+                type="file"
+                accept="image/*,application/pdf,.pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onInsertUnderlayImage(file);
+                  e.target.value = '';
+                }}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  opacity: 0,
+                  width: '100%',
+                  height: '100%',
+                  cursor: 'pointer',
+                }}
+              />
+              <ImageIcon className={`${iconClass} pointer-events-none`} />
+            </label>
+          ) : null}
+          <Tooltip label="Plan-Vorlage (Zeichenhilfe)" />
+        </div>
+
+        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
+
+        {/* 16. SETUP & AKTIONEN MENÜ (Kompakt für Tablets & Vollbild) */}
+        <div ref={setupMenuRef} className="relative flex items-center justify-center">
+          <button
+            onClick={() => setShowSetupMenu((prev) => !prev)}
+            title="Setup & Aktionen (Vollbild, Einpassen, Export, Einstellungen)"
+            className={`w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+              showSetupMenu
+                ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30 font-bold'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Sliders className={iconClass} />
+          </button>
+
+          {/* Setup Popover Flyout */}
+          {showSetupMenu && (
+            <div
+              className={`absolute ${
+                leftHandedMode ? 'right-14' : 'left-14'
+              } bottom-0 w-64 bg-slate-950/98 backdrop-blur-2xl border border-slate-800 rounded-2xl shadow-2xl p-2 z-50 text-xs text-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-1`}
+            >
+              <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-800/80 font-bold text-[11px] text-slate-400 uppercase tracking-wider">
+                <span>Setup & Aktionen</span>
+                <button
+                  onClick={() => setShowSetupMenu(false)}
+                  className="text-slate-500 hover:text-white p-0.5 rounded cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* 1. Einpassen */}
+              {onZoomFit && (
+                <button
+                  onClick={() => {
+                    onZoomFit();
+                    setShowSetupMenu(false);
                   }}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    opacity: 0,
-                    width: '100%',
-                    height: '100%',
-                    cursor: 'pointer',
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                >
+                  <Maximize2 className="w-4 h-4 text-amber-500 shrink-0" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs">Ansicht einpassen</span>
+                    <span className="text-[10px] text-slate-400">Ganzes Haus zentrieren (Zoom Fit)</span>
+                  </div>
+                </button>
+              )}
+
+              {/* 2. Vollbild */}
+              {onToggleFullscreen && (
+                <button
+                  onClick={() => {
+                    onToggleFullscreen();
+                    setShowSetupMenu(false);
                   }}
-                />
-                <ImageIcon className={`${iconClass} pointer-events-none`} />
-              </label>
-              <Tooltip label="Vorlage einfügen (Nachzeichnen)" />
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                >
+                  {isFullscreen ? (
+                    <Minimize className="w-4 h-4 text-amber-500 shrink-0" />
+                  ) : (
+                    <Maximize className="w-4 h-4 text-amber-500 shrink-0" />
+                  )}
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs">
+                      {isFullscreen ? 'Vollbild beenden' : 'Vollbildmodus'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">Browserleiste aus- oder einblenden</span>
+                  </div>
+                </button>
+              )}
+
+              {/* 3. Export */}
+              {onOpenExportDialog && (
+                <button
+                  onClick={() => {
+                    onOpenExportDialog();
+                    setShowSetupMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                >
+                  <Download className="w-4 h-4 text-sky-400 shrink-0" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs">Pläne exportieren</span>
+                    <span className="text-[10px] text-slate-400">PDF, PNG, SVG oder Ausdruck</span>
+                  </div>
+                </button>
+              )}
+
+              {/* 4. Plan-Vorlage */}
+              {onToggleUnderlayHud && (
+                <button
+                  onClick={() => {
+                    onToggleUnderlayHud();
+                    setShowSetupMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                >
+                  <ImageIcon className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs">Plan-Vorlage Menü</span>
+                    <span className="text-[10px] text-slate-400">Transparenz, Maßstab & Filter</span>
+                  </div>
+                </button>
+              )}
+
+              {/* 5. Einstellungen */}
+              {onOpenSettings && (
+                <button
+                  onClick={() => {
+                    onOpenSettings();
+                    setShowSetupMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                >
+                  <Settings className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-xs">Einstellungen</span>
+                    <span className="text-[10px] text-slate-400">Einheiten, Baurecht & Fangen</span>
+                  </div>
+                </button>
+              )}
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </aside>
   );

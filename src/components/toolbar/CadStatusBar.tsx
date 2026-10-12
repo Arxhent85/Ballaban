@@ -128,7 +128,7 @@ export const CadStatusBar: React.FC<CadStatusBarProps> = ({
           </span>
         )}
 
-        <div className="text-slate-400 font-medium truncate max-w-[280px] lg:max-w-[420px]" title={hintText}>
+        <div className="hidden lg:block text-slate-400 font-medium truncate max-w-[280px] lg:max-w-[420px]" title={hintText}>
           {hintText}
         </div>
       </div>

@@ -72,6 +72,7 @@ import {
   snapRotationAngle,
   recognizeQuickShape,
 } from '../../utils/touchGestures';
+import { eraseWallSegment } from '../../utils/eraserMath';
 import { getT } from '../../i18n/translations';
 import {
   RotateCcw,
@@ -2782,6 +2783,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         ctx.restore();
       }
     }
+
+    // Live Circular Eraser Cursor Preview (Paint-style eraser feedback)
+    if (activeTool === 'eraser' && currentCursorScreenRef.current) {
+      const cur = currentCursorScreenRef.current;
+      const eraseRadiusPx = Math.max(10, Math.min(26, 0.30 * zoom));
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cur.x, cur.y, eraseRadiusPx, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.22)';
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#f43f5e';
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.restore();
+    }
   }, [
     walls,
     doors,
@@ -3084,70 +3101,19 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         return;
       }
 
-      // 3. Walls (Smart segment trimming if intersected by cross walls, else deletes entire wall)
-      const nearWall = findWallNearPoint(rawWorld, Math.max(0.35, 20 / zoom));
+      // 3. Walls: Paint-Style Segment Eraser (radieren wie bei Paint eine Linie)
+      const nearWall = findWallNearPoint(rawWorld, Math.max(0.38, 24 / zoom));
       if (nearWall) {
-        const wall = nearWall.wall;
-        const pts: { t: number; pt: Point2D }[] = [];
-        const wallVec = { x: wall.end.x - wall.start.x, y: wall.end.y - wall.start.y };
-        const wallLenSq = wallVec.x * wallVec.x + wallVec.y * wallVec.y;
-
-        if (wallLenSq > 0.001) {
-          walls.forEach((otherW) => {
-            if (otherW.id === wall.id) return;
-            const inter = lineIntersection(wall.start, wall.end, otherW.start, otherW.end);
-            if (inter) {
-              const t = ((inter.x - wall.start.x) * wallVec.x + (inter.y - wall.start.y) * wallVec.y) / wallLenSq;
-              if (t > 0.04 && t < 0.96) {
-                pts.push({ t, pt: inter });
-              }
-            }
-          });
+        const eraseBite = Math.max(0.40, Math.min(0.80, 26 / zoom));
+        const res = eraseWallSegment(nearWall.wall, rawWorld, nearWall.ratio, eraseBite);
+        if (res.action === 'delete') {
+          if (onDeleteSelected) onDeleteSelected([nearWall.wall.id]);
+        } else if (res.action === 'trim_start' || res.action === 'trim_end') {
+          if (res.updatedWall) onUpdateWall(res.updatedWall);
+        } else if (res.action === 'split') {
+          if (res.updatedWall) onUpdateWall(res.updatedWall);
+          if (res.newWall) onAddWall(res.newWall);
         }
-
-        if (pts.length > 0) {
-          pts.sort((a, b) => a.t - b.t);
-          const uniqueSplitPoints = pts.filter((p, i, arr) => i === 0 || p.t - arr[i - 1].t > 0.04);
-
-          if (uniqueSplitPoints.length > 0) {
-            const clickT = Math.max(0, Math.min(1, nearWall.ratio));
-            const segments: { startT: number; endT: number; startPt: Point2D; endPt: Point2D }[] = [];
-
-            let curT = 0;
-            let curPt = wall.start;
-            for (const sp of uniqueSplitPoints) {
-              segments.push({ startT: curT, endT: sp.t, startPt: curPt, endPt: sp.pt });
-              curT = sp.t;
-              curPt = sp.pt;
-            }
-            segments.push({ startT: curT, endT: 1, startPt: curPt, endPt: wall.end });
-
-            const clickedSegIdx = segments.findIndex((seg) => clickT >= seg.startT && clickT <= seg.endT);
-            if (clickedSegIdx !== -1) {
-              const remainingSegments = segments.filter((_, idx) => idx !== clickedSegIdx);
-              if (remainingSegments.length > 0) {
-                const firstSeg = remainingSegments[0];
-                onUpdateWall({
-                  ...wall,
-                  start: firstSeg.startPt,
-                  end: firstSeg.endPt,
-                });
-                for (let i = 1; i < remainingSegments.length; i++) {
-                  const seg = remainingSegments[i];
-                  onAddWall({
-                    ...wall,
-                    id: 'w_' + Date.now() + Math.random().toString(36).substr(2, 4) + '_' + i,
-                    start: seg.startPt,
-                    end: seg.endPt,
-                  });
-                }
-                return;
-              }
-            }
-          }
-        }
-
-        if (onDeleteSelected) onDeleteSelected([nearWall.wall.id]);
         return;
       }
 
@@ -3158,13 +3124,6 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       });
       if (nearDim) {
         if (onDeleteSelected) onDeleteSelected([nearDim.id]);
-        return;
-      }
-
-      // 5. Rooms
-      const clickedRoom = rooms.find((rm) => rm.polygon.length >= 3 && isPointInPolygon(rawWorld, rm.polygon));
-      if (clickedRoom) {
-        if (onDeleteSelected) onDeleteSelected([clickedRoom.id]);
         return;
       }
 
@@ -3903,6 +3862,23 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     const rawWorld = screenToWorld(effectiveScreenPt);
     onCursorMove(rawWorld);
 
+    // Continuous Paint-style drag erasing
+    if (isPointerDown && activeTool === 'eraser') {
+      const nearWall = findWallNearPoint(rawWorld, Math.max(0.38, 24 / zoom));
+      if (nearWall) {
+        const eraseBite = Math.max(0.40, Math.min(0.80, 26 / zoom));
+        const res = eraseWallSegment(nearWall.wall, rawWorld, nearWall.ratio, eraseBite);
+        if (res.action === 'delete') {
+          if (onDeleteSelected) onDeleteSelected([nearWall.wall.id]);
+        } else if (res.action === 'trim_start' || res.action === 'trim_end') {
+          if (res.updatedWall) onUpdateWall(res.updatedWall);
+        } else if (res.action === 'split') {
+          if (res.updatedWall) onUpdateWall(res.updatedWall);
+          if (res.newWall) onAddWall(res.newWall);
+        }
+      }
+    }
+
     // QuickShape sampling during drawing stroke
     if (isPointerDown && (activeTool === 'wall' || activeTool === 'rect_room')) {
       quickShapeStrokeRef.current.push(rawWorld);
@@ -4586,8 +4562,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     if (hoveredUnderlayHandle === 'ne' || hoveredUnderlayHandle === 'sw') return 'nesw-resize';
     if (hoveredUnderlayHandle === 'move') return 'move';
     if (isPanning || activeTool === 'hand') return 'grab';
-    if (activeTool === 'wall' || activeTool === 'rect_room' || activeTool === 'dimension' || activeTool === 'measure' || activeTool === 'plot') return 'crosshair';
-    if (activeTool === 'eraser') return 'not-allowed';
+    if (activeTool === 'wall' || activeTool === 'rect_room' || activeTool === 'dimension' || activeTool === 'measure' || activeTool === 'plot' || activeTool === 'eraser') return 'crosshair';
     if (isDraggingSelection) return 'grabbing';
     if (activeTool === 'select' && isHoveringSelection) return 'move';
     return 'default';

@@ -198,7 +198,7 @@ export const CadCommandLine: React.FC<CadCommandLineProps> = ({
   };
 
   return (
-    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 font-mono select-none pointer-events-auto">
+    <div className="hidden lg:block absolute bottom-11 left-1/2 -translate-x-1/2 z-20 font-mono select-none pointer-events-auto">
       {/* Suggestions Popup */}
       {isFocused && suggestions.length > 0 && (
         <div className="absolute bottom-full mb-1.5 left-0 right-0 max-h-48 overflow-y-auto bg-slate-950/95 backdrop-blur-xl border border-sky-500/50 rounded-2xl p-1 shadow-2xl flex flex-col gap-0.5 text-xs">

@@ -131,7 +131,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
       {/* 2. FLOATING PRIMARY ACTION BUTTONS [Fertig ✓] & [Abbrechen ✕] (When drawing walls / plot) */}
       {isDrawingActive && (
         <div
-          className={`fixed bottom-12 ${
+          className={`fixed bottom-14 sm:bottom-16 ${
             isLeftHanded ? 'left-6' : 'right-6'
           } z-40 flex items-center gap-2.5 animate-in slide-in-from-bottom-4 duration-150`}
         >
@@ -139,9 +139,9 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             <button
               onClick={onCancelDrawing}
               title="Aktion abbrechen (Esc)"
-              className="h-13 px-4.5 rounded-2xl bg-stone-800/95 hover:bg-stone-700 text-stone-200 border border-stone-600/80 shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm font-semibold active:scale-95 transition-all cursor-pointer"
+              className="h-12 px-4 rounded-2xl bg-stone-900/95 hover:bg-stone-800 text-stone-200 border border-stone-700/80 shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm font-semibold active:scale-95 transition-all cursor-pointer"
             >
-              <X className="w-5 h-5 text-red-400" />
+              <X className="w-4 h-4 text-red-400" />
               <span>Abbrechen</span>
             </button>
           )}
@@ -150,20 +150,20 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             <button
               onClick={onFinishDrawing}
               title="Wandkette oder Form abschließen (Enter / Doppel-Tipp)"
-              className="h-13 px-6 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white border border-amber-400/60 shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm font-bold active:scale-95 transition-all cursor-pointer"
+              className="h-12 px-5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white border border-amber-400/60 shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm font-bold active:scale-95 transition-all cursor-pointer"
             >
-              <Check className="w-5 h-5 text-white" />
+              <Check className="w-4 h-4 text-white" />
               <span>Fertig ✓</span>
             </button>
           )}
         </div>
       )}
 
-      {/* 3. SLENDER FLOATING QUICK TOUCH CHIPS BAR (Bottom-Left / Right) */}
+      {/* 3. SLENDER FLOATING QUICK TOUCH CHIPS BAR (Bottom-Left / Right) - Positioned safely above status bar */}
       <div
-        className={`fixed bottom-3 ${
+        className={`fixed bottom-11 sm:bottom-12 ${
           isLeftHanded ? 'right-4' : 'left-4'
-        } z-30 flex flex-wrap items-center gap-1.5 p-1 bg-stone-900/80 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl max-w-[85vw]`}
+        } z-30 flex flex-wrap items-center gap-1.5 p-1 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl max-w-[85vw]`}
       >
           {/* Multi-Select Toggle */}
           <button

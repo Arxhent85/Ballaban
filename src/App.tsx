@@ -2057,6 +2057,13 @@ export default function App() {
           onOpenAiImport={() => setShowAiImport(true)}
           onInsertUnderlayImage={handleInsertUnderlayImage}
           leftHandedMode={leftHandedMode}
+          isFullscreen={isFullscreen}
+          onZoomFit={handleZoomFit}
+          onToggleFullscreen={handleToggleFullscreen}
+          onOpenExportDialog={() => setShowExport(true)}
+          onToggleUnderlayHud={() => setIsUnderlayHudOpen((prev) => !prev)}
+          isUnderlayHudOpen={isUnderlayHudOpen}
+          onOpenSettings={() => setShowSettings(true)}
         />
 
         {/* Tool Options Flyout (TEIL 3: Wall, Door, Window Options Docked Beside Toolbar) */}
