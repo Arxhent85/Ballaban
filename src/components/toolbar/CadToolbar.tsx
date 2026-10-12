@@ -252,7 +252,34 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
 
         <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
 
-        {/* GROUP 5: Dimensions, Text, Shapes */}
+        {/* GROUP 5: Dimensions, Measure, Text */}
+        <div className="relative group flex items-center justify-center">
+          <button
+            onClick={() => onSelectTool('measure')}
+            className={btnClass(activeTool === 'measure')}
+          >
+            <svg
+              className={iconClass}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 13a4 4 0 1 0 8 0 4 4 0 0 0-8 0z" />
+              <path d="M11 13h10" />
+              <path d="M14 10v6" />
+              <path d="M18 10v6" />
+              <path d="M21 10v6" />
+            </svg>
+          </button>
+          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
+            <span>Maßband (Messen)</span>
+            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">M</kbd>
+          </div>
+        </div>
+
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('dimension')}

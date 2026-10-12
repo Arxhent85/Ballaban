@@ -13,6 +13,7 @@ import {
   Furniture,
   Room,
   PlotBoundary,
+  GuideLine,
   ActiveGuideLine,
   SnapPointType,
   MatchedHeightsInfo,
@@ -59,6 +60,108 @@ export function formatArea(m2: number | undefined | null): string {
   return `${safeVal.toFixed(2).replace('.', ',')} m²`;
 }
 
+/**
+ * Safe evaluator for mathematical expressions in CAD inputs (from PhotoCraft numeric_expression)
+ * Accepts standard arithmetic: +, -, *, /, decimals, commas, parentheses.
+ * e.g. "5.4 / 2" => 2.7, "3.20 + 0.30" => 3.5, "1.25 * 3" => 3.75
+ */
+export function evaluateNumericExpression(input: string | number | undefined | null): number | null {
+  if (input === undefined || input === null) return null;
+  if (typeof input === 'number') {
+    return isFinite(input) ? input : null;
+  }
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // Replace comma with dot
+  const sanitized = trimmed.replace(/,/g, '.');
+
+  // Verify only allowed characters: digits, decimal dot, operators +, -, *, /, parentheses, whitespace
+  if (!/^[\d\s\+\-\*\/\(\)\.]+$/.test(sanitized)) {
+    return null;
+  }
+
+  try {
+    let pos = 0;
+    function peek(): string {
+      while (pos < sanitized.length && sanitized[pos] === ' ') pos++;
+      return pos < sanitized.length ? sanitized[pos] : '';
+    }
+
+    function parseNumber(): number {
+      while (pos < sanitized.length && sanitized[pos] === ' ') pos++;
+      const start = pos;
+      if (sanitized[pos] === '-' || sanitized[pos] === '+') {
+        pos++;
+      }
+      while (pos < sanitized.length && ((sanitized[pos] >= '0' && sanitized[pos] <= '9') || sanitized[pos] === '.')) {
+        pos++;
+      }
+      const numStr = sanitized.slice(start, pos);
+      const val = parseFloat(numStr);
+      if (isNaN(val)) throw new Error('Invalid number');
+      return val;
+    }
+
+    function parseFactor(): number {
+      while (pos < sanitized.length && sanitized[pos] === ' ') pos++;
+      if (sanitized[pos] === '(') {
+        pos++; // skip '('
+        const val = parseExpression();
+        while (pos < sanitized.length && sanitized[pos] === ' ') pos++;
+        if (sanitized[pos] === ')') {
+          pos++; // skip ')'
+        }
+        return val;
+      }
+      return parseNumber();
+    }
+
+    function parseTerm(): number {
+      let val = parseFactor();
+      while (pos < sanitized.length) {
+        const op = peek();
+        if (op === '*' || op === '/') {
+          pos++;
+          const nextVal = parseFactor();
+          if (op === '*') val *= nextVal;
+          else {
+            if (Math.abs(nextVal) < 1e-12) throw new Error('Division by zero');
+            val /= nextVal;
+          }
+        } else {
+          break;
+        }
+      }
+      return val;
+    }
+
+    function parseExpression(): number {
+      let val = parseTerm();
+      while (pos < sanitized.length) {
+        const op = peek();
+        if (op === '+' || op === '-') {
+          pos++;
+          const nextVal = parseTerm();
+          if (op === '+') val += nextVal;
+          else val -= nextVal;
+        } else {
+          break;
+        }
+      }
+      return val;
+    }
+
+    const result = parseExpression();
+    if (isFinite(result)) {
+      return Math.round(result * 10000) / 10000;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export interface SnapResult {
   point: Point2D;
   snapped: boolean;
@@ -85,6 +188,7 @@ export function calculateSnap(
     furniture?: Furniture[];
     rooms?: Room[];
     plot?: PlotBoundary;
+    guideLines?: GuideLine[];
     candidateIndex?: number;
     isAltPressed?: boolean;
     isAngleLocked?: boolean;
@@ -101,6 +205,7 @@ export function calculateSnap(
     furniture: extraCtx?.furniture,
     rooms: extraCtx?.rooms,
     plot: extraCtx?.plot,
+    guideLines: extraCtx?.guideLines,
     settings,
     zoom,
     candidateIndex: extraCtx?.candidateIndex,

@@ -312,6 +312,8 @@ export interface GuideLine {
   id: string;
   orientation: 'horizontal' | 'vertical';
   position: number; // Coordinate in meters
+  locked?: boolean;
+  color?: string;
 }
 
 export interface BackgroundImageCrop {
@@ -485,6 +487,7 @@ export type SnapPointType =
   | 'intersection'
   | 'lot' // Lotpunkt (perpendicular foot)
   | 'edge' // Auf Kante / Achse
+  | 'guideline' // Statische CAD-Hilfslinie (Rulers/Guides)
   | 'division' // Drittel / Viertel
   | 'extension' // Fluchtend auf Verlängerung
   | 'extension_intersection'
@@ -574,6 +577,7 @@ export type CadTool =
   | 'furniture' 
   | 'electrical' 
   | 'dimension' 
+  | 'measure' 
   | 'text' 
   | 'shape_rect' 
   | 'shape_circle' 

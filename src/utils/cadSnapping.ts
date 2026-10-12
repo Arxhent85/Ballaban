@@ -18,6 +18,7 @@ import {
   Furniture,
   Room,
   PlotBoundary,
+  GuideLine,
   SnapSettings,
   ActiveGuideLine,
   SmartSnapCandidate,
@@ -69,6 +70,7 @@ export interface SmartSnapContext {
   furniture?: Furniture[];
   rooms?: Room[];
   plot?: PlotBoundary;
+  guideLines?: GuideLine[];
   settings: SnapSettings;
   zoom: number;
   candidateIndex?: number;
@@ -91,6 +93,7 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
     furniture = [],
     rooms = [],
     plot,
+    guideLines: userGuideLines = [],
     settings,
     zoom,
     candidateIndex = 0,
@@ -237,6 +240,63 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
             });
           }
         }
+      }
+    }
+  }
+
+  // D2. User CAD Guide Lines (from Rulers / PhotoCraft / CADCraft)
+  if (userGuideLines && userGuideLines.length > 0) {
+    const hGuides = userGuideLines.filter((g) => g.orientation === 'horizontal');
+    const vGuides = userGuideLines.filter((g) => g.orientation === 'vertical');
+
+    // Intersections of user guidelines
+    for (const hg of hGuides) {
+      for (const vg of vGuides) {
+        const pt = { x: vg.position, y: hg.position };
+        const dPt = distance(target, pt);
+        if (dPt <= snapRadiusM) {
+          candidates.push({
+            point: pt,
+            type: 'intersection',
+            distancePx: dPt * zoom,
+            priority: 0.95,
+            label: `Hilfslinien-Schnittpunkt (${vg.position.toFixed(2)}m / ${hg.position.toFixed(2)}m)`,
+            symbol: '✛',
+            targetId: `${hg.id}_${vg.id}`,
+          });
+        }
+      }
+    }
+
+    // Individual vertical guidelines
+    for (const vg of vGuides) {
+      const dX = Math.abs(target.x - vg.position);
+      if (dX <= snapRadiusM) {
+        candidates.push({
+          point: { x: vg.position, y: target.y },
+          type: 'guideline',
+          distancePx: dX * zoom,
+          priority: 1.15,
+          label: `Hilfslinie X: ${vg.position.toFixed(2)}m`,
+          symbol: '╏',
+          targetId: vg.id,
+        });
+      }
+    }
+
+    // Individual horizontal guidelines
+    for (const hg of hGuides) {
+      const dY = Math.abs(target.y - hg.position);
+      if (dY <= snapRadiusM) {
+        candidates.push({
+          point: { x: target.x, y: hg.position },
+          type: 'guideline',
+          distancePx: dY * zoom,
+          priority: 1.15,
+          label: `Hilfslinie Y: ${hg.position.toFixed(2)}m`,
+          symbol: '╍',
+          targetId: hg.id,
+        });
       }
     }
   }

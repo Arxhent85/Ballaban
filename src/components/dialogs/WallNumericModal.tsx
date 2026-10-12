@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { Binary, X, Check } from 'lucide-react';
 import { Wall, Point2D, Language } from '../../types/cad';
 import { getT } from '../../i18n/translations';
+import { evaluateNumericExpression } from '../../utils/cadMath';
 
 interface WallNumericModalProps {
   isOpen: boolean;
@@ -22,9 +23,9 @@ export const WallNumericModal: React.FC<WallNumericModalProps> = ({
 }) => {
   const t = getT(language);
 
-  const [startX, setStartX] = useState(2.0);
-  const [startY, setStartY] = useState(2.0);
-  const [lengthM, setLengthM] = useState(5.0);
+  const [startXStr, setStartXStr] = useState('2.0');
+  const [startYStr, setStartYStr] = useState('2.0');
+  const [lengthStr, setLengthStr] = useState('5.0');
   const [angleDeg, setAngleDeg] = useState(0);
   const [isExterior, setIsExterior] = useState(true);
   const [thicknessM, setThicknessM] = useState(0.30);
@@ -33,6 +34,9 @@ export const WallNumericModal: React.FC<WallNumericModalProps> = ({
   if (!isOpen) return null;
 
   const handleCreate = () => {
+    const startX = evaluateNumericExpression(startXStr) ?? 2.0;
+    const startY = evaluateNumericExpression(startYStr) ?? 2.0;
+    const lengthM = evaluateNumericExpression(lengthStr) ?? 5.0;
     const rad = (angleDeg * Math.PI) / 180;
     const endX = startX + Math.cos(rad) * lengthM;
     const endY = startY + Math.sin(rad) * lengthM;
@@ -73,20 +77,20 @@ export const WallNumericModal: React.FC<WallNumericModalProps> = ({
             <div>
               <label className="text-slate-400">Startpunkt X (m):</label>
               <input
-                type="number"
-                step="0.1"
-                value={startX}
-                onChange={(e) => setStartX(parseFloat(e.target.value) || 0)}
+                type="text"
+                placeholder="2.0"
+                value={startXStr}
+                onChange={(e) => setStartXStr(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-white font-mono mt-1"
               />
             </div>
             <div>
               <label className="text-slate-400">Startpunkt Y (m):</label>
               <input
-                type="number"
-                step="0.1"
-                value={startY}
-                onChange={(e) => setStartY(parseFloat(e.target.value) || 0)}
+                type="text"
+                placeholder="2.0"
+                value={startYStr}
+                onChange={(e) => setStartYStr(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1 text-white font-mono mt-1"
               />
             </div>
@@ -95,13 +99,12 @@ export const WallNumericModal: React.FC<WallNumericModalProps> = ({
           {/* Length and Angle */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-slate-400 font-semibold text-emerald-400">Wandlänge (m):</label>
+              <label className="text-slate-400 font-semibold text-emerald-400">Wandlänge (m / Formel):</label>
               <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                value={lengthM}
-                onChange={(e) => setLengthM(parseFloat(e.target.value) || 1)}
+                type="text"
+                placeholder="z. B. 5.0 oder 12/2"
+                value={lengthStr}
+                onChange={(e) => setLengthStr(e.target.value)}
                 className="w-full bg-slate-950 border border-emerald-500 rounded px-2.5 py-1 text-white font-mono font-bold text-sm mt-1"
               />
             </div>

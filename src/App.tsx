@@ -1043,6 +1043,24 @@ export default function App() {
   const handleUpdatePlot = (newPlot: PlotBoundary) => {
     updateProject({ ...project, plot: newPlot });
   };
+  const handleAddGuideLine = useCallback((gl: GuideLine) => {
+    updateProject({
+      ...project,
+      guideLines: [...(project.guideLines || []), gl],
+    });
+  }, [project, updateProject]);
+  const handleRemoveGuideLine = useCallback((id: string) => {
+    updateProject({
+      ...project,
+      guideLines: (project.guideLines || []).filter((g) => g.id !== id),
+    });
+  }, [project, updateProject]);
+  const handleClearGuideLines = useCallback(() => {
+    updateProject({
+      ...project,
+      guideLines: [],
+    });
+  }, [project, updateProject]);
   // Atomically add multiple walls and optional room (prevents React closure overwrite)
   const handleAddWallsAndRoom = useCallback((newWalls: Wall[], room?: Room) => {
     updateActiveFloor((f) => ({
@@ -1810,9 +1828,13 @@ export default function App() {
       if (e.key === 'd' && !e.ctrlKey && !e.metaKey) setActiveTool('door');
       if (e.key === 'D' && !e.ctrlKey && !e.metaKey) setActiveTool('door');
       if (e.key === 'f' || e.key === 'F') setActiveTool('window');
-      if (e.key === 't' || e.key === 'T') setActiveTool('stairs');
-      if (e.key === 'm' || e.key === 'M') setShowFurnitureCatalog(true);
-      if (e.key === 'u' || e.key === 'U') setShowRoofModal(true);
+      if (e.key === 'm' || e.key === 'M') {
+        if (e.shiftKey) {
+          setShowFurnitureCatalog(true);
+        } else {
+          setActiveTool('measure');
+        }
+      }
       if (e.key === 'b' || e.key === 'B') setActiveTool('dimension');
       if ((e.key === 's' || e.key === 'S' || e.key === 'F3') && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
@@ -2136,6 +2158,12 @@ export default function App() {
               onUpdateBackgroundImage={handleUpdateBackgroundImage}
               isUnderlayHudOpen={isUnderlayHudOpen}
               onToggleUnderlayHud={setIsUnderlayHudOpen}
+              onAddGuideLine={handleAddGuideLine}
+              onRemoveGuideLine={handleRemoveGuideLine}
+              onClearGuideLines={handleClearGuideLines}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              northAngle={project.northAngle}
             />
           )}
 
@@ -2231,6 +2259,12 @@ export default function App() {
                   onUpdateBackgroundImage={handleUpdateBackgroundImage}
                   isUnderlayHudOpen={isUnderlayHudOpen}
                   onToggleUnderlayHud={setIsUnderlayHudOpen}
+                  onAddGuideLine={handleAddGuideLine}
+                  onRemoveGuideLine={handleRemoveGuideLine}
+                  onClearGuideLines={handleClearGuideLines}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  northAngle={project.northAngle}
                 />
               </div>
               <div className="w-1/2 h-full">

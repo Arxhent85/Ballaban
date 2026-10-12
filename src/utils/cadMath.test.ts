@@ -79,4 +79,17 @@ describe('Wall Corner Geometry & Miter Tests', () => {
       expect(r.hasEndCap).toBe(false);
     });
   });
+
+  it('2. Test evaluateNumericExpression handles arithmetic expressions and comma decimals', () => {
+    const { evaluateNumericExpression } = require('./cadMath');
+
+    expect(evaluateNumericExpression('5.4 / 2')).toBe(2.7);
+    expect(evaluateNumericExpression('3,20 + 0,30')).toBe(3.5);
+    expect(evaluateNumericExpression('1.25 * 3')).toBe(3.75);
+    expect(evaluateNumericExpression('(4 + 2) * 1.5')).toBe(9);
+    expect(evaluateNumericExpression('10 - 2.5')).toBe(7.5);
+    expect(evaluateNumericExpression('4.85')).toBe(4.85);
+    expect(evaluateNumericExpression('')).toBeNull();
+    expect(evaluateNumericExpression('abc')).toBeNull();
+  });
 });

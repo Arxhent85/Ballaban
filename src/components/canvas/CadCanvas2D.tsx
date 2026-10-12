@@ -99,6 +99,11 @@ import {
   Ruler,
 } from 'lucide-react';
 import { UnderlayCropModal } from '../dialogs/UnderlayCropModal';
+import { CadRulersAndGuides } from './CadRulersAndGuides';
+import { CadViewCube } from './CadViewCube';
+import { CadCommandLine } from './CadCommandLine';
+import { evaluateNumericExpression } from '../../utils/cadMath';
+import { ViewMode } from '../../types/cad';
 
 interface CadCanvas2DProps {
   walls: Wall[];
@@ -175,6 +180,14 @@ interface CadCanvas2DProps {
   onUpdateBackgroundImage?: (bg?: BackgroundImage) => void;
   isUnderlayHudOpen?: boolean;
   onToggleUnderlayHud?: (open: boolean) => void;
+  onAddGuideLine?: (gl: GuideLine) => void;
+  onRemoveGuideLine?: (id: string) => void;
+  onClearGuideLines?: () => void;
+  showRulers?: boolean;
+  onToggleRulers?: () => void;
+  viewMode?: ViewMode;
+  onViewModeChange?: (m: ViewMode) => void;
+  northAngle?: number;
 }
 
 export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
@@ -250,10 +263,53 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   onUpdateBackgroundImage,
   isUnderlayHudOpen: propsIsUnderlayHudOpen,
   onToggleUnderlayHud,
+  onAddGuideLine,
+  onRemoveGuideLine,
+  onClearGuideLines,
+  showRulers: propsShowRulers,
+  onToggleRulers,
+  viewMode = '2d',
+  onViewModeChange,
+  northAngle = 0,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const draggedIdsRef = useRef<string[]>([]);
+
+  // Quick Measure Tool State (from PhotoCraft & CADCraft)
+  const [measureStart, setMeasureStart] = useState<Point2D | null>(null);
+  const [measureEnd, setMeasureEnd] = useState<Point2D | null>(null);
+  const [isMeasureLocked, setIsMeasureLocked] = useState<boolean>(false);
+
+  // CAD Edge Rulers & Guides State
+  const [internalShowRulers, setInternalShowRulers] = useState<boolean>(true);
+  const showRulers = propsShowRulers !== undefined ? propsShowRulers : internalShowRulers;
+  const [viewportDimensions, setViewportDimensions] = useState<{ width: number; height: number }>({
+    width: 1200,
+    height: 800,
+  });
+
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        setViewportDimensions({
+          width: containerRef.current.clientWidth || window.innerWidth,
+          height: containerRef.current.clientHeight || window.innerHeight,
+        });
+      }
+    };
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  useEffect(() => {
+    if (activeTool !== 'measure') {
+      setMeasureStart(null);
+      setMeasureEnd(null);
+      setIsMeasureLocked(false);
+    }
+  }, [activeTool]);
 
   // Pan state
   const [isPanning, setIsPanning] = useState(false);
@@ -1917,6 +1973,82 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       ctx.fillText(badgeText, rx + rw / 2, ry + rh / 2);
     }
 
+    // C. Quick Measure Tool (Maßband - PhotoCraft & CADCraft)
+    if (activeTool === 'measure' && measureStart && (measureEnd || currentCursorWorld)) {
+      const pEnd = measureEnd || currentCursorWorld!;
+      const sStart = worldToScreen(measureStart);
+      const sEnd = worldToScreen(pEnd);
+      const distM = distance(measureStart, pEnd);
+      const dxM = Math.abs(pEnd.x - measureStart.x);
+      const dyM = Math.abs(pEnd.y - measureStart.y);
+      const ang = angleDeg(measureStart, pEnd);
+
+      ctx.save();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(sStart.x, sStart.y);
+      ctx.lineTo(sEnd.x, sEnd.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Caliper end ticks
+      const normAng = Math.atan2(sEnd.y - sStart.y, sEnd.x - sStart.x) + Math.PI / 2;
+      const tickLen = 9;
+      [sStart, sEnd].forEach((pt) => {
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(pt.x - Math.cos(normAng) * tickLen, pt.y - Math.sin(normAng) * tickLen);
+        ctx.lineTo(pt.x + Math.cos(normAng) * tickLen, pt.y + Math.sin(normAng) * tickLen);
+        ctx.stroke();
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Floating Measure HUD badge at midpoint
+      const mid = { x: (sStart.x + sEnd.x) / 2, y: (sStart.y + sEnd.y) / 2 };
+      ctx.font = '700 12px "JetBrains Mono", monospace';
+      const badgeText = `L: ${distM.toFixed(2)} m (ΔX: ${dxM.toFixed(2)}m, ΔY: ${dyM.toFixed(2)}m, ${ang.toFixed(1)}°)`;
+      const bW = ctx.measureText(badgeText).width + 24;
+
+      ctx.fillStyle = '#1c1917';
+      ctx.fillRect(mid.x - bW / 2, mid.y - 32, bW, 26);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(mid.x - bW / 2, mid.y - 32, bW, 26);
+      ctx.fillStyle = '#fbbf24';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, mid.x, mid.y - 19);
+      ctx.restore();
+    }
+
+    // D. Static User Guide Lines (PhotoCraft & CADCraft)
+    if (guideLines && guideLines.length > 0) {
+      guideLines.forEach((gl) => {
+        ctx.save();
+        ctx.strokeStyle = gl.color || '#06b6d4';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        if (gl.orientation === 'horizontal') {
+          const sy = gl.position * zoom + panOffset.y;
+          ctx.moveTo(0, sy);
+          ctx.lineTo(width, sy);
+        } else {
+          const sx = gl.position * zoom + panOffset.x;
+          ctx.moveTo(sx, 0);
+          ctx.lineTo(sx, height);
+        }
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
     // ==========================================
     // 10. INTELLIGENT RELATIONSHIP GUIDELINES & ADVANCED MAGNETIC SNAP
     // ==========================================
@@ -2761,6 +2893,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       furniture,
       rooms,
       plot,
+      guideLines,
       candidateIndex: snapCandidateIndex,
       isAltPressed: e.altKey || isAltDown,
       isAngleLocked: e.shiftKey || isShiftDown,
@@ -3453,6 +3586,20 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         onAddDimension(newDim);
         setWallStartPoint(null);
       }
+      return;
+    }
+
+    // TOOL: QUICK MEASURE / MASSBAND (PhotoCraft & CADCraft)
+    if (activeTool === 'measure') {
+      if (!measureStart || isMeasureLocked) {
+        setMeasureStart(targetPt);
+        setMeasureEnd(targetPt);
+        setIsMeasureLocked(false);
+      } else {
+        setMeasureEnd(targetPt);
+        setIsMeasureLocked(true);
+      }
+      return;
     }
   };
 
@@ -3909,6 +4056,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       furniture,
       rooms,
       plot,
+      guideLines,
       candidateIndex: snapCandidateIndex,
       isAltPressed: e.altKey || isAltDown,
       isAngleLocked: e.shiftKey || isShiftDown,
@@ -3917,6 +4065,9 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     };
     const snap = calculateSnap(rawWorld, wallStartPoint, walls, snapSettings, zoom, extraSnapCtx);
     setCurrentCursorWorld(snap.point);
+    if (activeTool === 'measure' && measureStart && !isMeasureLocked) {
+      setMeasureEnd(snap.point);
+    }
     setSmartSnap(snap.snapped ? snap : null);
     if (snap.snapped) {
       setSnapIndicator({ point: snap.point, type: snap.type });
@@ -4037,6 +4188,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       furniture,
       rooms,
       plot,
+      guideLines,
       candidateIndex: snapCandidateIndex,
       isAltPressed: e.altKey || isAltDown,
       isAngleLocked: e.shiftKey || isShiftDown,
@@ -4252,6 +4404,11 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (measureStart) {
+          setMeasureStart(null);
+          setMeasureEnd(null);
+          setIsMeasureLocked(false);
+        }
         if (backgroundImage && !backgroundImage.locked && onUpdateBackgroundImage) {
           onUpdateBackgroundImage({ ...backgroundImage, locked: true });
         }
@@ -4289,12 +4446,14 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     onPanOffsetChange({ x: newPanX, y: newPanY });
   };
 
-  // Direct numeric input commit
+  // Direct numeric input commit (supports arithmetic expressions like 5.4/2 or 3.2+0.15)
   const commitNumericLength = () => {
-    const len = parseFloat(numericLength);
+    const evaluatedLen = evaluateNumericExpression(numericLength);
+    const len = evaluatedLen !== null ? evaluatedLen : parseFloat(numericLength);
     if (!isNaN(len) && len > 0 && wallStartPoint && currentCursorWorld) {
       let targetAng = Math.atan2(currentCursorWorld.y - wallStartPoint.y, currentCursorWorld.x - wallStartPoint.x);
-      const customAng = parseFloat(numericAngle);
+      const evaluatedAng = evaluateNumericExpression(numericAngle);
+      const customAng = evaluatedAng !== null ? evaluatedAng : parseFloat(numericAngle);
       if (!isNaN(customAng)) {
         targetAng = (customAng * Math.PI) / 180;
       }
@@ -4349,7 +4508,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     if (hoveredUnderlayHandle === 'ne' || hoveredUnderlayHandle === 'sw') return 'nesw-resize';
     if (hoveredUnderlayHandle === 'move') return 'move';
     if (isPanning || activeTool === 'hand') return 'grab';
-    if (activeTool === 'wall' || activeTool === 'rect_room' || activeTool === 'dimension' || activeTool === 'plot') return 'crosshair';
+    if (activeTool === 'wall' || activeTool === 'rect_room' || activeTool === 'dimension' || activeTool === 'measure' || activeTool === 'plot') return 'crosshair';
     if (activeTool === 'eraser') return 'not-allowed';
     if (isDraggingSelection) return 'grabbing';
     if (activeTool === 'select' && isHoveringSelection) return 'move';
@@ -4373,6 +4532,70 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         onWheel={handleWheel}
         className="w-full h-full block touch-none"
       />
+
+      {/* CAD EDGE RULERS & DRAGGABLE GUIDES (PhotoCraft & CADCraft) */}
+      <CadRulersAndGuides
+        width={viewportDimensions.width}
+        height={viewportDimensions.height}
+        zoom={zoom}
+        panOffset={panOffset}
+        cursorPos={currentCursorWorld}
+        guideLines={guideLines || []}
+        onAddGuideLine={(gl) => onAddGuideLine?.(gl)}
+        onRemoveGuideLine={(id) => onRemoveGuideLine?.(id)}
+        onClearGuideLines={() => onClearGuideLines?.()}
+        isDark={isDark}
+        enabled={showRulers}
+        onToggleEnabled={() => onToggleRulers ? onToggleRulers() : setInternalShowRulers(!internalShowRulers)}
+      />
+
+      {/* CAD VIEWCUBE (CADCraft & Revit/AutoCAD) */}
+      <CadViewCube
+        viewMode={viewMode || '2d'}
+        onViewModeChange={(m) => onViewModeChange?.(m)}
+        northAngle={northAngle || 0}
+        onResetNorth={() => onViewRotationChange?.(0)}
+        isDark={isDark}
+      />
+
+      {/* CAD COMMAND LINE / CMD BAR (CADCraft cmdline.rs) */}
+      <CadCommandLine
+        activeTool={activeTool}
+        onSelectTool={(t) => onSelectTool?.(t)}
+        viewMode={viewMode || '2d'}
+        onViewModeChange={(m) => onViewModeChange?.(m)}
+        onDeleteSelected={onDeleteSelected}
+        onZoomFit={onZoomFit}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        isDark={isDark}
+      />
+
+      {/* QUICK MEASURE RESULT CARD (PhotoCraft & CADCraft) */}
+      {activeTool === 'measure' && isMeasureLocked && measureStart && measureEnd && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-stone-900/95 backdrop-blur-md border border-amber-500 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-4 text-xs z-40 font-mono animate-in fade-in zoom-in-95">
+          <div className="flex items-center gap-2 text-amber-400 font-bold">
+            <Ruler className="w-4 h-4 text-amber-400" />
+            <span>L: {distance(measureStart, measureEnd).toFixed(2)} m</span>
+          </div>
+          <div className="text-stone-300 text-[11px] flex items-center gap-3 border-l border-stone-700 pl-3">
+            <span>ΔX: {Math.abs(measureEnd.x - measureStart.x).toFixed(2)} m</span>
+            <span>ΔY: {Math.abs(measureEnd.y - measureStart.y).toFixed(2)} m</span>
+            <span className="text-amber-300 font-bold">{angleDeg(measureStart, measureEnd).toFixed(1)}°</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMeasureStart(null);
+              setMeasureEnd(null);
+              setIsMeasureLocked(false);
+            }}
+            className="px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold cursor-pointer transition-colors shadow-xs"
+          >
+            Neu messen
+          </button>
+        </div>
+      )}
 
       {/* CANVAS SELECTION ACTION BAR (Pinned at top of canvas, guaranteed visible) */}
       {selection.ids.length > 0 && (
@@ -4522,15 +4745,26 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         </div>
       )}
 
-      {/* Floating Direct Numeric Input Box for Walls */}
+      {/* Floating Dynamic Input HUD for Walls (CADCraft dyninput.rs & PhotoCraft) */}
       {wallStartPoint && showNumericInput && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-stone-900/95 backdrop-blur border border-amber-500/80 rounded-xl px-3.5 py-2 shadow-2xl flex items-center gap-2.5 text-xs text-stone-100 z-30">
-          <div className="flex items-center gap-1">
-            <span className="font-semibold text-amber-400">Länge:</span>
+        <div
+          style={
+            currentCursorWorld
+              ? {
+                  left: `${Math.max(60, Math.min(viewportDimensions.width - 340, currentCursorWorld.x * zoom + panOffset.x + 24))}px`,
+                  top: `${Math.max(60, Math.min(viewportDimensions.height - 80, currentCursorWorld.y * zoom + panOffset.y + 16))}px`,
+                }
+              : undefined
+          }
+          className={`${
+            currentCursorWorld ? 'fixed' : 'absolute top-16 left-1/2 -translate-x-1/2'
+          } bg-stone-900/95 backdrop-blur-md border border-amber-500 rounded-2xl px-3.5 py-2 shadow-2xl flex items-center gap-2.5 text-xs text-stone-100 z-40 animate-in fade-in zoom-in-95 duration-100 font-mono`}
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-amber-400">Länge:</span>
             <input
-              type="number"
-              step="0.1"
-              placeholder="z. B. 6.0"
+              type="text"
+              placeholder="z. B. 4.50 oder 9/2"
               value={numericLength}
               onChange={(e) => setNumericLength(e.target.value)}
               onKeyDown={(e) => {
@@ -4538,16 +4772,15 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                 else if (e.key === 'Escape') setWallStartPoint(null);
               }}
               autoFocus
-              className="w-20 bg-stone-950 border border-stone-700 rounded px-2 py-0.5 font-mono text-sm outline-none font-bold text-amber-200"
+              className="w-24 bg-stone-950 border border-amber-500/60 rounded-lg px-2.5 py-1 font-mono text-xs outline-none font-bold text-amber-200 focus:ring-1 focus:ring-amber-400"
             />
-            <span className="text-stone-400 font-mono">m</span>
+            <span className="text-stone-400 font-mono text-[11px]">m</span>
           </div>
 
-          <div className="flex items-center gap-1">
-            <span className="font-semibold text-stone-400">Winkel:</span>
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-stone-400">Winkel:</span>
             <input
-              type="number"
-              step="15"
+              type="text"
               placeholder="0"
               value={numericAngle}
               onChange={(e) => setNumericAngle(e.target.value)}
@@ -4555,14 +4788,15 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
                 if (e.key === 'Enter') commitNumericLength();
                 else if (e.key === 'Escape') setWallStartPoint(null);
               }}
-              className="w-16 bg-stone-950 border border-stone-700 rounded px-2 py-0.5 font-mono text-sm outline-none font-bold text-stone-200"
+              className="w-16 bg-stone-950 border border-stone-700 rounded-lg px-2 py-1 font-mono text-xs outline-none font-bold text-stone-200"
             />
-            <span className="text-stone-400 font-mono">°</span>
+            <span className="text-stone-400 font-mono text-[11px]">°</span>
           </div>
 
           <button
+            type="button"
             onClick={commitNumericLength}
-            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 font-semibold rounded text-white text-xs shadow-sm transition-colors cursor-pointer"
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 font-bold rounded-lg text-white text-xs shadow-sm transition-colors cursor-pointer"
           >
             Enter ↵
           </button>
