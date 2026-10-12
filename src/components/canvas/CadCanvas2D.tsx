@@ -1610,6 +1610,10 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         ctx.stroke();
 
         // Door leaf & swing arc
+        const isEntry = d.type === 'entry';
+        const isGlass = d.type === 'glass';
+        const isSliding = d.type === 'sliding';
+
         const hinge = d.swingDirection === 'left' ? sp1 : sp2;
         const swingSign = d.openDirection === 'inside' ? 1 : -1;
         const swingRadius = d.width * zoom;
@@ -1618,32 +1622,118 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         const leafAngle =
           wallAngle + (d.swingDirection === 'left' ? -Math.PI / 2 : Math.PI / 2) * swingSign;
 
-        // Leaf line
-        ctx.strokeStyle = isSelected ? '#ea580c' : isHovered ? '#f97316' : isDark ? '#d4d4d8' : '#1c1917';
-        ctx.lineWidth = isSelected ? 2.6 : 1.6;
-        ctx.beginPath();
-        ctx.moveTo(hinge.x, hinge.y);
-        ctx.lineTo(
-          hinge.x + Math.cos(leafAngle) * swingRadius,
-          hinge.y + Math.sin(leafAngle) * swingRadius
-        );
-        ctx.stroke();
+        // Entry door threshold line across opening
+        if (isEntry) {
+          ctx.strokeStyle = isDark ? '#71717a' : '#57534e';
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.moveTo(sp1.x, sp1.y);
+          ctx.lineTo(sp2.x, sp2.y);
+          ctx.stroke();
+        }
 
-        // Swing Arc
-        ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = isSelected ? '#ea580c' : isDark ? '#71717a' : '#a8a29e';
-        ctx.lineWidth = 1.0;
-        ctx.beginPath();
-        ctx.arc(
-          hinge.x,
-          hinge.y,
-          swingRadius,
-          wallAngle,
-          leafAngle,
-          d.swingDirection === 'left' ? swingSign === 1 : swingSign === -1
-        );
-        ctx.stroke();
-        ctx.setLineDash([]);
+        if (isSliding) {
+          // Sliding door: offset panel running parallel along wall with arrow
+          const offsetDist = 5;
+          const perpX = -Math.sin(wallAngle) * offsetDist * swingSign;
+          const perpY = Math.cos(wallAngle) * offsetDist * swingSign;
+
+          ctx.strokeStyle = isSelected ? '#ea580c' : isHovered ? '#f97316' : isDark ? '#38bdf8' : '#0284c7';
+          ctx.lineWidth = isSelected ? 2.8 : 2.0;
+          ctx.beginPath();
+          ctx.moveTo(sp1.x + perpX, sp1.y + perpY);
+          ctx.lineTo(sp2.x + perpX, sp2.y + perpY);
+          ctx.stroke();
+
+          // Directional opening arrow on sliding panel
+          const midSlideX = (sp1.x + sp2.x) / 2 + perpX;
+          const midSlideY = (sp1.y + sp2.y) / 2 + perpY;
+          const arrowDirX = Math.cos(wallAngle);
+          const arrowDirY = Math.sin(wallAngle);
+          const arrowLen = 12;
+          const slideSign = d.swingDirection === 'left' ? -1 : 1;
+          const aEndX = midSlideX + arrowDirX * arrowLen * slideSign;
+          const aEndY = midSlideY + arrowDirY * arrowLen * slideSign;
+
+          ctx.strokeStyle = isSelected ? '#ea580c' : isDark ? '#94a3b8' : '#64748b';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(midSlideX - arrowDirX * arrowLen * slideSign, midSlideY - arrowDirY * arrowLen * slideSign);
+          ctx.lineTo(aEndX, aEndY);
+          ctx.stroke();
+
+          // Arrow tip
+          const tipNormX = -arrowDirY;
+          const tipNormY = arrowDirX;
+          ctx.beginPath();
+          ctx.moveTo(aEndX - arrowDirX * 4 * slideSign + tipNormX * 3, aEndY - arrowDirY * 4 * slideSign + tipNormY * 3);
+          ctx.lineTo(aEndX, aEndY);
+          ctx.lineTo(aEndX - arrowDirX * 4 * slideSign - tipNormX * 3, aEndY - arrowDirY * 4 * slideSign - tipNormY * 3);
+          ctx.stroke();
+        } else {
+          // Swing doors: single, entry, glass
+          const endLeafX = hinge.x + Math.cos(leafAngle) * swingRadius;
+          const endLeafY = hinge.y + Math.sin(leafAngle) * swingRadius;
+
+          if (isGlass) {
+            // Glass door: double parallel thin lines for glass pane + pivot circle
+            const glassOff = 2;
+            const leafNormX = -Math.sin(leafAngle) * glassOff;
+            const leafNormY = Math.cos(leafAngle) * glassOff;
+
+            ctx.strokeStyle = isSelected ? '#ea580c' : isHovered ? '#f97316' : '#0284c7';
+            ctx.lineWidth = isSelected ? 2.0 : 1.4;
+            ctx.beginPath();
+            ctx.moveTo(hinge.x - leafNormX, hinge.y - leafNormY);
+            ctx.lineTo(endLeafX - leafNormX, endLeafY - leafNormY);
+            ctx.moveTo(hinge.x + leafNormX, hinge.y + leafNormY);
+            ctx.lineTo(endLeafX + leafNormX, endLeafY + leafNormY);
+            ctx.stroke();
+
+            // Pivot fitting
+            ctx.fillStyle = isSelected ? '#ea580c' : isDark ? '#e2e8f0' : '#475569';
+            ctx.beginPath();
+            ctx.arc(hinge.x, hinge.y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // Entry or Single standard leaf
+            ctx.strokeStyle = isSelected ? '#ea580c' : isHovered ? '#f97316' : isDark ? '#d4d4d8' : '#1c1917';
+            ctx.lineWidth = isEntry ? (isSelected ? 3.8 : 3.0) : (isSelected ? 2.6 : 1.6);
+            ctx.beginPath();
+            ctx.moveTo(hinge.x, hinge.y);
+            ctx.lineTo(endLeafX, endLeafY);
+            ctx.stroke();
+
+            // Entry door handle tick
+            if (isEntry) {
+              const handleX = hinge.x + Math.cos(leafAngle) * (swingRadius * 0.85);
+              const handleY = hinge.y + Math.sin(leafAngle) * (swingRadius * 0.85);
+              const hNormX = -Math.sin(leafAngle) * 4 * swingSign;
+              const hNormY = Math.cos(leafAngle) * 4 * swingSign;
+              ctx.lineWidth = 1.8;
+              ctx.beginPath();
+              ctx.moveTo(handleX, handleY);
+              ctx.lineTo(handleX + hNormX, handleY + hNormY);
+              ctx.stroke();
+            }
+          }
+
+          // Swing Arc
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = isSelected ? '#ea580c' : isDark ? '#71717a' : '#a8a29e';
+          ctx.lineWidth = 1.0;
+          ctx.beginPath();
+          ctx.arc(
+            hinge.x,
+            hinge.y,
+            swingRadius,
+            wallAngle,
+            leafAngle,
+            d.swingDirection === 'left' ? swingSign === 1 : swingSign === -1
+          );
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
       });
 
       // WINDOWS
@@ -1670,7 +1760,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         const sp1 = worldToScreen(p1);
         const sp2 = worldToScreen(p2);
 
-        // Clear opening
+        // Clear opening in wall
         ctx.strokeStyle = isDark ? '#141416' : '#fdfcfb';
         ctx.lineWidth = (wall.thickness || 0.3) * zoom;
         ctx.beginPath();
@@ -1678,7 +1768,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         ctx.lineTo(sp2.x, sp2.y);
         ctx.stroke();
 
-        // Reveals
+        // Reveals (Leibungen)
         const halfWallPx = ((wall.thickness || 0.3) / 2) * zoom;
         const normPx = { x: norm.x * halfWallPx, y: norm.y * halfWallPx };
 
@@ -1694,26 +1784,80 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         ctx.lineTo(sp2.x + normPx.x, sp2.y + normPx.y);
         ctx.stroke();
 
-        // Outer sill
         const normDir = {
           x: -((sp2.y - sp1.y) / Math.hypot(sp2.x - sp1.x, sp2.y - sp1.y)),
           y: (sp2.x - sp1.x) / Math.hypot(sp2.x - sp1.x, sp2.y - sp1.y),
         };
 
-        ctx.strokeStyle = isSelected ? '#ea580c' : isHovered ? '#f97316' : isDark ? '#a1a1aa' : '#57534e';
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.moveTo(sp1.x + normDir.x * (halfWallPx * 0.9), sp1.y + normDir.y * (halfWallPx * 0.9));
-        ctx.lineTo(sp2.x + normDir.x * (halfWallPx * 0.9), sp2.y + normDir.y * (halfWallPx * 0.9));
-        ctx.stroke();
+        const isFloorToCeiling = (win.parapetHeight ?? 0.90) <= 0.05 || (win.type === 'fixed' && win.height >= 2.10);
 
-        // Glass center line
-        ctx.strokeStyle = '#0284c7';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(sp1.x, sp1.y);
-        ctx.lineTo(sp2.x, sp2.y);
-        ctx.stroke();
+        if (isFloorToCeiling) {
+          // Raumhohe Glaswand / Bodentief: Elegant double cyan glass lines with mullions, flush threshold
+          ctx.strokeStyle = isDark ? '#52525b' : '#a1a1aa';
+          ctx.lineWidth = 1.2;
+          // Inner & outer threshold edge lines
+          ctx.beginPath();
+          ctx.moveTo(sp1.x + normDir.x * (halfWallPx * 0.95), sp1.y + normDir.y * (halfWallPx * 0.95));
+          ctx.lineTo(sp2.x + normDir.x * (halfWallPx * 0.95), sp2.y + normDir.y * (halfWallPx * 0.95));
+          ctx.moveTo(sp1.x - normDir.x * (halfWallPx * 0.95), sp1.y - normDir.y * (halfWallPx * 0.95));
+          ctx.lineTo(sp2.x - normDir.x * (halfWallPx * 0.95), sp2.y - normDir.y * (halfWallPx * 0.95));
+          ctx.stroke();
+
+          // Double glazing lines in cyan
+          const glassOff = 2.5;
+          ctx.strokeStyle = isSelected ? '#ea580c' : isHovered ? '#f97316' : '#0284c7';
+          ctx.lineWidth = isSelected ? 2.0 : 1.4;
+          ctx.beginPath();
+          ctx.moveTo(sp1.x + normDir.x * glassOff, sp1.y + normDir.y * glassOff);
+          ctx.lineTo(sp2.x + normDir.x * glassOff, sp2.y + normDir.y * glassOff);
+          ctx.moveTo(sp1.x - normDir.x * glassOff, sp1.y - normDir.y * glassOff);
+          ctx.lineTo(sp2.x - normDir.x * glassOff, sp2.y - normDir.y * glassOff);
+          ctx.stroke();
+
+          // Vertical Pfosten-Riegel mullions for large spans
+          if (win.width >= 1.40) {
+            const divisions = win.width >= 2.60 ? 3 : 2;
+            ctx.strokeStyle = isSelected ? '#ea580c' : isDark ? '#94a3b8' : '#475569';
+            ctx.lineWidth = 2.2;
+            for (let div = 1; div < divisions; div++) {
+              const t = div / divisions;
+              const mx = sp1.x + (sp2.x - sp1.x) * t;
+              const my = sp1.y + (sp2.y - sp1.y) * t;
+              ctx.beginPath();
+              ctx.moveTo(mx - normDir.x * (halfWallPx * 0.7), my - normDir.y * (halfWallPx * 0.7));
+              ctx.lineTo(mx + normDir.x * (halfWallPx * 0.7), my + normDir.y * (halfWallPx * 0.7));
+              ctx.stroke();
+            }
+          }
+        } else {
+          // Standard window: outer windowsill sill line + glass center line
+          ctx.strokeStyle = isSelected ? '#ea580c' : isHovered ? '#f97316' : isDark ? '#a1a1aa' : '#57534e';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(sp1.x + normDir.x * (halfWallPx * 0.9), sp1.y + normDir.y * (halfWallPx * 0.9));
+          ctx.lineTo(sp2.x + normDir.x * (halfWallPx * 0.9), sp2.y + normDir.y * (halfWallPx * 0.9));
+          ctx.stroke();
+
+          // Glass center line
+          ctx.strokeStyle = isSelected ? '#ea580c' : isHovered ? '#f97316' : '#0284c7';
+          ctx.lineWidth = isSelected ? 1.8 : 1.2;
+          ctx.beginPath();
+          ctx.moveTo(sp1.x, sp1.y);
+          ctx.lineTo(sp2.x, sp2.y);
+          ctx.stroke();
+
+          // Double sash center mullion if wide
+          if (win.width >= 1.40) {
+            ctx.strokeStyle = isDark ? '#71717a' : '#57534e';
+            ctx.lineWidth = 1.6;
+            const midX = (sp1.x + sp2.x) / 2;
+            const midY = (sp1.y + sp2.y) / 2;
+            ctx.beginPath();
+            ctx.moveTo(midX - normDir.x * (halfWallPx * 0.6), midY - normDir.y * (halfWallPx * 0.6));
+            ctx.lineTo(midX + normDir.x * (halfWallPx * 0.6), midY + normDir.y * (halfWallPx * 0.6));
+            ctx.stroke();
+          }
+        }
       });
     }
 
@@ -3451,7 +3595,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
               height: effStartHeight,
               endHeight: effEndHeight,
               isExterior: wallMode === 'exterior',
-              material: wallMode === 'exterior' ? 'timber' : 'drywall',
+              material: defaults?.wallMaterial || (wallMode === 'exterior' ? 'timber' : 'drywall'),
               referenceLine: 'center',
             };
 
@@ -3511,7 +3655,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             height: effStartHeight,
             endHeight: effEndHeight,
             isExterior: wallMode === 'exterior',
-            material: wallMode === 'exterior' ? 'timber' : 'drywall',
+            material: defaults?.wallMaterial || (wallMode === 'exterior' ? 'timber' : 'drywall'),
             referenceLine: 'center',
           };
           onAddWall(newWall);
@@ -3560,7 +3704,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           width: defaults?.doorWidth || 0.885,
           height: defaults?.doorHeight || 2.05,
           lintelHeight: defaults?.doorLintel || 2.05,
-          type: 'single',
+          type: defaults?.doorType || 'single',
           swingDirection: 'right',
           openDirection: 'inside',
           swingAngle: 90,
@@ -3594,13 +3738,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           position: finalRatio,
           width: defaults?.windowWidth || 1.20,
           height: defaults?.windowHeight || 1.25,
-          parapetHeight: defaults?.windowParapet || 0.90,
+          parapetHeight: defaults?.windowParapet ?? 0.90,
           lintelHeight: defaults?.windowLintel || 2.15,
-          type: 'turn_tilt',
+          type: defaults?.windowType || 'turn_tilt',
           frameColor: '#1c1917',
           glazing: '3',
-          hasInteriorSill: true,
-          hasExteriorSill: true,
+          hasInteriorSill: (defaults?.windowParapet ?? 0.90) > 0.05,
+          hasExteriorSill: (defaults?.windowParapet ?? 0.90) > 0.05,
         };
         onAddWindow(newWin);
       }
@@ -3723,7 +3867,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       height: h1_start,
       endHeight: h1_end,
       isExterior: wallMode === 'exterior',
-      material: 'timber',
+      material: defaults?.wallMaterial || (wallMode === 'exterior' ? 'timber' : 'drywall'),
       referenceLine: 'center',
     };
     const w2: Wall = {
@@ -3734,7 +3878,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       height: h2_start,
       endHeight: h2_end,
       isExterior: wallMode === 'exterior',
-      material: 'timber',
+      material: defaults?.wallMaterial || (wallMode === 'exterior' ? 'timber' : 'drywall'),
       referenceLine: 'center',
     };
     const w3: Wall = {
@@ -3745,7 +3889,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       height: h3_start,
       endHeight: h3_end,
       isExterior: wallMode === 'exterior',
-      material: 'timber',
+      material: defaults?.wallMaterial || (wallMode === 'exterior' ? 'timber' : 'drywall'),
       referenceLine: 'center',
     };
     const w4: Wall = {
@@ -3756,7 +3900,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       height: h4_start,
       endHeight: h4_end,
       isExterior: wallMode === 'exterior',
-      material: 'timber',
+      material: defaults?.wallMaterial || (wallMode === 'exterior' ? 'timber' : 'drywall'),
       referenceLine: 'center',
     };
 
@@ -4303,7 +4447,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           height: effStartHeight,
           endHeight: effEndHeight,
           isExterior: wallMode === 'exterior',
-          material: wallMode === 'exterior' ? 'timber' : 'drywall',
+          material: defaults?.wallMaterial || (wallMode === 'exterior' ? 'timber' : 'drywall'),
           referenceLine: 'center',
         };
         onAddWall(newWall);
@@ -4538,7 +4682,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         height: effStartHeight,
         endHeight: effEndHeight,
         isExterior: wallMode === 'exterior',
-        material: wallMode === 'exterior' ? 'timber' : 'drywall',
+        material: defaults?.wallMaterial || (wallMode === 'exterior' ? 'timber' : 'drywall'),
         referenceLine: 'center',
       };
       onAddWall(newWall);

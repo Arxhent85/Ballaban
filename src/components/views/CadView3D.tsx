@@ -49,6 +49,10 @@ import {
   Maximize2,
   Sliders,
   Check,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
+  Hand,
 } from 'lucide-react';
 
 interface CadView3DProps {
@@ -101,6 +105,13 @@ export const CadView3D: React.FC<CadView3DProps> = ({
   const prevMouseRef = useRef({ x: 0, y: 0 });
   const orbitAnglesRef = useRef({ theta: Math.PI / 4, phi: Math.PI / 3, radius: 18 });
   const cameraTargetRef = useRef(new THREE.Vector3(6, 1.5, 5));
+
+  // Tablet Touch Interaction Separation (Drehen vs. Zoomen vs. Verschieben)
+  const [touchInteractionMode, setTouchInteractionMode] = useState<'orbit' | 'zoom' | 'pan'>('orbit');
+  const touchInteractionModeRef = useRef<'orbit' | 'zoom' | 'pan'>('orbit');
+  useEffect(() => {
+    touchInteractionModeRef.current = touchInteractionMode;
+  }, [touchInteractionMode]);
 
   // Multi-touch gestures
   const touchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -428,6 +439,90 @@ export const CadView3D: React.FC<CadView3DProps> = ({
     });
 
     // 8. Walls with TRUE 3D Openings for Doors and Windows
+    // Helper to generate seamless procedural textures for architectural materials
+    const createWallTexture = (type: 'timber' | 'brick' | 'concrete' | 'stone' | 'plaster') => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+
+      if (type === 'timber') {
+        // Natural larch wood with horizontal architectural slat lines
+        ctx.fillStyle = '#b47846';
+        ctx.fillRect(0, 0, 256, 256);
+        const slatH = 32;
+        for (let y = 0; y < 256; y += slatH) {
+          ctx.fillStyle = y % (slatH * 2) === 0 ? '#b9804e' : '#a26d3f';
+          ctx.fillRect(0, y, 256, slatH - 3);
+          ctx.fillStyle = '#5c3317';
+          ctx.fillRect(0, y + slatH - 3, 256, 3);
+        }
+      } else if (type === 'brick') {
+        // Red brick / klinker bond
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(0, 0, 256, 256);
+        const rowH = 28;
+        const colW = 60;
+        for (let r = 0; r < 256; r += rowH) {
+          const offset = (Math.floor(r / rowH) % 2) * (colW / 2);
+          for (let c = -colW; c < 256 + colW; c += colW) {
+            ctx.fillStyle = (r + c) % 3 === 0 ? '#9a3412' : '#c2410c';
+            ctx.fillRect(c + offset + 2, r + 2, colW - 4, rowH - 4);
+          }
+        }
+      } else if (type === 'concrete') {
+        // Architectural fair-faced concrete with formwork panel joints and tie-holes
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(0, 0, 256, 256);
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(6, 6, 244, 244);
+        ctx.fillStyle = '#475569';
+        [[28, 28], [228, 28], [28, 228], [228, 228]].forEach(([x, y]) => {
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      } else if (type === 'stone') {
+        // Alpine natural stone masonry
+        ctx.fillStyle = '#57534e';
+        ctx.fillRect(0, 0, 256, 256);
+        const rows = [0, 48, 108, 168, 218, 256];
+        for (let i = 0; i < rows.length - 1; i++) {
+          const y1 = rows[i];
+          const h = rows[i + 1] - y1;
+          const cols = i % 2 === 0 ? [0, 80, 170, 256] : [0, 95, 185, 256];
+          for (let j = 0; j < cols.length - 1; j++) {
+            const x1 = cols[j];
+            const w = cols[j + 1] - x1;
+            ctx.fillStyle = (i + j) % 2 === 0 ? '#78716c' : '#57534e';
+            ctx.fillRect(x1 + 2, y1 + 2, w - 4, h - 4);
+          }
+        }
+      } else if (type === 'plaster') {
+        // Crisp clean white stucco
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, 0, 256, 256);
+        ctx.fillStyle = '#e2e8f0';
+        for (let i = 0; i < 300; i++) {
+          ctx.fillRect((i * 37) % 256, (i * 73) % 256, 2, 2);
+        }
+      }
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(1.5, 1.5);
+      return tex;
+    };
+
+    const timberTex = createWallTexture('timber');
+    const brickTex = createWallTexture('brick');
+    const concreteTex = createWallTexture('concrete');
+    const stoneTex = createWallTexture('stone');
+    const plasterTex = createWallTexture('plaster');
+
     const extWallMat = new THREE.MeshStandardMaterial({
       color: isDark ? '#64748b' : '#94a3b8',
       roughness: 0.7,
@@ -452,10 +547,10 @@ export const CadView3D: React.FC<CadView3DProps> = ({
 
     const glassMat = new THREE.MeshPhysicalMaterial({
       color: '#93c5fd',
-      transmission: 0.85,
+      transmission: 0.88,
       opacity: 0.65,
       transparent: true,
-      roughness: 0.1,
+      roughness: 0.08,
       metalness: 0.1,
       clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
     });
@@ -472,13 +567,78 @@ export const CadView3D: React.FC<CadView3DProps> = ({
       clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
     });
 
+    const wallMaterialsMap: Record<string, THREE.Material> = {
+      timber: new THREE.MeshStandardMaterial({
+        map: timberTex,
+        roughness: 0.65,
+        transparent: transparentWalls,
+        opacity: transparentWalls ? 0.4 : 1.0,
+        clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
+      }),
+      plaster: new THREE.MeshStandardMaterial({
+        map: plasterTex,
+        color: '#f8fafc',
+        roughness: 0.95,
+        transparent: transparentWalls,
+        opacity: transparentWalls ? 0.4 : 1.0,
+        clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
+      }),
+      concrete: new THREE.MeshStandardMaterial({
+        map: concreteTex,
+        roughness: 0.8,
+        transparent: transparentWalls,
+        opacity: transparentWalls ? 0.4 : 1.0,
+        clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
+      }),
+      brick: new THREE.MeshStandardMaterial({
+        map: brickTex,
+        roughness: 0.85,
+        transparent: transparentWalls,
+        opacity: transparentWalls ? 0.4 : 1.0,
+        clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
+      }),
+      stone: new THREE.MeshStandardMaterial({
+        map: stoneTex,
+        roughness: 0.85,
+        transparent: transparentWalls,
+        opacity: transparentWalls ? 0.4 : 1.0,
+        clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
+      }),
+      drywall: new THREE.MeshStandardMaterial({
+        color: isDark ? '#94a3b8' : '#f8fafc',
+        roughness: 0.85,
+        transparent: transparentWalls,
+        opacity: transparentWalls ? 0.4 : 1.0,
+        clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
+      }),
+      glass: new THREE.MeshPhysicalMaterial({
+        color: '#93c5fd',
+        transmission: 0.92,
+        opacity: 0.45,
+        transparent: true,
+        roughness: 0.05,
+        metalness: 0.1,
+        clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
+      }),
+      log: new THREE.MeshStandardMaterial({
+        color: '#92400e',
+        roughness: 0.7,
+        transparent: transparentWalls,
+        opacity: transparentWalls ? 0.4 : 1.0,
+        clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
+      }),
+    };
+
     floor.walls.forEach((w) => {
       const wLen = distance(w.start, w.end);
       if (wLen < 0.1) return;
 
       const angle = Math.atan2(w.end.y - w.start.y, w.end.x - w.start.x);
       const isSelected = selection?.ids.includes(w.id);
-      const currentWallMat = isSelected ? selectedWallMat : w.isExterior ? extWallMat : intWallMat;
+      const wMatKey = w.material || (w.isExterior ? 'timber' : 'drywall');
+      const currentWallMat = isSelected
+        ? selectedWallMat
+        : (wallMaterialsMap[wMatKey] || (w.isExterior ? extWallMat : intWallMat));
 
       // Find openings on this wall
       const wallDoors = floor.doors.filter((d) => d.wallId === w.id);
@@ -640,8 +800,11 @@ export const CadView3D: React.FC<CadView3DProps> = ({
           const winCenterDist = (op.startDist + op.endDist) / 2;
           winGroup.position.set(winCenterDist, op.sillY + win.height / 2, 0);
 
+          const isFloorToCeiling = op.sillY <= 0.05;
+          const isFullWallGlass = isFloorToCeiling && win.height >= 2.20;
+
           // Window Frame
-          const fThick = 0.06;
+          const fThick = isFullWallGlass ? 0.045 : 0.06;
           const frameGeo = new THREE.BoxGeometry(win.width, win.height, w.thickness + 0.02);
           const fMesh = new THREE.Mesh(frameGeo, isWinSelected ? selectedWallMat : frameMat);
           fMesh.castShadow = true;
@@ -659,13 +822,45 @@ export const CadView3D: React.FC<CadView3DProps> = ({
           gMesh.userData = { type: 'window', id: win.id };
           winGroup.add(gMesh);
 
-          // Window Sill
-          const sillGeo = new THREE.BoxGeometry(win.width + 0.1, 0.04, w.thickness + 0.12);
-          const sillMat = new THREE.MeshStandardMaterial({ color: isDark ? '#475569' : '#e2e8f0', roughness: 0.3 });
-          const sillMesh = new THREE.Mesh(sillGeo, sillMat);
-          sillMesh.position.set(0, -win.height / 2 - 0.02, 0);
-          sillMesh.castShadow = true;
-          winGroup.add(sillMesh);
+          if (isFloorToCeiling) {
+            // Bodentiefe Verglasung / Terrassenfront: Schlankes Bodenprofil (Schwelle)
+            const threshGeo = new THREE.BoxGeometry(win.width, 0.02, w.thickness + 0.03);
+            const threshMat = new THREE.MeshStandardMaterial({ color: '#475569', metalness: 0.8, roughness: 0.3 });
+            const threshMesh = new THREE.Mesh(threshGeo, threshMat);
+            threshMesh.position.set(0, -win.height / 2 + 0.01, 0);
+            threshMesh.castShadow = true;
+            winGroup.add(threshMesh);
+
+            // Vertikale Pfosten (Mullions) bei breiten Glaswänden / Terrassenfronten
+            if (win.width >= 1.40) {
+              const numPanes = win.width >= 2.50 ? 3 : 2;
+              const paneW = win.width / numPanes;
+              for (let i = 1; i < numPanes; i++) {
+                const mullionX = -win.width / 2 + i * paneW;
+                const mGeo = new THREE.BoxGeometry(0.05, win.height - fThick * 2, w.thickness + 0.01);
+                const mMesh = new THREE.Mesh(mGeo, frameMat);
+                mMesh.position.set(mullionX, 0, 0);
+                mMesh.castShadow = true;
+                winGroup.add(mMesh);
+              }
+            }
+          } else {
+            // Standardfenster: Fensterbank außen
+            const sillGeo = new THREE.BoxGeometry(win.width + 0.1, 0.04, w.thickness + 0.12);
+            const sillMat = new THREE.MeshStandardMaterial({ color: isDark ? '#475569' : '#e2e8f0', roughness: 0.3 });
+            const sillMesh = new THREE.Mesh(sillGeo, sillMat);
+            sillMesh.position.set(0, -win.height / 2 - 0.02, 0);
+            sillMesh.castShadow = true;
+            winGroup.add(sillMesh);
+
+            // Zweiflügliger Mittelpfosten bei breiteren Fenstern
+            if (win.width >= 1.20) {
+              const mGeo = new THREE.BoxGeometry(0.04, win.height - fThick * 2, w.thickness);
+              const mMesh = new THREE.Mesh(mGeo, frameMat);
+              mMesh.position.set(0, 0, 0);
+              winGroup.add(mMesh);
+            }
+          }
 
           wallGroup.add(winGroup);
         }
@@ -686,23 +881,127 @@ export const CadView3D: React.FC<CadView3DProps> = ({
           doorGroup.add(dFrameMesh);
           interactiveMeshesRef.current.push(dFrameMesh);
 
-          // Door Leaf (slightly ajar 15° for architectural elegance)
-          const leafW = door.width - 0.08;
-          const leafGeo = new THREE.BoxGeometry(leafW, door.height - 0.06, 0.04);
-          leafGeo.translate(leafW / 2, 0, 0); // pivot on hinge
-          const leafMesh = new THREE.Mesh(leafGeo, isDoorSelected ? selectedWallMat : doorLeafMat);
-          leafMesh.position.set(-door.width / 2 + 0.04, 0, 0);
-          leafMesh.rotation.y = (door.swingDirection === 'left' ? -1 : 1) * 0.25; // 15° open
-          leafMesh.castShadow = true;
-          leafMesh.userData = { type: 'door', id: door.id };
-          doorGroup.add(leafMesh);
+          // Floor threshold profile
+          const threshGeo = new THREE.BoxGeometry(door.width, 0.02, w.thickness + 0.04);
+          const threshMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', metalness: 0.8, roughness: 0.2 });
+          const threshMesh = new THREE.Mesh(threshGeo, threshMat);
+          threshMesh.position.set(0, -door.height / 2 + 0.01, 0);
+          threshMesh.castShadow = true;
+          doorGroup.add(threshMesh);
 
-          // Metal Door Handle
-          const handleGeo = new THREE.BoxGeometry(0.12, 0.03, 0.08);
-          const handleMat = new THREE.MeshStandardMaterial({ color: '#cbd5e1', metalness: 0.8, roughness: 0.2 });
-          const handleMesh = new THREE.Mesh(handleGeo, handleMat);
-          handleMesh.position.set(leafW * 0.85, 0, 0.04);
-          leafMesh.add(handleMesh);
+          const leafW = door.width - 0.08;
+          const leafH = door.height - 0.06;
+
+          if (door.type === 'entry') {
+            // EINGANGSTÜR: Massives modernes Anthrazit-Türblatt mit Edelstahl-Stangengriff
+            const entryMat = new THREE.MeshStandardMaterial({
+              color: '#1e293b',
+              roughness: 0.35,
+              metalness: 0.1,
+            });
+            const leafGeo = new THREE.BoxGeometry(leafW, leafH, 0.05);
+            leafGeo.translate(leafW / 2, 0, 0);
+            const leafMesh = new THREE.Mesh(leafGeo, isDoorSelected ? selectedWallMat : entryMat);
+            leafMesh.position.set(-door.width / 2 + 0.04, 0, 0);
+            leafMesh.rotation.y = (door.swingDirection === 'left' ? -1 : 1) * 0.25; // 15° ajar
+            leafMesh.castShadow = true;
+            leafMesh.userData = { type: 'door', id: door.id };
+            doorGroup.add(leafMesh);
+
+            // Langer vertikaler Edelstahl-Stangengriff (1.20 m)
+            const handleBarGeo = new THREE.CylinderGeometry(0.016, 0.016, 1.20, 16);
+            const handleBarMat = new THREE.MeshStandardMaterial({ color: '#e2e8f0', metalness: 0.9, roughness: 0.15 });
+            const handleBarMesh = new THREE.Mesh(handleBarGeo, handleBarMat);
+            handleBarMesh.position.set(leafW * 0.88, 0, 0.055);
+            leafMesh.add(handleBarMesh);
+
+            // Befestigungs-Standoffs
+            [-0.45, 0.45].forEach((offsetY) => {
+              const bracketGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.04, 12);
+              bracketGeo.rotateX(Math.PI / 2);
+              const bracketMesh = new THREE.Mesh(bracketGeo, handleBarMat);
+              bracketMesh.position.set(leafW * 0.88, offsetY, 0.035);
+              leafMesh.add(bracketMesh);
+            });
+
+            // Satinierter Glasstreifen (Lichtausschnitt für moderne Architektur)
+            const slitGeo = new THREE.BoxGeometry(0.06, leafH * 0.75, 0.052);
+            const slitMat = new THREE.MeshPhysicalMaterial({ color: '#f1f5f9', transmission: 0.75, opacity: 0.8, roughness: 0.3 });
+            const slitMesh = new THREE.Mesh(slitGeo, slitMat);
+            slitMesh.position.set(leafW * 0.35, 0, 0);
+            leafMesh.add(slitMesh);
+
+          } else if (door.type === 'glass') {
+            // GLASTÜR: Ganzglastür mit Edelstahl-Eckbeschlägen
+            const allGlassMat = new THREE.MeshPhysicalMaterial({
+              color: '#bae6fd',
+              transmission: 0.92,
+              opacity: 0.65,
+              transparent: true,
+              roughness: 0.08,
+              metalness: 0.1,
+            });
+            const leafGeo = new THREE.BoxGeometry(leafW, leafH, 0.02);
+            leafGeo.translate(leafW / 2, 0, 0);
+            const leafMesh = new THREE.Mesh(leafGeo, isDoorSelected ? selectedWallMat : allGlassMat);
+            leafMesh.position.set(-door.width / 2 + 0.04, 0, 0);
+            leafMesh.rotation.y = (door.swingDirection === 'left' ? -1 : 1) * 0.25;
+            leafMesh.userData = { type: 'door', id: door.id };
+            doorGroup.add(leafMesh);
+
+            // Edelstahl-Eckbeschläge
+            const patchMat = new THREE.MeshStandardMaterial({ color: '#cbd5e1', metalness: 0.85, roughness: 0.2 });
+            [-leafH / 2 + 0.06, leafH / 2 - 0.06].forEach((yPos) => {
+              const patchGeo = new THREE.BoxGeometry(0.12, 0.08, 0.035);
+              const patchMesh = new THREE.Mesh(patchGeo, patchMat);
+              patchMesh.position.set(0.06, yPos, 0);
+              leafMesh.add(patchMesh);
+            });
+
+            // Eleganter Glasgriff
+            const dHandleGeo = new THREE.BoxGeometry(0.025, 0.30, 0.08);
+            const dHandleMesh = new THREE.Mesh(dHandleGeo, patchMat);
+            dHandleMesh.position.set(leafW * 0.85, 0, 0.04);
+            leafMesh.add(dHandleMesh);
+
+          } else if (door.type === 'sliding' || door.type === 'patio') {
+            // SCHIEBETÜR / TERRASSENTÜR: Oberschiene & gefasstes Schiebeglaselement
+            const railGeo = new THREE.BoxGeometry(door.width * 1.8, 0.08, 0.08);
+            const railMat = new THREE.MeshStandardMaterial({ color: isDark ? '#0f172a' : '#334155', roughness: 0.4 });
+            const railMesh = new THREE.Mesh(railGeo, railMat);
+            railMesh.position.set(door.width * 0.2, door.height / 2 + 0.02, w.thickness / 2 + 0.02);
+            doorGroup.add(railMesh);
+
+            const panelGeo = new THREE.BoxGeometry(leafW, leafH, 0.035);
+            const panelMesh = new THREE.Mesh(panelGeo, isDoorSelected ? selectedWallMat : glassMat);
+            panelMesh.position.set(door.width * 0.2, 0, w.thickness / 2 + 0.02);
+            panelMesh.castShadow = true;
+            panelMesh.userData = { type: 'door', id: door.id };
+            doorGroup.add(panelMesh);
+
+            const sFrameGeo = new THREE.BoxGeometry(leafW, leafH, 0.04);
+            const sFrameMesh = new THREE.Mesh(sFrameGeo, frameMat);
+            sFrameMesh.position.set(door.width * 0.2, 0, w.thickness / 2 + 0.02);
+            doorGroup.add(sFrameMesh);
+
+          } else {
+            // ZIMMERTÜR (single interior door): Warmes Holz-Türblatt mit Drückergarnitur
+            const leafGeo = new THREE.BoxGeometry(leafW, leafH, 0.04);
+            leafGeo.translate(leafW / 2, 0, 0);
+            const leafMesh = new THREE.Mesh(leafGeo, isDoorSelected ? selectedWallMat : doorLeafMat);
+            leafMesh.position.set(-door.width / 2 + 0.04, 0, 0);
+            leafMesh.rotation.y = (door.swingDirection === 'left' ? -1 : 1) * 0.25;
+            leafMesh.castShadow = true;
+            leafMesh.userData = { type: 'door', id: door.id };
+            doorGroup.add(leafMesh);
+
+            // Metall-Drücker
+            const handleGeo = new THREE.BoxGeometry(0.12, 0.03, 0.08);
+            const handleMat = new THREE.MeshStandardMaterial({ color: '#cbd5e1', metalness: 0.8, roughness: 0.2 });
+            const handleMesh = new THREE.Mesh(handleGeo, handleMat);
+            handleMesh.position.set(leafW * 0.85, 0, 0.04);
+            leafMesh.add(handleMesh);
+          }
 
           wallGroup.add(doorGroup);
         }
@@ -1331,6 +1630,7 @@ export const CadView3D: React.FC<CadView3DProps> = ({
     let lastTapTime = 0;
     let initialPinchDist = 0;
     let initialRadius = 18;
+    let prevPinchCenter: { x: number; y: number } | null = null;
 
     const handlePointerDown = (e: PointerEvent) => {
       activePointers3D.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1340,7 +1640,7 @@ export const CadView3D: React.FC<CadView3DProps> = ({
       // Double-tap on touch/mouse to automatically fit 3D model
       const now = Date.now();
       if (now - lastTapTime < 280) {
-        fitCameraToBounds();
+        fitCameraToBuilding();
         lastTapTime = 0;
         return;
       }
@@ -1351,15 +1651,18 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         const pts = Array.from(activePointers3D.values());
         initialPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
         initialRadius = orbitAnglesRef.current.radius;
+        prevPinchCenter = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
         isPanningRef.current = true;
         isDraggingRef.current = false;
         return;
       }
 
-      if (e.button === 2 || e.shiftKey || e.button === 1) {
+      if (e.button === 2 || e.shiftKey || e.button === 1 || touchInteractionModeRef.current === 'pan') {
         isPanningRef.current = true;
+        isDraggingRef.current = false;
       } else {
         isDraggingRef.current = true;
+        isPanningRef.current = false;
       }
     };
 
@@ -1368,23 +1671,27 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         activePointers3D.set(e.pointerId, { x: e.clientX, y: e.clientY });
       }
 
-      // Two-finger pinch-zoom and pan on tablets
+      // Two-finger pinch-zoom and pan on tablets (jitter-free centroid tracking!)
       if (activePointers3D.size >= 2) {
         const pts = Array.from(activePointers3D.values());
         const curDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        const curCenterX = (pts[0].x + pts[1].x) / 2;
+        const curCenterY = (pts[0].y + pts[1].y) / 2;
+
         if (initialPinchDist > 5 && curDist > 5) {
           const ratio = initialPinchDist / curDist;
-          orbitAnglesRef.current.radius = Math.max(3, Math.min(65, initialRadius * ratio));
+          orbitAnglesRef.current.radius = Math.max(2.5, Math.min(65, initialRadius * ratio));
         }
 
-        const dx = e.clientX - prevMouseRef.current.x;
-        const dy = e.clientY - prevMouseRef.current.y;
-        prevMouseRef.current = { x: e.clientX, y: e.clientY };
-
-        const factor = orbitAnglesRef.current.radius * 0.0015;
-        const right = new THREE.Vector3(Math.cos(orbitAnglesRef.current.theta), 0, -Math.sin(orbitAnglesRef.current.theta));
-        cameraTargetRef.current.addScaledVector(right, -dx * factor);
-        cameraTargetRef.current.y += dy * factor;
+        if (prevPinchCenter) {
+          const dCenterX = curCenterX - prevPinchCenter.x;
+          const dCenterY = curCenterY - prevPinchCenter.y;
+          const factor = orbitAnglesRef.current.radius * 0.0015;
+          const right = new THREE.Vector3(Math.cos(orbitAnglesRef.current.theta), 0, -Math.sin(orbitAnglesRef.current.theta));
+          cameraTargetRef.current.addScaledVector(right, -dCenterX * factor);
+          cameraTargetRef.current.y += dCenterY * factor;
+        }
+        prevPinchCenter = { x: curCenterX, y: curCenterY };
         return;
       }
 
@@ -1398,7 +1705,11 @@ export const CadView3D: React.FC<CadView3DProps> = ({
       if (navMode === 'firstPerson') {
         fpYawRef.current -= dx * 0.003;
         fpPitchRef.current = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, fpPitchRef.current - dy * 0.003));
-      } else if (isPanningRef.current) {
+      } else if (touchInteractionModeRef.current === 'zoom') {
+        // Dedicated 1-finger zoom mode on tablet (butterweich ohne Pinch-Krampf!)
+        const zoomDelta = dy * 0.04;
+        orbitAnglesRef.current.radius = Math.max(2.5, Math.min(65, orbitAnglesRef.current.radius + zoomDelta));
+      } else if (touchInteractionModeRef.current === 'pan' || isPanningRef.current) {
         // Pan camera target
         const factor = orbitAnglesRef.current.radius * 0.0015;
         const forward = new THREE.Vector3(-Math.sin(orbitAnglesRef.current.theta), 0, -Math.cos(orbitAnglesRef.current.theta));
@@ -1406,7 +1717,7 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         cameraTargetRef.current.addScaledVector(right, -dx * factor);
         cameraTargetRef.current.y += dy * factor;
       } else {
-        // Orbit rotation
+        // Orbit rotation (Drehen)
         orbitAnglesRef.current.theta -= dx * 0.005;
         orbitAnglesRef.current.phi = Math.max(0.01, Math.min(Math.PI / 2 - 0.02, orbitAnglesRef.current.phi - dy * 0.005));
       }
@@ -1414,6 +1725,9 @@ export const CadView3D: React.FC<CadView3DProps> = ({
 
     const handlePointerUp = (e: PointerEvent) => {
       activePointers3D.delete(e.pointerId);
+      if (activePointers3D.size < 2) {
+        prevPinchCenter = null;
+      }
       const wasClick = dragDistance < 5;
       if (activePointers3D.size === 0) {
         isDraggingRef.current = false;
@@ -1594,6 +1908,70 @@ export const CadView3D: React.FC<CadView3DProps> = ({
           title="Haus zentrieren & einpassen (Alles anzeigen)"
         >
           <Maximize2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* TABLET TOUCH CONTROLS (DREHEN vs. ZOOMEN vs. VERSCHIEBEN GETRENNT) */}
+      <div className="absolute top-14 left-3 z-30 flex items-center gap-1 bg-slate-900/90 dark:bg-slate-950/95 backdrop-blur-md p-1 rounded-full border border-slate-700/80 shadow-2xl pointer-events-auto">
+        <button
+          onClick={() => setTouchInteractionMode('orbit')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+            touchInteractionMode === 'orbit'
+              ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 font-bold'
+              : 'text-slate-300 hover:text-white'
+          }`}
+          title="1 Finger dreht das 3D-Modell (Kein versehentliches Zoomen)"
+        >
+          <RotateCw className="w-3.5 h-3.5" />
+          <span>Drehen</span>
+        </button>
+
+        <button
+          onClick={() => setTouchInteractionMode('zoom')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+            touchInteractionMode === 'zoom'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-bold'
+              : 'text-slate-300 hover:text-white'
+          }`}
+          title="1 Finger nach oben/unten ziehen zum stufenlosen Zoomen"
+        >
+          <ZoomIn className="w-3.5 h-3.5" />
+          <span>Zoomen</span>
+        </button>
+
+        <button
+          onClick={() => setTouchInteractionMode('pan')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+            touchInteractionMode === 'pan'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-bold'
+              : 'text-slate-300 hover:text-white'
+          }`}
+          title="1 Finger verschiebt den Bildausschnitt"
+        >
+          <Hand className="w-3.5 h-3.5" />
+          <span>Verschieben</span>
+        </button>
+
+        <div className="h-4 w-px bg-slate-700 mx-0.5" />
+
+        {/* Schnell-Tasten: Zoom In / Zoom Out */}
+        <button
+          onClick={() => {
+            orbitAnglesRef.current.radius = Math.max(3, orbitAnglesRef.current.radius * 0.82);
+          }}
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95 text-sm font-bold cursor-pointer"
+          title="Vergrößern (+)"
+        >
+          +
+        </button>
+        <button
+          onClick={() => {
+            orbitAnglesRef.current.radius = Math.min(65, orbitAnglesRef.current.radius * 1.22);
+          }}
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95 text-sm font-bold cursor-pointer"
+          title="Verkleinern (-)"
+        >
+          -
         </button>
       </div>
 

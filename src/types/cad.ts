@@ -26,7 +26,9 @@ export type WallMaterial =
   | 'drywall' 
   | 'log' 
   | 'glass' 
-  | 'insulation';
+  | 'insulation'
+  | 'stone'
+  | 'plaster';
 
 export interface Wall {
   id: string;
@@ -53,6 +55,7 @@ export type DoorType =
   | 'pocket' 
   | 'folding' 
   | 'entry' 
+  | 'glass'
   | 'patio' 
   | 'garage' 
   | 'opening';
@@ -402,9 +405,12 @@ export interface ProjectDefaults {
   interiorWallThickness: number; // e.g. 0.115
   wallHeight: number; // e.g. 2.50
   roomHeight: number; // e.g. 2.50
+  wallMaterial?: WallMaterial;
+  doorType?: DoorType;
   doorWidth: number; // e.g. 0.885
   doorHeight: number; // e.g. 2.05
   doorLintel: number; // e.g. 2.05
+  windowType?: WindowType;
   windowWidth: number; // e.g. 1.20
   windowHeight: number; // e.g. 1.25
   windowParapet: number; // e.g. 0.90

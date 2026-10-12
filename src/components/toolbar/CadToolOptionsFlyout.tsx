@@ -38,7 +38,7 @@ import {
   Bookmark,
   RotateCw,
 } from 'lucide-react';
-import { CadTool, ProjectDefaults, Language } from '../../types/cad';
+import { CadTool, ProjectDefaults, Language, WallMaterial, DoorType, WindowType } from '../../types/cad';
 import { formatGermanNumber } from '../../utils/cadMath';
 import { getT } from '../../i18n/translations';
 
@@ -55,16 +55,24 @@ interface CadToolOptionsFlyoutProps {
   isLockWallHeights: boolean;
   onLockWallHeightsChange: (locked: boolean) => void;
   onSaveAsDefaultWalls?: () => void;
+  wallMaterial?: WallMaterial;
+  onWallMaterialChange?: (m: WallMaterial) => void;
 
   // Door options
+  doorType?: DoorType;
+  onDoorTypeChange?: (t: DoorType) => void;
   doorWidthM?: number;
   onDoorWidthChange?: (w: number) => void;
   doorHinge?: 'left' | 'right';
   onDoorHingeChange?: (h: 'left' | 'right') => void;
 
   // Window options
+  windowType?: WindowType;
+  onWindowTypeChange?: (t: WindowType) => void;
   windowWidthM?: number;
   onWindowWidthChange?: (w: number) => void;
+  windowHeightM?: number;
+  onWindowHeightChange?: (h: number) => void;
   windowSillHeightM?: number;
   onWindowSillHeightChange?: (h: number) => void;
 
@@ -88,12 +96,20 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
   isLockWallHeights,
   onLockWallHeightsChange,
   onSaveAsDefaultWalls,
+  wallMaterial = 'timber',
+  onWallMaterialChange,
+  doorType = 'single',
+  onDoorTypeChange,
   doorWidthM = 0.90,
   onDoorWidthChange,
   doorHinge = 'left',
   onDoorHingeChange,
+  windowType = 'turn_tilt',
+  onWindowTypeChange,
   windowWidthM = 1.20,
   onWindowWidthChange,
+  windowHeightM = 1.25,
+  onWindowHeightChange,
   windowSillHeightM = 0.90,
   onWindowSillHeightChange,
   isDrawingActive,
@@ -194,17 +210,52 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
   const getSummaryChipText = () => {
     if (activeTool === 'wall' || activeTool === 'rect_room') {
       const typeLabel = wallMode === 'exterior' ? 'Außenwand' : 'Innenwand';
+      const matLabel =
+        wallMaterial === 'timber'
+          ? 'Holz'
+          : wallMaterial === 'plaster'
+          ? 'Putz'
+          : wallMaterial === 'concrete'
+          ? 'Beton'
+          : wallMaterial === 'brick'
+          ? 'Ziegel'
+          : wallMaterial === 'stone'
+          ? 'Stein'
+          : wallMaterial === 'glass'
+          ? 'Glas'
+          : 'Wand';
       const thickLabel = `${formatGermanNumber(wallThicknessM * 100, 1)} cm`;
       const heightLabel = isLockWallHeights || Math.abs(wallStartHeight - wallEndHeight) < 0.01
         ? `${formatGermanNumber(wallStartHeight, 2)} m`
         : `${formatGermanNumber(wallStartHeight, 2)} → ${formatGermanNumber(wallEndHeight, 2)} m`;
-      return `${typeLabel} · ${thickLabel} · ${heightLabel}`;
+      return `${typeLabel} (${matLabel}) · ${thickLabel} · ${heightLabel}`;
     }
     if (activeTool === 'door') {
-      return `Innentür · ${formatGermanNumber(doorWidthM * 100, 0)} cm · DIN ${doorHinge === 'left' ? 'L' : 'R'}`;
+      const doorTypeLabel =
+        doorType === 'entry'
+          ? 'Eingangstür'
+          : doorType === 'glass'
+          ? 'Glastür'
+          : doorType === 'sliding'
+          ? 'Schiebetür'
+          : doorType === 'double'
+          ? 'Doppeltür'
+          : 'Zimmertür';
+      return `${doorTypeLabel} · ${formatGermanNumber(doorWidthM * 100, 0)} cm · DIN ${doorHinge === 'left' ? 'L' : 'R'}`;
     }
     if (activeTool === 'window') {
-      return `Fenster · ${formatGermanNumber(windowWidthM * 100, 0)} cm · BRH ${formatGermanNumber(windowSillHeightM, 2)} m`;
+      const winTypeLabel =
+        windowType === 'floor_to_ceiling'
+          ? 'Bodentief'
+          : windowType === 'fixed'
+          ? 'Raumhohe Glaswand'
+          : windowType === 'tilt'
+          ? 'Oberlicht'
+          : windowType === 'sliding'
+          ? 'Schiebefenster'
+          : 'Standardfenster';
+      const sillLabel = windowSillHeightM === 0 ? 'BRH 0m' : `BRH ${formatGermanNumber(windowSillHeightM, 2)}m`;
+      return `${winTypeLabel} · ${formatGermanNumber(windowWidthM * 100, 0)} cm · ${sillLabel}`;
     }
     if (activeTool === 'dimension') {
       return 'Bemaßungsmessung (Meter & Zentimeter)';
@@ -628,6 +679,35 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
                 </div>
               </div>
 
+              {/* Wand-Material für neue Wände */}
+              <div className="flex flex-col gap-1.5 pt-1.5 border-t border-slate-800/80">
+                <span className="text-[11px] font-semibold text-slate-400">Wand-Material & Textur</span>
+                <div className="grid grid-cols-3 gap-1">
+                  {[
+                    { id: 'timber', label: 'Holz', icon: '🪵' },
+                    { id: 'plaster', label: 'Putz weiß', icon: '🏠' },
+                    { id: 'concrete', label: 'Beton', icon: '🏢' },
+                    { id: 'brick', label: 'Ziegel', icon: '🧱' },
+                    { id: 'stone', label: 'Naturstein', icon: '⛰️' },
+                    { id: 'glass', label: 'Glaswand', icon: '🪟' },
+                  ].map((mat) => (
+                    <button
+                      key={mat.id}
+                      type="button"
+                      onClick={() => onWallMaterialChange && onWallMaterialChange(mat.id as WallMaterial)}
+                      className={`py-1.5 px-1 rounded text-[11px] font-medium transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                        wallMaterial === mat.id
+                          ? 'bg-amber-600 text-white font-bold ring-1 ring-amber-400/40 shadow-xs'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-750 hover:text-white border border-slate-700/60'
+                      }`}
+                    >
+                      <span>{mat.icon}</span>
+                      <span>{mat.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Save as default for new walls */}
               <button
                 type="button"
@@ -653,26 +733,59 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
         {/* 2. DOOR TOOL OPTIONS */}
         {activeTool === 'door' && (
           <div className="flex flex-col gap-2.5 text-xs">
-            <div className="flex items-center justify-between">
+            {/* Türmodell / Typ */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold text-slate-400">Türmodell / Typ</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { id: 'single', label: 'Zimmertür', icon: '🚪', desc: 'Holz / Lack weiß', defW: 0.885 },
+                  { id: 'entry', label: 'Eingangstür', icon: '🛡️', desc: 'Sicherheit + Griffstange', defW: 1.00 },
+                  { id: 'glass', label: 'Glastür', icon: '🪟', desc: 'Ganzglas + Beschlag', defW: 0.90 },
+                  { id: 'sliding', label: 'Schiebetür', icon: '↔️', desc: 'Glas-Schiebeelement', defW: 1.20 },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      if (onDoorTypeChange) onDoorTypeChange(m.id as DoorType);
+                      if (onDoorWidthChange) onDoorWidthChange(m.defW);
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-left transition-colors cursor-pointer flex flex-col gap-0.5 ${
+                      doorType === m.id
+                        ? 'bg-amber-600 text-white font-bold ring-1 ring-amber-400/40 shadow-sm'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-750 hover:text-white border border-slate-700/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-semibold text-xs">
+                      <span>{m.icon}</span>
+                      <span>{m.label}</span>
+                    </div>
+                    <span className="text-[9px] opacity-75">{m.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
               <span className="text-[11px] font-semibold text-slate-400">Türbreite</span>
               <span className="font-mono font-bold text-sky-400">
                 {formatGermanNumber(doorWidthM * 100, 0)} cm
               </span>
             </div>
 
-            <div className="grid grid-cols-4 gap-1">
-              {[0.75, 0.80, 0.90, 1.00].map((w) => (
+            <div className="grid grid-cols-5 gap-1">
+              {[0.75, 0.80, 0.885, 1.00, 1.20].map((w) => (
                 <button
                   key={w}
                   type="button"
                   onClick={() => onDoorWidthChange && onDoorWidthChange(w)}
                   className={`py-1 rounded text-xs font-mono font-semibold transition-colors cursor-pointer text-center ${
                     Math.abs(doorWidthM - w) < 0.01
-                      ? 'bg-blue-600 text-white ring-1 ring-blue-400/30'
+                      ? 'bg-amber-600 text-white ring-1 ring-amber-400/30'
                       : 'bg-slate-800 text-slate-400 hover:bg-slate-750 hover:text-slate-200 border border-slate-750/50'
                   }`}
                 >
-                  {formatGermanNumber(w * 100, 0)} cm
+                  {formatGermanNumber(w * 100, 0)}
                 </button>
               ))}
             </div>
@@ -685,7 +798,7 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
                   onClick={() => onDoorHingeChange && onDoorHingeChange('left')}
                   className={`py-1.5 px-2 rounded-lg font-medium text-xs transition-colors cursor-pointer text-center ${
                     doorHinge === 'left'
-                      ? 'bg-blue-600 text-white font-bold ring-1 ring-blue-400/30'
+                      ? 'bg-amber-600 text-white font-bold ring-1 ring-amber-400/30'
                       : 'bg-slate-800 text-slate-400 hover:bg-slate-750 hover:text-slate-200 border border-slate-750/50'
                   }`}
                 >
@@ -696,7 +809,7 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
                   onClick={() => onDoorHingeChange && onDoorHingeChange('right')}
                   className={`py-1.5 px-2 rounded-lg font-medium text-xs transition-colors cursor-pointer text-center ${
                     doorHinge === 'right'
-                      ? 'bg-blue-600 text-white font-bold ring-1 ring-blue-400/30'
+                      ? 'bg-amber-600 text-white font-bold ring-1 ring-amber-400/30'
                       : 'bg-slate-800 text-slate-400 hover:bg-slate-750 hover:text-slate-200 border border-slate-750/50'
                   }`}
                 >
@@ -710,15 +823,82 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
         {/* 3. WINDOW TOOL OPTIONS */}
         {activeTool === 'window' && (
           <div className="flex flex-col gap-2.5 text-xs">
-            <div className="flex items-center justify-between">
+            {/* Fenstermodell / Typ */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold text-slate-400">Fenstermodell / Typ</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  {
+                    id: 'turn_tilt',
+                    label: 'Standardfenster',
+                    icon: '🪟',
+                    desc: 'BRH 0,90m · H 1,25m',
+                    sill: 0.90,
+                    h: 1.25,
+                    w: 1.20,
+                  },
+                  {
+                    id: 'floor_to_ceiling',
+                    label: 'Bodentief (Terrasse)',
+                    icon: '🚪',
+                    desc: 'BRH 0,00m · H 2,10m',
+                    sill: 0.00,
+                    h: 2.10,
+                    w: 1.50,
+                  },
+                  {
+                    id: 'fixed',
+                    label: 'Raumhohe Glaswand',
+                    icon: '🏢',
+                    desc: 'Komplette Wand Glas (0m - Decke)',
+                    sill: 0.00,
+                    h: 2.50,
+                    w: 2.40,
+                  },
+                  {
+                    id: 'tilt',
+                    label: 'Oberlicht / Lichtband',
+                    icon: '📐',
+                    desc: 'BRH 1,80m · H 0,60m',
+                    sill: 1.80,
+                    h: 0.60,
+                    w: 1.20,
+                  },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      if (onWindowTypeChange) onWindowTypeChange(m.id as WindowType);
+                      if (onWindowSillHeightChange) onWindowSillHeightChange(m.sill);
+                      if (onWindowHeightChange) onWindowHeightChange(m.h);
+                      if (onWindowWidthChange) onWindowWidthChange(m.w);
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-left transition-colors cursor-pointer flex flex-col gap-0.5 ${
+                      windowType === m.id
+                        ? 'bg-blue-600 text-white font-bold ring-1 ring-blue-400/40 shadow-sm'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-750 hover:text-white border border-slate-700/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-semibold text-xs">
+                      <span>{m.icon}</span>
+                      <span>{m.label}</span>
+                    </div>
+                    <span className="text-[9px] opacity-75">{m.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
               <span className="text-[11px] font-semibold text-slate-400">Fensterbreite</span>
               <span className="font-mono font-bold text-sky-400">
                 {formatGermanNumber(windowWidthM * 100, 0)} cm
               </span>
             </div>
 
-            <div className="grid grid-cols-4 gap-1">
-              {[0.80, 1.00, 1.20, 1.50].map((w) => (
+            <div className="grid grid-cols-5 gap-1">
+              {[0.80, 1.00, 1.20, 1.50, 2.00].map((w) => (
                 <button
                   key={w}
                   type="button"
@@ -729,7 +909,7 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
                       : 'bg-slate-800 text-slate-400 hover:bg-slate-750 hover:text-slate-200 border border-slate-750/50'
                   }`}
                 >
-                  {formatGermanNumber(w * 100, 0)} cm
+                  {formatGermanNumber(w * 100, 0)}
                 </button>
               ))}
             </div>
@@ -738,11 +918,11 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-slate-400">Brüstungshöhe (BRH)</span>
                 <span className="font-mono font-bold text-sky-400">
-                  {formatGermanNumber(windowSillHeightM, 2)} m
+                  {windowSillHeightM === 0 ? '0,00 m (Bodentief)' : `${formatGermanNumber(windowSillHeightM, 2)} m`}
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-1">
-                {[0.00, 0.80, 0.90].map((brh) => (
+              <div className="grid grid-cols-4 gap-1">
+                {[0.00, 0.80, 0.90, 1.80].map((brh) => (
                   <button
                     key={brh}
                     type="button"
@@ -753,7 +933,38 @@ export const CadToolOptionsFlyout: React.FC<CadToolOptionsFlyoutProps> = ({
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-750 hover:text-slate-200 border border-slate-750/50'
                     }`}
                   >
-                    {brh === 0 ? 'Bodentief' : `${formatGermanNumber(brh, 2)} m`}
+                    {brh === 0 ? 'Bodentief' : `${formatGermanNumber(brh, 2)}m`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Fensterhöhe (besonders für raumhohe Verglasung) */}
+            <div className="flex flex-col gap-1 pt-1 border-t border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-400">Fensterhöhe</span>
+                <span className="font-mono font-bold text-sky-400">
+                  {formatGermanNumber(windowHeightM, 2)} m
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                {[
+                  { label: '0,60 m', val: 0.60 },
+                  { label: '1,25 m', val: 1.25 },
+                  { label: '2,10 m', val: 2.10 },
+                  { label: '2,50 m (Decke)', val: 2.50 },
+                ].map((hOpt) => (
+                  <button
+                    key={hOpt.val}
+                    type="button"
+                    onClick={() => onWindowHeightChange && onWindowHeightChange(hOpt.val)}
+                    className={`py-1 rounded text-[11px] font-mono font-semibold transition-colors cursor-pointer text-center ${
+                      Math.abs(windowHeightM - hOpt.val) < 0.01
+                        ? 'bg-blue-600 text-white ring-1 ring-blue-400/30'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-750 hover:text-slate-200 border border-slate-750/50'
+                    }`}
+                  >
+                    {hOpt.label}
                   </button>
                 ))}
               </div>

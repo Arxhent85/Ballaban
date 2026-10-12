@@ -517,17 +517,19 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
 
                     {/* Material for all */}
                     <div className="flex flex-col gap-1">
-                      <span className="text-stone-500">Material für alle:</span>
+                      <span className="text-stone-500 font-medium">Material für alle:</span>
                       <select
                         onChange={(e) => onBatchUpdateWalls && onBatchUpdateWalls({ material: e.target.value as WallMaterial })}
                         className="bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-1 outline-none font-medium"
                       >
-                        <option value="timber">Holzständerbauweise (Holz)</option>
-                        <option value="brick">Ziegelmauerwerk</option>
-                        <option value="concrete">Stahlbeton</option>
-                        <option value="drywall">Trockenbau</option>
-                        <option value="log">Massivholz / Blockbohle</option>
-                        <option value="glass">Glaswand</option>
+                        <option value="timber">🪵 Holzfassade / Lärche</option>
+                        <option value="plaster">🏠 Putz weiß / Glattputz</option>
+                        <option value="concrete">🏢 Sichtbeton</option>
+                        <option value="brick">🧱 Ziegelmauerwerk / Klinker</option>
+                        <option value="stone">⛰️ Naturstein / Bruchstein</option>
+                        <option value="drywall">🧱 Trockenbau / Innenwand</option>
+                        <option value="glass">🪟 Glaswand / Pfosten-Riegel</option>
+                        <option value="log">🌲 Massivholz / Blockbohle</option>
                       </select>
                     </div>
                   </div>
@@ -698,18 +700,20 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
 
                 {/* Material */}
                 <div className="flex flex-col gap-1">
-                  <span className="text-stone-500">Material / Aufbau:</span>
+                  <span className="text-stone-500 font-medium text-[11px]">Material / Aufbau:</span>
                   <select
                     value={selectedWall.material}
                     onChange={(e) => onUpdateWall({ ...selectedWall, material: e.target.value as WallMaterial })}
                     className="bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-1 outline-none font-medium"
                   >
-                    <option value="timber">Holzständerbauweise (Holz)</option>
-                    <option value="brick">Ziegelmauerwerk</option>
-                    <option value="concrete">Stahlbeton</option>
-                    <option value="drywall">Trockenbau</option>
-                    <option value="log">Massivholz / Blockbohle</option>
-                    <option value="glass">Glaswand</option>
+                    <option value="timber">🪵 Holzfassade / Lärche</option>
+                    <option value="plaster">🏠 Putz weiß / Glattputz</option>
+                    <option value="concrete">🏢 Sichtbeton</option>
+                    <option value="brick">🧱 Ziegelmauerwerk / Klinker</option>
+                    <option value="stone">⛰️ Naturstein / Bruchstein</option>
+                    <option value="drywall">🧱 Trockenbau / Innenwand</option>
+                    <option value="glass">🪟 Glaswand / Pfosten-Riegel</option>
+                    <option value="log">🌲 Massivholz / Blockbohle</option>
                   </select>
                 </div>
 
@@ -736,10 +740,37 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
             {selectedDoor && (
               <div className="flex flex-col gap-3">
                 <div className="font-semibold text-stone-900 dark:text-white flex items-center justify-between pb-1 border-b border-stone-200 dark:border-stone-800">
-                  <span>Tür</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-semibold">
+                  <span>Tür-Eigenschaften</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-semibold uppercase">
                     {selectedDoor.type}
                   </span>
+                </div>
+
+                {/* Türmodell / Typ Switcher */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-stone-500 text-[11px] font-semibold">Türmodell / Typ:</span>
+                  <div className="grid grid-cols-2 gap-1">
+                    {[
+                      { id: 'single', label: 'Zimmertür', icon: '🚪' },
+                      { id: 'entry', label: 'Eingangstür', icon: '🛡️' },
+                      { id: 'glass', label: 'Glastür', icon: '🪟' },
+                      { id: 'sliding', label: 'Schiebetür', icon: '↔️' },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => onUpdateDoor({ ...selectedDoor, type: m.id as DoorType })}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                          selectedDoor.type === m.id
+                            ? 'bg-amber-600 text-white font-bold ring-1 ring-amber-400/40 shadow-xs'
+                            : 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
+                        }`}
+                      >
+                        <span>{m.icon}</span>
+                        <span>{m.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -831,10 +862,69 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
             {selectedWindow && (
               <div className="flex flex-col gap-3">
                 <div className="font-semibold text-stone-900 dark:text-white flex items-center justify-between pb-1 border-b border-stone-200 dark:border-stone-800">
-                  <span>Fenster</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-semibold">
+                  <span>Fenster-Eigenschaften</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-semibold uppercase">
                     {selectedWindow.type}
                   </span>
+                </div>
+
+                {/* Fenstermodell / Typ Switcher */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-slate-500 text-[11px] font-semibold">Fenstermodell / Typ:</span>
+                  <div className="grid grid-cols-2 gap-1">
+                    {[
+                      { id: 'turn_tilt', label: 'Standardfenster', icon: '🪟', sill: 0.90, h: 1.25 },
+                      { id: 'floor_to_ceiling', label: 'Bodentief (Terrasse)', icon: '🚪', sill: 0.00, h: 2.10 },
+                      { id: 'fixed', label: 'Raumhohe Glaswand', icon: '🏢', sill: 0.00, h: 2.50 },
+                      { id: 'tilt', label: 'Oberlicht / Lichtband', icon: '📐', sill: 1.80, h: 0.60 },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() =>
+                          onUpdateWindow({
+                            ...selectedWindow,
+                            type: m.id as WindowType,
+                            parapetHeight: m.sill,
+                            height: m.h,
+                          })
+                        }
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                          selectedWindow.type === m.id
+                            ? 'bg-blue-600 text-white font-bold ring-1 ring-blue-400/40 shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <span>{m.icon}</span>
+                        <span>{m.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateWindow({ ...selectedWindow, parapetHeight: 0, height: 2.10, type: 'floor_to_ceiling' })}
+                    className="py-1 px-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded text-[10px] font-semibold text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 cursor-pointer text-center"
+                  >
+                    Bodentief 2,10m
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateWindow({ ...selectedWindow, parapetHeight: 0, height: 2.50, type: 'fixed' })}
+                    className="py-1 px-1 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 rounded text-[10px] font-semibold text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 cursor-pointer text-center"
+                  >
+                    Raumhoch 2,50m
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateWindow({ ...selectedWindow, parapetHeight: 0.90, height: 1.25, type: 'turn_tilt' })}
+                    className="py-1 px-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-[10px] font-semibold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer text-center"
+                  >
+                    Standard 0,90m
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">

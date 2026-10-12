@@ -33,6 +33,9 @@ import {
   TouchGestureSettings,
   DEFAULT_TOUCH_GESTURE_SETTINGS,
   BackgroundImage,
+  WallMaterial,
+  DoorType,
+  WindowType,
 } from './types/cad';
 import { PlanQualityCheckItem, AiImportOptions } from './types/aiImport';
 import {
@@ -168,10 +171,14 @@ export default function App() {
   const [wallStartHeight, setWallStartHeight] = useState<number>(project.defaults?.wallHeight || 2.50);
   const [wallEndHeight, setWallEndHeight] = useState<number>(project.defaults?.wallHeight || 2.50);
   const [isLockWallHeights, setIsLockWallHeights] = useState<boolean>(true);
+  const [wallMaterial, setWallMaterial] = useState<WallMaterial>(project.defaults?.wallMaterial || 'timber');
   const [isDrawingActive, setIsDrawingActive] = useState<boolean>(false);
+  const [doorType, setDoorType] = useState<DoorType>(project.defaults?.doorType || 'single');
   const [doorWidthM, setDoorWidthM] = useState<number>(0.90);
   const [doorHinge, setDoorHinge] = useState<'left' | 'right'>('left');
+  const [windowType, setWindowType] = useState<WindowType>(project.defaults?.windowType || 'turn_tilt');
   const [windowWidthM, setWindowWidthM] = useState<number>(1.20);
+  const [windowHeightM, setWindowHeightM] = useState<number>(project.defaults?.windowHeight || 1.25);
   const [windowSillHeightM, setWindowSillHeightM] = useState<number>(0.90);
 
   // Tablet, Touch & Apple Pencil UI State
@@ -272,9 +279,41 @@ export default function App() {
         wallHeight: wallStartHeight,
         exteriorWallThickness: wallMode === 'exterior' ? wallThicknessM : project.defaults?.exteriorWallThickness || 0.30,
         interiorWallThickness: wallMode === 'interior' ? wallThicknessM : project.defaults?.interiorWallThickness || 0.115,
+        wallMaterial,
+        doorType,
+        doorWidth: doorWidthM,
+        windowType,
+        windowWidth: windowWidthM,
+        windowHeight: windowHeightM,
+        windowParapet: windowSillHeightM,
       },
     });
-  }, [project, wallMode, wallThicknessM, wallStartHeight]);
+  }, [project, wallMode, wallThicknessM, wallStartHeight, wallMaterial, doorType, doorWidthM, windowType, windowWidthM, windowHeightM, windowSillHeightM]);
+
+  // Unified active project defaults including current tool selections
+  const activeDefaults: ProjectDefaults = useMemo(() => ({
+    ...(project.defaults || {
+      exteriorWallThickness: 0.30,
+      interiorWallThickness: 0.115,
+      wallHeight: 2.50,
+      roomHeight: 2.50,
+      doorWidth: 0.885,
+      doorHeight: 2.05,
+      doorLintel: 2.05,
+      windowWidth: 1.20,
+      windowHeight: 1.25,
+      windowParapet: 0.90,
+      windowLintel: 2.15,
+      gridSize: 0.25,
+    }),
+    wallMaterial,
+    doorType,
+    doorWidth: doorWidthM,
+    windowType,
+    windowWidth: windowWidthM,
+    windowHeight: windowHeightM,
+    windowParapet: windowSillHeightM,
+  }), [project.defaults, wallMaterial, doorType, doorWidthM, windowType, windowWidthM, windowHeightM, windowSillHeightM]);
 
   // Tablet Wake Lock API (keeps screen awake while drawing)
   useEffect(() => {
@@ -2080,12 +2119,20 @@ export default function App() {
           isLockWallHeights={isLockWallHeights}
           onLockWallHeightsChange={setIsLockWallHeights}
           onSaveAsDefaultWalls={handleSaveDefaultsWalls}
+          wallMaterial={wallMaterial}
+          onWallMaterialChange={setWallMaterial}
+          doorType={doorType}
+          onDoorTypeChange={setDoorType}
           doorWidthM={doorWidthM}
           onDoorWidthChange={setDoorWidthM}
           doorHinge={doorHinge}
           onDoorHingeChange={setDoorHinge}
+          windowType={windowType}
+          onWindowTypeChange={setWindowType}
           windowWidthM={windowWidthM}
           onWindowWidthChange={setWindowWidthM}
+          windowHeightM={windowHeightM}
+          onWindowHeightChange={setWindowHeightM}
           windowSillHeightM={windowSillHeightM}
           onWindowSillHeightChange={setWindowSillHeightM}
           isDrawingActive={isDrawingActive}
@@ -2133,7 +2180,7 @@ export default function App() {
               onAddRoom={handleAddRoom}
               plot={project.plot}
               onUpdatePlot={handleUpdatePlot}
-              defaults={project.defaults}
+              defaults={activeDefaults}
               floorsCount={project.floors.length}
               selectedColor={selectedColor}
               isDark={isDark}
@@ -2234,7 +2281,7 @@ export default function App() {
                   onAddRoom={handleAddRoom}
                   plot={project.plot}
                   onUpdatePlot={handleUpdatePlot}
-                  defaults={project.defaults}
+                  defaults={activeDefaults}
                   floorsCount={project.floors.length}
                   selectedColor={selectedColor}
                   isDark={isDark}
