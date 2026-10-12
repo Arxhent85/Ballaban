@@ -32,6 +32,7 @@ import {
 import { getT } from '../../i18n/translations';
 import { distance } from '../../utils/cadMath';
 import { exportProjectObj } from '../../utils/cadExport';
+import { analyzeWallsForRoof } from '../../utils/roofAnalysis';
 import {
   Rotate3d,
   Footprints,
@@ -783,8 +784,33 @@ export const CadView3D: React.FC<CadView3DProps> = ({
       const rD = rMaxZ - rMinZ;
       const rCenterX = (rMinX + rMaxX) / 2;
       const rCenterZ = (rMinZ + rMaxZ) / 2;
-      const rBaseY = rf.baseHeight ?? buildingBounds.maxH;
-      const rHeight = Math.max(0.2, rf.height ?? 2.20);
+
+      // Automatic wall elevation adaptation:
+      // When pitchMode is follow_walls or walls have slope, anchor roof flush to wall tops
+      const wallAnalysis = analyzeWallsForRoof(floor.walls);
+      const isAutoPitch = (rf.pitchMode ?? 'follow_walls') === 'follow_walls';
+
+      let rBaseY = rf.baseHeight ?? (wallAnalysis.hasSlope ? wallAnalysis.minHeight : buildingBounds.maxH);
+      let rHeight = Math.max(0.15, rf.height ?? 2.20);
+      let slopeDir = (rf.slopeDirection as 'front' | 'back' | 'left' | 'right') || wallAnalysis.slopeDirection || 'front';
+
+      if (rf.type === 'shed') {
+        if (wallAnalysis.hasSlope || isAutoPitch) {
+          rBaseY = wallAnalysis.monopitchBaseHeight;
+          rHeight = wallAnalysis.hasSlope ? wallAnalysis.monopitchHeight : (rf.height ?? 1.5);
+          slopeDir = (rf.slopeDirection as 'front' | 'back' | 'left' | 'right') || wallAnalysis.slopeDirection;
+        }
+      } else if (rf.type === 'gable') {
+        if (wallAnalysis.hasSlope && wallAnalysis.slopeType === 'gable') {
+          rBaseY = wallAnalysis.gableBaseHeight;
+          rHeight = wallAnalysis.gableHeight;
+        } else if (isAutoPitch) {
+          rBaseY = wallAnalysis.minHeight;
+        }
+      } else if (rf.type === 'flat') {
+        rBaseY = wallAnalysis.maxHeight;
+      }
+
       const isHoriz = rf.ridgeDirection === 'horizontal';
 
       // 10a. SATTELDACH (Gable Roof with Ridge Offset / Asymmetry)
@@ -814,47 +840,79 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         scene.add(roofMesh);
         interactiveMeshesRef.current.push(roofMesh);
       }
-      // 10b. PULTDACH (Shed / Monopitch with 4-way slope direction)
+      // 10b. PULTDACH (Shed / Monopitch with true 3D solid flush fit)
       else if (rf.type === 'shed') {
-        const slopeDir = rf.slopeDirection || 'front';
-        const roofShape = new THREE.Shape();
+        const slabThickness = 0.16; // 16 cm architectural roof plate
+        const pos: number[] = [];
 
-        if (slopeDir === 'left' || slopeDir === 'right') {
-          roofShape.moveTo(-rW / 2, slopeDir === 'left' ? 0 : rHeight);
-          roofShape.lineTo(rW / 2, slopeDir === 'left' ? rHeight : 0);
-          roofShape.lineTo(rW / 2, (slopeDir === 'left' ? rHeight : 0) - 0.15);
-          roofShape.lineTo(-rW / 2, (slopeDir === 'left' ? 0 : rHeight) - 0.15);
-          roofShape.closePath();
+        // Plane elevation function on the bottom of the roof slab:
+        // Directly maps building wall bounds so underside sits 100% flush on wall tops
+        const getBottomY = (x: number, z: number) => {
+          if (slopeDir === 'front') {
+            // High at back (minZ/North), low at front (maxZ/South)
+            const t = (z - bMinZ) / Math.max(0.01, bMaxZ - bMinZ);
+            return rBaseY + (1 - t) * rHeight;
+          } else if (slopeDir === 'back') {
+            // High at front (maxZ/South), low at back (minZ/North)
+            const t = (z - bMinZ) / Math.max(0.01, bMaxZ - bMinZ);
+            return rBaseY + t * rHeight;
+          } else if (slopeDir === 'right') {
+            // High at left (minX/West), low at right (maxX/East)
+            const t = (x - bMinX) / Math.max(0.01, bMaxX - bMinX);
+            return rBaseY + (1 - t) * rHeight;
+          } else {
+            // High at right (maxX/East), low at left (minX/West)
+            const t = (x - bMinX) / Math.max(0.01, bMaxX - bMinX);
+            return rBaseY + t * rHeight;
+          }
+        };
 
-          const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: rD, bevelEnabled: false });
-          roofGeo.translate(rCenterX, rBaseY, rCenterZ - rD / 2);
+        const x0 = rMinX, x1 = rMaxX;
+        const z0 = rMinZ, z1 = rMaxZ;
 
-          const roofMesh = new THREE.Mesh(roofGeo, roofMat);
-          roofMesh.castShadow = true;
-          roofMesh.receiveShadow = true;
-          roofMesh.userData = { type: 'roof', id: rf.id };
-          scene.add(roofMesh);
-          interactiveMeshesRef.current.push(roofMesh);
-        } else {
-          // front or back
-          const isFront = slopeDir === 'front';
-          roofShape.moveTo(-rD / 2, isFront ? rHeight : 0);
-          roofShape.lineTo(rD / 2, isFront ? 0 : rHeight);
-          roofShape.lineTo(rD / 2, (isFront ? 0 : rHeight) - 0.15);
-          roofShape.lineTo(-rD / 2, (isFront ? rHeight : 0) - 0.15);
-          roofShape.closePath();
+        const yb0 = getBottomY(x0, z0); // NW bottom
+        const yb1 = getBottomY(x1, z0); // NE bottom
+        const yb2 = getBottomY(x1, z1); // SE bottom
+        const yb3 = getBottomY(x0, z1); // SW bottom
 
-          const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: rW, bevelEnabled: false });
-          roofGeo.rotateY(Math.PI / 2);
-          roofGeo.translate(rCenterX - rW / 2, rBaseY, rCenterZ);
+        const yt0 = yb0 + slabThickness;
+        const yt1 = yb1 + slabThickness;
+        const yt2 = yb2 + slabThickness;
+        const yt3 = yb3 + slabThickness;
 
-          const roofMesh = new THREE.Mesh(roofGeo, roofMat);
-          roofMesh.castShadow = true;
-          roofMesh.receiveShadow = true;
-          roofMesh.userData = { type: 'roof', id: rf.id };
-          scene.add(roofMesh);
-          interactiveMeshesRef.current.push(roofMesh);
-        }
+        const v0 = [x0, yb0, z0]; // NW bot
+        const v1 = [x1, yb1, z0]; // NE bot
+        const v2 = [x1, yb2, z1]; // SE bot
+        const v3 = [x0, yb3, z1]; // SW bot
+        const v4 = [x0, yt0, z0]; // NW top
+        const v5 = [x1, yt1, z0]; // NE top
+        const v6 = [x1, yt2, z1]; // SE top
+        const v7 = [x0, yt3, z1]; // SW top
+
+        // 12 Triangles (CCW for outward normals)
+        // Top Face (upwards)
+        pos.push(...v4, ...v5, ...v6,  ...v4, ...v6, ...v7);
+        // Bottom Face (downwards)
+        pos.push(...v0, ...v2, ...v1,  ...v0, ...v3, ...v2);
+        // Front Face (+Z, South)
+        pos.push(...v3, ...v2, ...v6,  ...v3, ...v6, ...v7);
+        // Back Face (-Z, North)
+        pos.push(...v1, ...v0, ...v4,  ...v1, ...v4, ...v5);
+        // Left Face (-X, West)
+        pos.push(...v0, ...v3, ...v7,  ...v0, ...v7, ...v4);
+        // Right Face (+X, East)
+        pos.push(...v2, ...v1, ...v5,  ...v2, ...v5, ...v6);
+
+        const shedGeo = new THREE.BufferGeometry();
+        shedGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        shedGeo.computeVertexNormals();
+
+        const roofMesh = new THREE.Mesh(shedGeo, roofMat);
+        roofMesh.castShadow = true;
+        roofMesh.receiveShadow = true;
+        roofMesh.userData = { type: 'roof', id: rf.id };
+        scene.add(roofMesh);
+        interactiveMeshesRef.current.push(roofMesh);
       }
       // 10c. FLACHDACH (Flat with Attika Parapet Walls)
       else if (rf.type === 'flat') {

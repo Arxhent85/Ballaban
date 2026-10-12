@@ -51,6 +51,7 @@ import {
 } from '../../types/cad';
 import { getT } from '../../i18n/translations';
 import { formatGermanNumber } from '../../utils/cadMath';
+import { analyzeWallsForRoof, createAutoFittedRoof } from '../../utils/roofAnalysis';
 
 interface CadRoofPanelProps {
   isOpen: boolean;
@@ -81,82 +82,52 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
   const [activeTab, setActiveTab] = useState<RoofTab>('form');
   const [expandedInfoForm, setExpandedInfoForm] = useState<RoofType | null>(null);
 
+  // Analyze walls for slope, height and flush fit
+  const wallAnalysis = useMemo(() => analyzeWallsForRoof(walls), [walls]);
+
+  // Envelope of exterior walls
+  const envelope = useMemo(() => ({
+    minX: wallAnalysis.minX,
+    maxX: wallAnalysis.maxX,
+    minY: wallAnalysis.minY,
+    maxY: wallAnalysis.maxY,
+    width: wallAnalysis.width,
+    depth: wallAnalysis.depth,
+    maxH: wallAnalysis.maxHeight,
+    avgH: wallAnalysis.avgHeight,
+  }), [wallAnalysis]);
+
   // Store initial snapshot for "Abbrechen" revert
   const initialRoofRef = useRef<Roof | null>(roof ? JSON.parse(JSON.stringify(roof)) : null);
 
   useEffect(() => {
     if (isOpen) {
       initialRoofRef.current = roof ? JSON.parse(JSON.stringify(roof)) : null;
+      if (!roof) {
+        // Automatically create and fit roof on wall tops immediately
+        const autoRoof = createAutoFittedRoof(walls);
+        onLiveUpdateRoof(autoRoof);
+      }
     }
   }, [isOpen]);
 
-  // Envelope of exterior walls
-  const envelope = useMemo(() => {
-    const extWalls = walls.filter((w) => w.isExterior);
-    const targetWalls = extWalls.length > 0 ? extWalls : walls;
-    if (targetWalls.length === 0) {
-      return { minX: 2, maxX: 10, minY: 2, maxY: 8, width: 8, depth: 6, maxH: 2.6, avgH: 2.6 };
-    }
-    const minX = Math.min(...targetWalls.flatMap((w) => [w.start.x, w.end.x]));
-    const maxX = Math.max(...targetWalls.flatMap((w) => [w.start.x, w.end.x]));
-    const minY = Math.min(...targetWalls.flatMap((w) => [w.start.y, w.end.y]));
-    const maxY = Math.max(...targetWalls.flatMap((w) => [w.start.y, w.end.y]));
-    const heights = targetWalls.flatMap((w) => [w.height, w.endHeight ?? w.height]);
-    const maxH = Math.max(...heights, 2.5);
-    const avgH = Math.round((heights.reduce((a, b) => a + b, 0) / heights.length) * 100) / 100;
-    return {
-      minX,
-      maxX,
-      minY,
-      maxY,
-      width: Math.max(1, maxX - minX),
-      depth: Math.max(1, maxY - minY),
-      maxH,
-      avgH,
-    };
-  }, [walls]);
-
   // Current working roof state
   const currentRoof = useMemo<Roof>(() => {
-    const defaultRidgeDir = envelope.width >= envelope.depth ? 'horizontal' : 'vertical';
-    const span = defaultRidgeDir === 'horizontal' ? envelope.depth : envelope.width;
-    const h = Math.round((span / 2) * Math.tan((35 * Math.PI) / 180) * 100) / 100;
-    const fallback: Roof = {
-      id: 'roof_' + Date.now(),
-      type: 'gable',
-      pitchDegrees: 35,
-      pitchLeft: 35,
-      pitchRight: 35,
-      isPitchLinked: true,
-      overhang: 0.40,
-      overhangEaves: 0.40,
-      overhangGable: 0.40,
-      isOverhangLinked: true,
-      ridgeDirection: defaultRidgeDir,
-      slopeDirection: 'front',
-      ridgeOffset: 0,
-      pitchMode: 'follow_walls',
-      height: h,
-      baseHeight: envelope.avgH,
-      material: 'tiles_anthracite',
-      hasChimney: false,
-      skylightsCount: 0,
-      accessories: [],
-    };
     if (roof) {
+      const autoFitted = createAutoFittedRoof(walls, roof);
       return {
-        ...fallback,
+        ...autoFitted,
         ...roof,
-        pitchDegrees: roof.pitchDegrees ?? (roof as any).pitchDeg ?? 35,
-        height: roof.height ?? (roof as any).ridgeHeightM ?? h,
+        pitchDegrees: roof.pitchDegrees ?? autoFitted.pitchDegrees,
+        height: roof.height ?? autoFitted.height,
+        baseHeight: roof.baseHeight ?? (wallAnalysis.hasSlope ? wallAnalysis.minHeight : autoFitted.baseHeight),
         overhangEaves: roof.overhangEaves ?? roof.overhang ?? 0.40,
         overhangGable: roof.overhangGable ?? roof.overhang ?? 0.40,
-        baseHeight: roof.baseHeight ?? envelope.avgH,
         accessories: roof.accessories ?? [],
       };
     }
-    return fallback;
-  }, [roof, envelope]);
+    return createAutoFittedRoof(walls);
+  }, [roof, walls, wallAnalysis]);
 
   // Helper to trigger live updates
   const updateField = <K extends keyof Roof>(key: K, value: Roof[K]) => {
@@ -320,6 +291,9 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
                   <polygon points="20,55 140,25 140,30 20,60" fill="#f59e0b" />
                   <line x1="20" y1="55" x2="140" y2="55" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
                   <path d="M 50 55 A 25 25 0 0 1 48 48" fill="none" stroke="#ea580c" strokeWidth="1.5" />
+                  <text x="52" y="50" fontSize="8" fill="#ea580c" fontWeight="bold">
+                    {Math.round(currentRoof.pitchDegrees)}°
+                  </text>
                 </>
               ) : (
                 <>
@@ -344,22 +318,28 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
           {/* Dimension metrics */}
           <div className="flex-1 flex flex-col gap-1.5 text-xs">
             <div className="flex items-center justify-between text-stone-600 dark:text-stone-300">
-              <span className="text-[11px] text-stone-400">Traufhöhe:</span>
+              <span className="text-[11px] text-stone-400">
+                {currentRoof.type === 'shed' ? 'Traufhöhe (tief):' : 'Traufhöhe:'}
+              </span>
               <span className="font-semibold tabular-nums text-stone-800 dark:text-stone-200">
-                {formatGermanNumber(currentRoof.baseHeight ?? envelope.avgH)} m
+                {formatGermanNumber(currentRoof.baseHeight ?? (wallAnalysis.hasSlope ? wallAnalysis.minHeight : envelope.avgH))} m
               </span>
             </div>
             <div className="flex items-center justify-between text-stone-600 dark:text-stone-300">
-              <span className="text-[11px] text-stone-400">Dachhöhe (First):</span>
+              <span className="text-[11px] text-stone-400">
+                {currentRoof.type === 'shed' ? 'Höhendifferenz:' : 'Dachhöhe (First):'}
+              </span>
               <span className="font-bold tabular-nums text-amber-600 dark:text-amber-400">
                 +{formatGermanNumber(currentRoof.height)} m
               </span>
             </div>
             <div className="h-px bg-stone-100 dark:bg-stone-800 w-full" />
             <div className="flex items-center justify-between text-stone-900 dark:text-white font-bold">
-              <span className="text-[11px] text-stone-500">Gesamthöhe:</span>
+              <span className="text-[11px] text-stone-500">
+                {currentRoof.type === 'shed' ? 'Pultfirst (hoch):' : 'Gesamthöhe:'}
+              </span>
               <span className="tabular-nums">
-                {formatGermanNumber((currentRoof.baseHeight ?? envelope.avgH) + currentRoof.height)} m
+                {formatGermanNumber((currentRoof.baseHeight ?? (wallAnalysis.hasSlope ? wallAnalysis.minHeight : envelope.avgH)) + currentRoof.height)} m
               </span>
             </div>
           </div>
@@ -400,6 +380,36 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
         {/* ============================================================== */}
         {activeTab === 'form' && (
           <div className="flex flex-col gap-4">
+            {wallAnalysis.hasSlope && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-2 text-xs text-amber-800 dark:text-amber-200">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="font-bold">
+                      Wand-Gefälle erkannt ({formatGermanNumber(wallAnalysis.monopitchPitchDeg)}° nach {
+                        wallAnalysis.slopeDirection === 'front' ? 'vorne (Süd)' :
+                        wallAnalysis.slopeDirection === 'back' ? 'hinten (Nord)' :
+                        wallAnalysis.slopeDirection === 'left' ? 'links (West)' : 'rechts (Ost)'
+                      })
+                    </p>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                      Wandhöhe {formatGermanNumber(wallAnalysis.minHeight)} m bis {formatGermanNumber(wallAnalysis.maxHeight)} m. Dach schließt bündig ab.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const auto = createAutoFittedRoof(walls, currentRoof, currentRoof.type);
+                    onLiveUpdateRoof(auto);
+                  }}
+                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-[11px] transition-colors shrink-0 shadow-xs cursor-pointer"
+                  title="Winkel und Höhen neu aus den Wänden berechnen"
+                >
+                  Neu anpassen
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
                 Dachform wählen (11 Formen)
@@ -414,12 +424,8 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
                   <div
                     key={item.type}
                     onClick={() => {
-                      updateField('type', item.type);
-                      if (item.type === 'flat') {
-                        handlePitchChange(0);
-                      } else if (currentRoof.pitchDegrees === 0) {
-                        handlePitchChange(35);
-                      }
+                      const fitted = createAutoFittedRoof(walls, currentRoof, item.type);
+                      onLiveUpdateRoof(fitted);
                     }}
                     className={`min-h-[104px] p-3 rounded-2xl border-2 flex flex-col items-center justify-between transition-all cursor-pointer relative select-none ${
                       isSelected

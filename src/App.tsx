@@ -42,6 +42,7 @@ import {
 import { getT } from './i18n/translations';
 import { mergeBoundingBoxes, getWallBoundingBox, getFurnitureBoundingBox, lineIntersection, projectPointOntoWall } from './utils/cadMath';
 import { isTouchDevice, isIOSorIPadDevice } from './utils/touchGestures';
+import { createAutoFittedRoof } from './utils/roofAnalysis';
 import { RotateCcw, Trash2 } from 'lucide-react';
 
 // UI components
@@ -1025,6 +1026,13 @@ export default function App() {
       roofs: roof ? [roof] : [],
     }));
   }, [updateActiveFloor]);
+  const handleOpenRoofModal = useCallback(() => {
+    if (activeFloor.roofs.length === 0 && activeFloor.walls.length > 0) {
+      const autoRoof = createAutoFittedRoof(activeFloor.walls);
+      updateActiveFloor((f) => ({ ...f, roofs: [autoRoof] }));
+    }
+    setShowRoofModal(true);
+  }, [activeFloor.roofs, activeFloor.walls, updateActiveFloor]);
   const handleUpdateRoom = (room: Room) => {
     updateActiveFloor((f) => ({ ...f, rooms: f.rooms.map((r) => (r.id === room.id ? room : r)) }));
   };
@@ -2020,7 +2028,7 @@ export default function App() {
           updateProject({ ...project, activeFloorId: rem[0].id, floors: rem });
         }}
         onRenameProject={(newName) => updateProject({ ...project, name: newName })}
-        onOpenRoofModal={() => setShowRoofModal(true)}
+        onOpenRoofModal={handleOpenRoofModal}
         onZoomFit={handleZoomFit}
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
@@ -2045,7 +2053,7 @@ export default function App() {
           language={language}
           onOpenFurnitureCatalog={() => setShowFurnitureCatalog(true)}
           onOpenWallNumericModal={() => setShowWallNumeric(true)}
-          onOpenRoofModal={() => setShowRoofModal(true)}
+          onOpenRoofModal={handleOpenRoofModal}
           onOpenAiImport={() => setShowAiImport(true)}
           onInsertUnderlayImage={handleInsertUnderlayImage}
           leftHandedMode={leftHandedMode}
@@ -2176,7 +2184,7 @@ export default function App() {
               selection={selection}
               onSelect={setSelection}
               isDark={isDark}
-              onOpenRoofModal={() => setShowRoofModal(true)}
+              onOpenRoofModal={handleOpenRoofModal}
             />
           )}
 
@@ -2275,7 +2283,7 @@ export default function App() {
                   selection={selection}
                   onSelect={setSelection}
                   isDark={isDark}
-                  onOpenRoofModal={() => setShowRoofModal(true)}
+                  onOpenRoofModal={handleOpenRoofModal}
                 />
               </div>
             </div>
@@ -2347,7 +2355,7 @@ export default function App() {
           plot={project.plot}
           onUpdatePlot={handleUpdatePlot}
           floorsCount={project.floors.length}
-          onOpenRoofModal={() => setShowRoofModal(true)}
+          onOpenRoofModal={handleOpenRoofModal}
           isDrawerMode={isTablet}
           isOpenDrawer={isDrawerOpen}
           onCloseDrawer={() => setIsDrawerOpen(false)}
