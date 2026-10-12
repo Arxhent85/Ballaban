@@ -369,10 +369,32 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const [isShiftDown, setIsShiftDown] = useState<boolean>(false);
   const [isAltDown, setIsAltDown] = useState<boolean>(false);
 
-  // Keyboard modifiers & Tab candidate cycling
+  // Keyboard modifiers & Tab candidate cycling / Direct Numeric Input trigger
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+
+      // Trigger Direct Numeric Input when drawing a wall
+      if (wallStartPoint && !isDirectInputActive) {
+        if (e.key === 'Tab') {
+          if (smartSnap && (smartSnap.candidatesCount || 0) > 1) {
+            e.preventDefault();
+            setSnapCandidateIndex((prev) => prev + 1);
+            return;
+          }
+          e.preventDefault();
+          setIsDirectInputActive(true);
+          setTimeout(() => directInputRef.current?.focus(), 20);
+          return;
+        }
+        if (/^[0-9]$/.test(e.key)) {
+          setIsDirectInputActive(true);
+          setNumericLength(e.key);
+          setTimeout(() => directInputRef.current?.focus(), 20);
+          return;
+        }
+      }
+
       if (e.key === 'Tab') {
         if (smartSnap && (smartSnap.candidatesCount || 0) > 1) {
           e.preventDefault();
@@ -392,7 +414,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [smartSnap]);
+  }, [smartSnap, wallStartPoint, isDirectInputActive]);
 
   // Wall Drawing Mode: Exterior (30 cm) vs Interior (11.5 cm)
   const [internalWallMode, setInternalWallMode] = useState<'exterior' | 'interior'>('exterior');
@@ -451,6 +473,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   const [numericLength, setNumericLength] = useState<string>('');
   const [numericAngle, setNumericAngle] = useState<string>('');
   const [showNumericInput, setShowNumericInput] = useState(false);
+  const [isDirectInputActive, setIsDirectInputActive] = useState(false);
+  const directInputRef = useRef<HTMLInputElement>(null);
 
   // Rect Room Drawing state
   const [rectRoomStart, setRectRoomStart] = useState<Point2D | null>(null);
@@ -1907,39 +1931,75 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     // ==========================================
     // 9. ACTIVE DRAWING PREVIEWS
     // ==========================================
-    // A. Wall drawing
+    // A. Wall drawing preview - Sleek Apple/AutoCAD Architectural Blueprint Style
     if (activeTool === 'wall' && wallStartPoint && currentCursorWorld) {
       const sStart = worldToScreen(wallStartPoint);
       const sEnd = worldToScreen(currentCursorWorld);
-      const len = distance(wallStartPoint, currentCursorWorld);
+      const wallThicknessPx = currentWallThickness * zoom;
 
-      ctx.strokeStyle = '#ea580c';
-      ctx.lineWidth = currentWallThickness * zoom;
+      ctx.save();
+      // 1. Semi-transparent blueprint wall body footprint
+      ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.14)';
+      ctx.lineWidth = wallThicknessPx;
+      ctx.lineCap = 'butt';
       ctx.beginPath();
       ctx.moveTo(sStart.x, sStart.y);
       ctx.lineTo(sEnd.x, sEnd.y);
       ctx.stroke();
 
-      const mid = { x: (sStart.x + sEnd.x) / 2, y: (sStart.y + sEnd.y) / 2 };
-      const lenStr = formatDimension(len, unit, 2);
-      const angle = angleDeg(wallStartPoint, currentCursorWorld);
-      const wallTag = wallMode === 'exterior' ? 'Außen 30cm' : 'Innen 11.5cm';
+      // 2. Parallel outer casing boundary hairlines
+      const dx = sEnd.x - sStart.x;
+      const dy = sEnd.y - sStart.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 1e-3) {
+        const nx = (-dy / d) * (wallThicknessPx / 2);
+        const ny = (dx / d) * (wallThicknessPx / 2);
 
-      ctx.font = '600 12px "JetBrains Mono", monospace';
-      const labelText = `${lenStr} · ${angle.toFixed(0)}° (${wallTag})`;
-      const bWidth = ctx.measureText(labelText).width + 16;
+        ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.65)' : 'rgba(37, 99, 235, 0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([5, 3]);
 
-      ctx.fillStyle = '#1c1917';
-      ctx.fillRect(mid.x - bWidth / 2, mid.y - 28, bWidth, 24);
-      ctx.strokeStyle = '#ea580c';
-      ctx.strokeRect(mid.x - bWidth / 2, mid.y - 28, bWidth, 24);
-      ctx.fillStyle = '#fdba74';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(labelText, mid.x, mid.y - 16);
+        ctx.beginPath();
+        ctx.moveTo(sStart.x + nx, sStart.y + ny);
+        ctx.lineTo(sEnd.x + nx, sEnd.y + ny);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(sStart.x - nx, sStart.y - ny);
+        ctx.lineTo(sEnd.x - nx, sEnd.y - ny);
+        ctx.stroke();
+      }
+
+      // 3. Crisp Center Axis Hairline (Electric Apple Blue / Cyan)
+      ctx.setLineDash([]);
+      ctx.strokeStyle = isDark ? '#38bdf8' : '#2563eb';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(sStart.x, sStart.y);
+      ctx.lineTo(sEnd.x, sEnd.y);
+      ctx.stroke();
+
+      // 4. Precision Snap Endpoint Rings
+      ctx.fillStyle = isDark ? '#0284c7' : '#2563eb';
+      ctx.beginPath();
+      ctx.arc(sStart.x, sStart.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(sEnd.x, sEnd.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = isDark ? '#38bdf8' : '#2563eb';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.restore();
     }
 
-    // B. Rect Room drawing
+    // B. Rect Room drawing preview
     if (activeTool === 'rect_room' && rectRoomStart && currentCursorWorld) {
       const p1 = worldToScreen(rectRoomStart);
       const p2 = worldToScreen(currentCursorWorld);
@@ -1948,10 +2008,10 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       const rw = Math.abs(p2.x - p1.x);
       const rh = Math.abs(p2.y - p1.y);
 
-      ctx.fillStyle = 'rgba(234, 88, 12, 0.08)';
+      ctx.fillStyle = isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(37, 99, 235, 0.08)';
       ctx.fillRect(rx, ry, rw, rh);
-      ctx.strokeStyle = '#ea580c';
-      ctx.lineWidth = 2.0;
+      ctx.strokeStyle = isDark ? '#38bdf8' : '#2563eb';
+      ctx.lineWidth = 1.8;
       ctx.setLineDash([6, 4]);
       ctx.strokeRect(rx, ry, rw, rh);
       ctx.setLineDash([]);
@@ -1960,14 +2020,22 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       const dM = Math.abs(currentCursorWorld.y - rectRoomStart.y);
       const areaM2 = wM * dM;
 
-      ctx.font = '600 12px "JetBrains Mono", monospace';
+      ctx.font = '600 11px "JetBrains Mono", monospace';
       const badgeText = `${formatDimension(wM, unit, 2)} × ${formatDimension(dM, unit, 2)} (${areaM2.toFixed(1)} m²)`;
-      ctx.fillStyle = '#1c1917';
+      ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.95)';
       const bW = ctx.measureText(badgeText).width + 20;
-      ctx.fillRect(rx + rw / 2 - bW / 2, ry + rh / 2 - 14, bW, 28);
-      ctx.strokeStyle = '#ea580c';
-      ctx.strokeRect(rx + rw / 2 - bW / 2, ry + rh / 2 - 14, bW, 28);
-      ctx.fillStyle = '#fdba74';
+      const bH = 26;
+      const bX = rx + rw / 2 - bW / 2;
+      const bY = ry + rh / 2 - bH / 2;
+
+      ctx.beginPath();
+      ctx.roundRect(bX, bY, bW, bH, 13);
+      ctx.fill();
+      ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.4)' : 'rgba(37, 99, 235, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = isDark ? '#f8fafc' : '#0f172a';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeText, rx + rw / 2, ry + rh / 2);
@@ -1984,9 +2052,9 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       const ang = angleDeg(measureStart, pEnd);
 
       ctx.save();
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2.0;
-      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = isDark ? '#38bdf8' : '#0284c7';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([5, 4]);
       ctx.beginPath();
       ctx.moveTo(sStart.x, sStart.y);
       ctx.lineTo(sEnd.x, sEnd.y);
@@ -1997,33 +2065,42 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       const normAng = Math.atan2(sEnd.y - sStart.y, sEnd.x - sStart.x) + Math.PI / 2;
       const tickLen = 9;
       [sStart, sEnd].forEach((pt) => {
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isDark ? '#38bdf8' : '#0284c7';
+        ctx.lineWidth = 2.0;
         ctx.beginPath();
         ctx.moveTo(pt.x - Math.cos(normAng) * tickLen, pt.y - Math.sin(normAng) * tickLen);
         ctx.lineTo(pt.x + Math.cos(normAng) * tickLen, pt.y + Math.sin(normAng) * tickLen);
         ctx.stroke();
-        ctx.fillStyle = '#f59e0b';
+        ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = isDark ? '#0284c7' : '#2563eb';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
       });
 
       // Floating Measure HUD badge at midpoint
       const mid = { x: (sStart.x + sEnd.x) / 2, y: (sStart.y + sEnd.y) / 2 };
-      ctx.font = '700 12px "JetBrains Mono", monospace';
+      ctx.font = '600 11px "JetBrains Mono", monospace';
       const badgeText = `L: ${distM.toFixed(2)} m (ΔX: ${dxM.toFixed(2)}m, ΔY: ${dyM.toFixed(2)}m, ${ang.toFixed(1)}°)`;
-      const bW = ctx.measureText(badgeText).width + 24;
+      const bW = ctx.measureText(badgeText).width + 20;
+      const bH = 26;
+      const bX = mid.x - bW / 2;
+      const bY = mid.y - 34;
 
-      ctx.fillStyle = '#1c1917';
-      ctx.fillRect(mid.x - bW / 2, mid.y - 32, bW, 26);
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(mid.x - bW / 2, mid.y - 32, bW, 26);
-      ctx.fillStyle = '#fbbf24';
+      ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)';
+      ctx.beginPath();
+      ctx.roundRect(bX, bY, bW, bH, 13);
+      ctx.fill();
+      ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.5)' : 'rgba(2, 132, 199, 0.4)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = isDark ? '#38bdf8' : '#0284c7';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(badgeText, mid.x, mid.y - 19);
+      ctx.fillText(badgeText, mid.x, mid.y - 21);
       ctx.restore();
     }
 
@@ -3390,6 +3467,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
     // TOOL: WALL DRAWING (CHAIN & DRAG)
     if (activeTool === 'wall') {
+      setIsDirectInputActive(false);
       if (!wallStartPoint) {
         setWallStartPoint(targetPt);
         setWallChainPoints([targetPt]);
@@ -4745,62 +4823,118 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         </div>
       )}
 
-      {/* Floating Dynamic Input HUD for Walls (CADCraft dyninput.rs & PhotoCraft) */}
-      {wallStartPoint && showNumericInput && (
-        <div
-          style={
-            currentCursorWorld
-              ? {
-                  left: `${Math.max(60, Math.min(viewportDimensions.width - 340, currentCursorWorld.x * zoom + panOffset.x + 24))}px`,
-                  top: `${Math.max(60, Math.min(viewportDimensions.height - 80, currentCursorWorld.y * zoom + panOffset.y + 16))}px`,
-                }
-              : undefined
+      {/* Floating Dynamic Input HUD for Walls (CADCraft dyninput.rs & Apple/AutoCAD style) */}
+      {wallStartPoint && currentCursorWorld && (
+        (() => {
+          const sX = currentCursorWorld.x * zoom + panOffset.x;
+          const sY = currentCursorWorld.y * zoom + panOffset.y;
+          const liveLen = distance(wallStartPoint, currentCursorWorld);
+          const liveAngle = angleDeg(wallStartPoint, currentCursorWorld);
+          const wallTag = wallMode === 'exterior' ? 'Außen 30cm' : 'Innen 11.5cm';
+
+          // Floating position: Always offset ABOVE the cursor so drawing right never collides
+          const hudLeft = Math.max(16, Math.min(viewportDimensions.width - 320, sX + 16));
+          const hudTop = sY < 65 ? sY + 28 : sY - 44;
+
+          if (!isDirectInputActive) {
+            // PASSIVE HUD: 100% pointer-events-none! Clicks go straight to the canvas with ZERO obstruction!
+            return (
+              <div
+                style={{ left: `${hudLeft}px`, top: `${hudTop}px` }}
+                className="fixed pointer-events-none z-40 bg-slate-950/85 backdrop-blur-xl border border-white/15 rounded-full px-3.5 py-1.5 shadow-2xl flex items-center gap-2.5 text-xs font-mono text-white select-none shadow-black/50 animate-in fade-in duration-75"
+              >
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-sans">L:</span>
+                  <span className="font-bold text-white tracking-tight">{formatDimension(liveLen, unit, 2)}</span>
+                </div>
+                <div className="w-px h-3 bg-white/20" />
+                <div className="flex items-center gap-1">
+                  <span className="text-sky-400 font-bold">{liveAngle.toFixed(1)}°</span>
+                </div>
+                <span className="text-[10px] text-slate-300 bg-white/10 px-1.5 py-0.5 rounded-full font-sans">
+                  {wallTag}
+                </span>
+                {smartSnap && smartSnap.active && (
+                  <span className="text-[10px] text-emerald-400 font-sans font-semibold flex items-center gap-1">
+                    ● {smartSnap.type === 'endpoint' ? 'Ecke' : smartSnap.type === 'perpendicular' ? 'Lot' : smartSnap.type === 'guideline' ? 'Hilfslinie' : smartSnap.type}
+                  </span>
+                )}
+                <span className="text-[10px] text-slate-400 font-sans hidden sm:inline">
+                  (Tab / Zahl für Maß)
+                </span>
+              </div>
+            );
           }
-          className={`${
-            currentCursorWorld ? 'fixed' : 'absolute top-16 left-1/2 -translate-x-1/2'
-          } bg-stone-900/95 backdrop-blur-md border border-amber-500 rounded-2xl px-3.5 py-2 shadow-2xl flex items-center gap-2.5 text-xs text-stone-100 z-40 animate-in fade-in zoom-in-95 duration-100 font-mono`}
-        >
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-amber-400">Länge:</span>
-            <input
-              type="text"
-              placeholder="z. B. 4.50 oder 9/2"
-              value={numericLength}
-              onChange={(e) => setNumericLength(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitNumericLength();
-                else if (e.key === 'Escape') setWallStartPoint(null);
-              }}
-              autoFocus
-              className="w-24 bg-stone-950 border border-amber-500/60 rounded-lg px-2.5 py-1 font-mono text-xs outline-none font-bold text-amber-200 focus:ring-1 focus:ring-amber-400"
-            />
-            <span className="text-stone-400 font-mono text-[11px]">m</span>
-          </div>
 
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium text-stone-400">Winkel:</span>
-            <input
-              type="text"
-              placeholder="0"
-              value={numericAngle}
-              onChange={(e) => setNumericAngle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitNumericLength();
-                else if (e.key === 'Escape') setWallStartPoint(null);
-              }}
-              className="w-16 bg-stone-950 border border-stone-700 rounded-lg px-2 py-1 font-mono text-xs outline-none font-bold text-stone-200"
-            />
-            <span className="text-stone-400 font-mono text-[11px]">°</span>
-          </div>
+          // ACTIVE INPUT MODE: Opened via Tab or typing numbers
+          return (
+            <div
+              style={{ left: `${hudLeft}px`, top: `${hudTop}px` }}
+              className="fixed z-50 bg-slate-950/95 backdrop-blur-xl border border-sky-500/80 rounded-2xl px-3.5 py-2 shadow-2xl shadow-sky-500/20 flex items-center gap-2.5 text-xs text-slate-100 animate-in zoom-in-95 duration-100 font-mono"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-sky-400">Länge:</span>
+                <input
+                  ref={directInputRef}
+                  type="text"
+                  placeholder={liveLen.toFixed(2)}
+                  value={numericLength}
+                  onChange={(e) => setNumericLength(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitNumericLength();
+                      setIsDirectInputActive(false);
+                    } else if (e.key === 'Escape') {
+                      setIsDirectInputActive(false);
+                    }
+                  }}
+                  autoFocus
+                  className="w-24 bg-slate-900 border border-sky-500/50 rounded-lg px-2.5 py-1 font-mono text-xs outline-none font-bold text-white focus:ring-1 focus:ring-sky-400"
+                />
+                <span className="text-slate-400 font-mono text-[11px]">m</span>
+              </div>
 
-          <button
-            type="button"
-            onClick={commitNumericLength}
-            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 font-bold rounded-lg text-white text-xs shadow-sm transition-colors cursor-pointer"
-          >
-            Enter ↵
-          </button>
-        </div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium text-slate-400">Winkel:</span>
+                <input
+                  type="text"
+                  placeholder={liveAngle.toFixed(0)}
+                  value={numericAngle}
+                  onChange={(e) => setNumericAngle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitNumericLength();
+                      setIsDirectInputActive(false);
+                    } else if (e.key === 'Escape') {
+                      setIsDirectInputActive(false);
+                    }
+                  }}
+                  className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 font-mono text-xs outline-none font-bold text-slate-200"
+                />
+                <span className="text-slate-400 font-mono text-[11px]">°</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  commitNumericLength();
+                  setIsDirectInputActive(false);
+                }}
+                className="px-3 py-1 bg-sky-600 hover:bg-sky-500 font-bold rounded-lg text-white text-xs shadow-sm transition-colors cursor-pointer"
+              >
+                Enter ↵
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDirectInputActive(false)}
+                className="p-1 text-slate-400 hover:text-white rounded cursor-pointer"
+                title="Schließen (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })()
       )}
 
       {/* Floating Property/Plot Status HUD (GRZ / GFZ / Baufenster live) */}

@@ -201,7 +201,7 @@ export const CadCommandLine: React.FC<CadCommandLineProps> = ({
     <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 font-mono select-none pointer-events-auto">
       {/* Suggestions Popup */}
       {isFocused && suggestions.length > 0 && (
-        <div className="absolute bottom-full mb-1.5 left-0 right-0 max-h-48 overflow-y-auto bg-stone-900/95 backdrop-blur-md border border-amber-500/60 rounded-xl p-1 shadow-2xl flex flex-col gap-0.5 text-xs">
+        <div className="absolute bottom-full mb-1.5 left-0 right-0 max-h-48 overflow-y-auto bg-slate-950/95 backdrop-blur-xl border border-sky-500/50 rounded-2xl p-1 shadow-2xl flex flex-col gap-0.5 text-xs">
           {suggestions.slice(0, 5).map((cmd, idx) => (
             <button
               key={cmd.name}
@@ -210,29 +210,29 @@ export const CadCommandLine: React.FC<CadCommandLineProps> = ({
                 e.preventDefault();
                 handleExecute(cmd);
               }}
-              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer ${
+              className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
                 idx === 0
-                  ? 'bg-amber-600/30 text-amber-200 border border-amber-500/40 font-bold'
-                  : 'text-stone-300 hover:bg-stone-800'
+                  ? 'bg-sky-600/25 text-sky-200 border border-sky-500/40 font-bold'
+                  : 'text-slate-300 hover:bg-slate-800/80'
               }`}
             >
               <div className="flex items-center gap-2">
-                <span className="px-1.5 py-0.5 rounded bg-stone-950 text-amber-400 text-[10px] font-black border border-stone-800">
+                <span className="px-1.5 py-0.5 rounded bg-slate-900 text-sky-400 text-[10px] font-black border border-slate-700">
                   {cmd.keys[0]}
                 </span>
                 <span>{cmd.name}</span>
               </div>
-              <span className="text-[10px] text-stone-500 font-sans">{cmd.description}</span>
+              <span className="text-[10px] text-slate-400 font-sans">{cmd.description}</span>
             </button>
           ))}
         </div>
       )}
 
       {/* Main Command Bar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-stone-900/90 backdrop-blur-md border border-stone-700/80 shadow-2xl text-xs text-stone-200 hover:border-amber-500/50 transition-colors">
-        <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+      <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-slate-800 shadow-2xl text-xs text-slate-200 hover:border-sky-500/60 transition-colors">
+        <div className="flex items-center gap-1.5 text-sky-400 font-bold">
           <Terminal className="w-3.5 h-3.5" />
-          <span className="text-[11px] text-stone-400">CMD:</span>
+          <span className="text-[11px] text-slate-400">CMD:</span>
         </div>
 
         <input
@@ -244,16 +244,16 @@ export const CadCommandLine: React.FC<CadCommandLineProps> = ({
           onBlur={() => setTimeout(() => setIsFocused(false), 200)}
           onKeyDown={handleKeyDown}
           placeholder="Befehl eingeben (z. B. W für Wand, M für Messen, 3D...)"
-          className="bg-transparent border-none outline-none text-white text-xs placeholder:text-stone-500 w-56 sm:w-72 font-mono"
+          className="bg-transparent border-none outline-none text-white text-xs placeholder:text-slate-500 w-56 sm:w-72 font-mono"
         />
 
         {feedback && (
-          <span className="text-amber-400 text-[11px] font-bold animate-in fade-in duration-150 whitespace-nowrap">
+          <span className="text-sky-400 text-[11px] font-bold animate-in fade-in duration-150 whitespace-nowrap">
             {feedback}
           </span>
         )}
 
-        <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-stone-800 border border-stone-700 text-stone-400 text-[9px]">
+        <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[9px]">
           Enter ↵
         </kbd>
       </div>

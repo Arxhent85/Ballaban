@@ -1,30 +1,23 @@
 /**
- * Left CAD Tool Palette (Modern, Grouped, Clean Iconography)
+ * Left CAD Tool Palette (Apple Pro & Adobe Studio Grade)
+ * Clean, focused, high-precision dark aesthetic with electric blue accents.
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   MousePointer,
   Hand,
   PenTool,
   Square,
   Scissors,
-  Binary,
   DoorOpen,
   AppWindow,
   Armchair,
   Ruler,
   Type,
   Eraser,
-  SplitSquareVertical,
-  Minus,
-  Circle,
-  Pencil,
-  ChevronRight,
-  Lasso,
   Compass,
   Home,
-  Sparkles,
   Image as ImageIcon,
 } from 'lucide-react';
 import { CadTool, Language } from '../../types/cad';
@@ -62,32 +55,37 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
   onSelectTool,
   language,
   onOpenFurnitureCatalog,
-  onOpenWallNumericModal,
   onOpenRoofModal,
-  onOpenAiImport,
   onInsertUnderlayImage,
   leftHandedMode = false,
-  isFullscreen = false,
 }) => {
   const t = getT(language);
-
-  const [showWallSubmenu, setShowWallSubmenu] = useState(false);
-  const [showShapesSubmenu, setShowShapesSubmenu] = useState(false);
 
   const btnClass = (isActive: boolean) =>
     `w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer select-none ${
       isActive
-        ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm border border-amber-500/60 font-semibold'
-        : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
+        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 ring-1 ring-blue-400/50 font-bold scale-[1.03]'
+        : 'text-slate-400 hover:text-white hover:bg-slate-800/80 active:scale-95'
     }`;
 
   const iconClass = 'w-5 h-5 md:w-4 md:h-4';
+
+  const Tooltip = ({ label, shortcut }: { label: string; shortcut?: string }) => (
+    <div className="absolute left-13 px-2.5 py-1.5 bg-slate-950/95 backdrop-blur-md border border-slate-800 text-slate-100 text-xs rounded-xl shadow-2xl pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-2">
+      <span className="font-medium">{label}</span>
+      {shortcut && (
+        <kbd className="px-1.5 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-300 font-mono font-bold border border-slate-700/60">
+          {shortcut}
+        </kbd>
+      )}
+    </div>
+  );
 
   return (
     <aside
       className={`w-14 md:w-13 ${
         leftHandedMode ? 'border-l order-last' : 'border-r'
-      } border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col items-center py-2 z-20 shrink-0 select-none shadow-sm transition-all`}
+      } border-slate-800/80 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl flex flex-col items-center py-2.5 z-20 shrink-0 select-none shadow-md transition-all`}
     >
       <div className="flex flex-col gap-1.5 md:gap-1 w-full px-1.5 items-center">
         {/* GROUP 1: Selection & Pan */}
@@ -98,10 +96,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <MousePointer className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Auswahl</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">V</kbd>
-          </div>
+          <Tooltip label="Auswahl" shortcut="V" />
         </div>
 
         <div className="relative group flex items-center justify-center">
@@ -111,26 +106,20 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Hand className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Verschieben (Pan)</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">H</kbd>
-          </div>
+          <Tooltip label="Verschieben (Pan)" shortcut="H" />
         </div>
 
-        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
+        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
         {/* GROUP 2: Wall & Room */}
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('wall')}
-            className={btnClass(activeTool === 'wall' || activeTool === 'rect_room')}
+            className={btnClass(activeTool === 'wall')}
           >
             <PenTool className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Wand zeichnen</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">W</kbd>
-          </div>
+          <Tooltip label="Wand zeichnen" shortcut="W" />
         </div>
 
         <div className="relative group flex items-center justify-center">
@@ -140,10 +129,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Square className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Rechteckraum (4 Wände)</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">R</kbd>
-          </div>
+          <Tooltip label="Rechteckraum (4 Wände)" shortcut="R" />
         </div>
 
         <div className="relative group flex items-center justify-center">
@@ -153,27 +139,17 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Scissors className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Wand trennen (Schere)</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">C</kbd>
-          </div>
+          <Tooltip label="Wand trennen (Schere)" shortcut="C" />
         </div>
 
         <div className="relative group flex items-center justify-center">
           <button
             onClick={() => onSelectTool('plot')}
-            className={
-              activeTool === 'plot'
-                ? 'w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center bg-amber-600 text-white shadow-sm ring-2 ring-amber-500/40 font-semibold cursor-pointer'
-                : btnClass(false)
-            }
+            className={btnClass(activeTool === 'plot')}
           >
             <Compass className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Grundstück & Baugrenzen</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">G</kbd>
-          </div>
+          <Tooltip label="Grundstück & Baugrenzen" shortcut="G" />
         </div>
 
         <div className="relative group flex items-center justify-center">
@@ -183,13 +159,10 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Home className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Dach-Modul & Einstellungen</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">U</kbd>
-          </div>
+          <Tooltip label="Dach-Modul & Einstellungen" shortcut="U" />
         </div>
 
-        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
+        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
         {/* GROUP 3: Doors, Windows, Stairs */}
         <div className="relative group flex items-center justify-center">
@@ -199,10 +172,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <DoorOpen className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Tür einsetzen</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">D</kbd>
-          </div>
+          <Tooltip label="Tür einsetzen" shortcut="D" />
         </div>
 
         <div className="relative group flex items-center justify-center">
@@ -212,10 +182,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <AppWindow className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Fenster einsetzen</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">F</kbd>
-          </div>
+          <Tooltip label="Fenster einsetzen" shortcut="F" />
         </div>
 
         <div className="relative group flex items-center justify-center">
@@ -225,13 +192,10 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <StairsIcon className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Treppe</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">T</kbd>
-          </div>
+          <Tooltip label="Treppe" shortcut="T" />
         </div>
 
-        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
+        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
         {/* GROUP 4: Furniture & Catalog */}
         <div className="relative group flex items-center justify-center">
@@ -244,13 +208,10 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Armchair className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Möbel-Bibliothek</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">M</kbd>
-          </div>
+          <Tooltip label="Möbel-Bibliothek" shortcut="M" />
         </div>
 
-        <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
+        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
         {/* GROUP 5: Dimensions, Measure, Text */}
         <div className="relative group flex items-center justify-center">
@@ -274,10 +235,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
               <path d="M21 10v6" />
             </svg>
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Maßband (Messen)</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">M</kbd>
-          </div>
+          <Tooltip label="Maßband (Quick Measure)" shortcut="M" />
         </div>
 
         <div className="relative group flex items-center justify-center">
@@ -287,10 +245,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Ruler className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Bemaßung</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">B</kbd>
-          </div>
+          <Tooltip label="Bemaßung" shortcut="B" />
         </div>
 
         <div className="relative group flex items-center justify-center">
@@ -300,13 +255,10 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           >
             <Type className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Textbeschriftung</span>
-            <kbd className="px-1 py-0.5 rounded bg-stone-800 text-[10px] text-stone-300 font-mono">A</kbd>
-          </div>
+          <Tooltip label="Textbeschriftung" shortcut="A" />
         </div>
 
-        <div className="h-px bg-slate-200 dark:bg-slate-800 my-1 mx-1 w-full" />
+        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
 
         {/* GROUP 6: Eraser */}
         <div className="relative group flex items-center justify-center">
@@ -314,26 +266,23 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
             onClick={() => onSelectTool('eraser')}
             className={`w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer ${
               activeTool === 'eraser'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30'
+                ? 'bg-rose-600 text-white shadow-lg shadow-rose-500/30 ring-1 ring-rose-400/50 font-bold scale-[1.03]'
+                : 'text-slate-400 hover:text-rose-400 hover:bg-rose-950/30 active:scale-95'
             }`}
           >
             <Eraser className={iconClass} />
           </button>
-          <div className="absolute left-12 px-2 py-1 bg-slate-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-            <span>Löschen / Radierer</span>
-            <kbd className="px-1 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 font-mono">Entf</kbd>
-          </div>
+          <Tooltip label="Löschen / Radierer" shortcut="Entf" />
         </div>
 
         {/* GROUP 7: Plan-Vorlage einfügen (ohne KI) */}
         {onInsertUnderlayImage && (
           <>
-            <div className="h-px bg-stone-200 dark:bg-stone-800 my-1 mx-1 w-full" />
+            <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
             <div className="relative group flex items-center justify-center">
               <label
                 title="Plan, Foto oder PDF als Vorlage zum Nachzeichnen einfügen"
-                className="w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer bg-amber-600/15 hover:bg-amber-600/25 text-amber-600 dark:text-amber-400 border border-amber-600/40 shadow-xs active:scale-95 relative overflow-hidden"
+                className="w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-500/30 shadow-xs active:scale-95 relative overflow-hidden"
               >
                 <input
                   type="file"
@@ -354,9 +303,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
                 />
                 <ImageIcon className={`${iconClass} pointer-events-none`} />
               </label>
-              <div className="absolute left-12 px-2 py-1 bg-stone-900 text-white text-xs rounded-md shadow-lg pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-1.5">
-                <span>Vorlage einfügen (zum Nachzeichnen)</span>
-              </div>
+              <Tooltip label="Vorlage einfügen (Nachzeichnen)" />
             </div>
           </>
         )}

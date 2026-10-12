@@ -107,15 +107,15 @@ export const CadStatusBar: React.FC<CadStatusBarProps> = ({
   ].filter(Boolean).length;
 
   return (
-    <footer className="relative h-9 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 z-20 shrink-0 select-none overflow-x-auto no-scrollbar">
+    <footer className="relative h-9 border-t border-slate-800/80 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl px-3 flex items-center justify-between text-xs text-slate-300 z-20 shrink-0 select-none overflow-x-auto no-scrollbar">
       {/* Left: Hint & Coordinates & Selection Count */}
       <div className="flex items-center gap-3 shrink-0">
         {cursorPos && (
-          <div className="flex items-center gap-2 font-mono text-[11px] text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 tabular-nums">
+          <div className="flex items-center gap-2 font-mono text-[11px] text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 tabular-nums">
             <span>
               X: <strong>{formatDimension(cursorPos.x, unit, 2)}</strong>
             </span>
-            <span className="text-slate-400">|</span>
+            <span className="text-slate-500">|</span>
             <span>
               Y: <strong>{formatDimension(cursorPos.y, unit, 2)}</strong>
             </span>
@@ -123,12 +123,12 @@ export const CadStatusBar: React.FC<CadStatusBarProps> = ({
         )}
 
         {selectedCount > 0 && (
-          <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-semibold text-[11px] border border-amber-300 dark:border-amber-800">
+          <span className="px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 font-semibold text-[11px] border border-blue-800">
             {selectedCount} {selectedCount === 1 ? 'Objekt ausgewählt' : 'Objekte ausgewählt'}
           </span>
         )}
 
-        <div className="text-slate-500 dark:text-slate-400 font-medium truncate max-w-[280px] lg:max-w-[420px]" title={hintText}>
+        <div className="text-slate-400 font-medium truncate max-w-[280px] lg:max-w-[420px]" title={hintText}>
           {hintText}
         </div>
       </div>
@@ -136,15 +136,15 @@ export const CadStatusBar: React.FC<CadStatusBarProps> = ({
       {/* Right: Snapping Popover Trigger, Unit, Scale & Zoom Controls */}
       <div className="flex items-center gap-2 shrink-0">
         {/* Quick Snapping Controls + Popover Trigger */}
-        <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-800 p-0.5 rounded-lg border border-stone-200 dark:border-stone-700">
+        <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
           {/* Quick Grid Snap */}
           <button
             onClick={() => toggleSnap('grid')}
             title="Raster-Fang (G)"
             className={`p-1 rounded text-xs transition-colors cursor-pointer ${
               snapSettings.grid
-                ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm font-semibold'
-                : 'text-stone-500 hover:text-stone-800 dark:hover:text-white'
+                ? 'bg-blue-600 text-white shadow-sm font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <Grid className="w-3.5 h-3.5" />
@@ -157,8 +157,8 @@ export const CadStatusBar: React.FC<CadStatusBarProps> = ({
             title="Fangen & Intelligente Hilfslinien konfigurieren (Taste: S)"
             className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer ${
               snapSettings.enabled
-                ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-sm'
-                : 'bg-stone-200 dark:bg-stone-700 text-stone-500 line-through hover:opacity-90'
+                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
+                : 'bg-slate-800 text-slate-500 line-through hover:opacity-90'
             }`}
           >
             <Magnet className="w-3.5 h-3.5" />
@@ -175,8 +175,8 @@ export const CadStatusBar: React.FC<CadStatusBarProps> = ({
             title="Ortho-Modus (90° Winkel, Shift)"
             className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded transition-colors cursor-pointer ${
               snapSettings.ortho
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-stone-500 hover:text-stone-800 dark:hover:text-white'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             ORTHO

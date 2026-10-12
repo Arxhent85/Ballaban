@@ -38,12 +38,12 @@ export const CadViewCube: React.FC<CadViewCubeProps> = ({
     <div className="absolute top-4 right-4 z-20 select-none flex flex-col items-center gap-1">
       {/* 1. INTERACTIVE VIEWCUBE CONTAINER */}
       <div
-        className="relative w-28 h-28 rounded-2xl bg-stone-900/85 backdrop-blur-md border border-stone-700/80 shadow-2xl flex items-center justify-center p-1.5 transition-all hover:border-amber-500/60"
+        className="relative w-28 h-28 rounded-2xl bg-slate-950/85 backdrop-blur-xl border border-slate-800 shadow-2xl flex items-center justify-center p-1.5 transition-all hover:border-sky-500/60"
         title="CAD ViewCube: Schneller Wechsel zwischen Grundriss, 3D und Fassaden"
       >
         {/* COMPASS RING & NORTH ARROW */}
         <div
-          className="absolute inset-1 rounded-full border border-stone-700/60 pointer-events-none transition-transform duration-300"
+          className="absolute inset-1 rounded-full border border-slate-800/80 pointer-events-none transition-transform duration-300"
           style={{ transform: `rotate(${-northAngle}deg)` }}
         >
           {/* North indicator notch */}
@@ -52,18 +52,18 @@ export const CadViewCube: React.FC<CadViewCubeProps> = ({
               e.stopPropagation();
               onResetNorth?.();
             }}
-            className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-1 py-0.5 rounded bg-red-600 text-[9px] font-black text-white shadow pointer-events-auto cursor-pointer hover:scale-110 transition-transform"
+            className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-1 py-0.5 rounded bg-rose-600 text-[9px] font-black text-white shadow pointer-events-auto cursor-pointer hover:scale-110 transition-transform"
             title="Norden (Klicken zum Einordnen)"
           >
             N
           </div>
-          <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-stone-500">
+          <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-500">
             S
           </div>
-          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 text-[8px] font-bold text-stone-500">
+          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 text-[8px] font-bold text-slate-500">
             O
           </div>
-          <div className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[8px] font-bold text-stone-500">
+          <div className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[8px] font-bold text-slate-500">
             W
           </div>
         </div>
@@ -78,14 +78,14 @@ export const CadViewCube: React.FC<CadViewCubeProps> = ({
             points="50,15 85,32 50,49 15,32"
             fill={
               viewMode === '2d'
-                ? '#f59e0b'
+                ? '#2563eb'
                 : hoveredPart === 'top'
-                ? '#eab308'
+                ? '#3b82f6'
                 : isDark
                 ? '#334155'
                 : '#cbd5e1'
             }
-            stroke="#1e293b"
+            stroke="#0f172a"
             strokeWidth="1.5"
             onMouseEnter={() => setHoveredPart('top')}
             onMouseLeave={() => setHoveredPart(null)}
@@ -98,7 +98,7 @@ export const CadViewCube: React.FC<CadViewCubeProps> = ({
             textAnchor="middle"
             fontSize="7"
             fontWeight="bold"
-            fill={viewMode === '2d' ? '#1c1917' : isDark ? '#f8fafc' : '#0f172a'}
+            fill="#f8fafc"
             pointerEvents="none"
           >
             DRAUFSICHT
@@ -187,12 +187,12 @@ export const CadViewCube: React.FC<CadViewCubeProps> = ({
       </div>
 
       {/* QUICK VIEW SWITCH CHIPS */}
-      <div className="flex items-center gap-1 bg-stone-900/80 backdrop-blur-xs border border-stone-800 rounded-xl p-1 text-[10px] font-semibold text-stone-300 shadow">
+      <div className="flex items-center gap-1 bg-slate-950/80 backdrop-blur-md border border-slate-800 rounded-xl p-1 text-[10px] font-semibold text-slate-300 shadow-md">
         <button
           type="button"
           onClick={() => onViewModeChange('2d')}
           className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer ${
-            viewMode === '2d' ? 'bg-amber-600 text-white font-bold' : 'hover:bg-stone-800 text-stone-400'
+            viewMode === '2d' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-400'
           }`}
           title="2D Grundriss-Modus"
         >
@@ -202,7 +202,7 @@ export const CadViewCube: React.FC<CadViewCubeProps> = ({
           type="button"
           onClick={() => onViewModeChange('3d')}
           className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer ${
-            viewMode === '3d' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-stone-800 text-stone-400'
+            viewMode === '3d' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-400'
           }`}
           title="3D Perspektiv-Modell"
         >
@@ -212,7 +212,7 @@ export const CadViewCube: React.FC<CadViewCubeProps> = ({
           type="button"
           onClick={() => onViewModeChange('elevations')}
           className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer ${
-            viewMode === 'elevations' ? 'bg-blue-600 text-white font-bold' : 'hover:bg-stone-800 text-stone-400'
+            viewMode === 'elevations' ? 'bg-sky-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-400'
           }`}
           title="Ansichten / Fassaden"
         >

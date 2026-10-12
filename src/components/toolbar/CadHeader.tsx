@@ -168,7 +168,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           : 'max(env(safe-area-inset-left, 0px), 0.5rem)',
         paddingRight: 'max(env(safe-area-inset-right, 0px), 6.5rem)',
       }}
-      className="h-12 md:h-13 border-b border-stone-200 dark:border-stone-800 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md px-2 sm:px-3 flex items-center justify-between z-30 select-none shrink-0 text-stone-800 dark:text-stone-100 transition-colors"
+      className="h-12 md:h-13 border-b border-slate-800/80 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl px-2 sm:px-3 flex items-center justify-between z-30 select-none shrink-0 text-slate-100 transition-colors"
     >
       {/* 1. LEFT ZONE: ☰-Menü & Projektname & Speicherstatus */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -177,16 +177,16 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           <button
             onClick={() => setShowMainMenu(!showMainMenu)}
             title="Hauptmenü (Datei, Vorlagen, Einstellungen)"
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer border border-stone-200/80 dark:border-stone-700/80"
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer border border-slate-700/80"
           >
-            {showMainMenu ? <X className="w-5 h-5 text-amber-500" /> : <Menu className="w-5 h-5" />}
+            {showMainMenu ? <X className="w-5 h-5 text-sky-400" /> : <Menu className="w-5 h-5" />}
           </button>
 
           {/* ☰ Full Dropdown Menu */}
           {showMainMenu && (
             <div
               onMouseLeave={() => setShowMainMenu(false)}
-              className="absolute left-0 mt-2 w-72 max-h-[85vh] overflow-y-auto bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl shadow-2xl py-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-150"
+              className="absolute left-0 mt-2 w-72 max-h-[85vh] overflow-y-auto bg-slate-950/95 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl py-2 z-50 text-xs text-slate-200 animate-in fade-in zoom-in-95 duration-150"
             >
               {/* SECTION: DATEI */}
               <div className="px-3 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
@@ -586,14 +586,14 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           </div>
         )}
 
-        {/* Ansichts-Pill: "2D | 3D | Geteilt" (kompakte Segment-Schaltfläche) */}
-        <div className="flex items-center p-0.5 bg-stone-100 dark:bg-stone-800/90 rounded-xl border border-stone-200 dark:border-stone-700 text-xs">
+        {/* Ansichts-Pill: "2D | 3D | Geteilt" (Apple-grade Segmented Control) */}
+        <div className="flex items-center p-0.5 bg-slate-900/90 rounded-xl border border-slate-800 text-xs">
           <button
             onClick={() => onViewModeChange('2d')}
             className={`px-2.5 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
               viewMode === '2d'
-                ? 'bg-stone-900 dark:bg-stone-100 text-amber-400 dark:text-stone-900 shadow-xs font-bold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 font-bold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             2D
@@ -603,8 +603,8 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
             onClick={() => onViewModeChange('3d')}
             className={`px-2.5 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
               viewMode === '3d'
-                ? 'bg-stone-900 dark:bg-stone-100 text-amber-400 dark:text-stone-900 shadow-xs font-bold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 font-bold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             3D
@@ -614,8 +614,8 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
             onClick={() => onViewModeChange('split')}
             className={`hidden sm:block px-2.5 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
               viewMode === 'split'
-                ? 'bg-stone-900 dark:bg-stone-100 text-amber-400 dark:text-stone-900 shadow-xs font-bold'
-                : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 font-bold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             Geteilt
