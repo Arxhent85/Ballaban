@@ -117,7 +117,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
     `w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer select-none ${
       isActive
         ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 ring-1 ring-blue-400/50 font-bold scale-[1.03]'
-        : 'text-slate-400 hover:text-white hover:bg-slate-800/80 active:scale-95'
+        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80 active:scale-95'
     }`;
 
   const iconClass = 'w-5 h-5 md:w-4 md:h-4';
@@ -126,11 +126,11 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
     <div
       className={`absolute ${
         leftHandedMode ? 'right-13' : 'left-13'
-      } px-2.5 py-1.5 bg-slate-950/95 backdrop-blur-md border border-slate-800 text-slate-100 text-xs rounded-xl shadow-2xl pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-2`}
+      } px-2.5 py-1.5 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs rounded-xl shadow-2xl pointer-events-none whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 flex items-center gap-2`}
     >
       <span className="font-medium">{label}</span>
       {shortcut && (
-        <kbd className="px-1.5 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-300 font-mono font-bold border border-slate-700/60">
+        <kbd className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-700 dark:text-slate-300 font-mono font-bold border border-slate-200 dark:border-slate-700/60">
           {shortcut}
         </kbd>
       )}
@@ -141,7 +141,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
     <aside
       className={`w-14 md:w-13 ${
         leftHandedMode ? 'border-l order-last' : 'border-r'
-      } border-slate-800/80 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl flex flex-col items-center py-2 z-20 shrink-0 select-none shadow-md transition-all overflow-y-auto no-scrollbar`}
+      } border-slate-200 dark:border-slate-800/80 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl flex flex-col items-center py-2 z-20 shrink-0 select-none shadow-sm transition-all overflow-y-auto no-scrollbar`}
     >
       <div className="flex flex-col gap-1 md:gap-0.5 w-full px-1.5 items-center">
         {/* 1. AUSWAHL (Select) */}
@@ -166,7 +166,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           <Tooltip label="Verschieben (Pan)" shortcut="H" />
         </div>
 
-        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
+        <div className="h-px bg-slate-200 dark:bg-slate-800/80 my-1 mx-1 w-full" />
 
         {/* 3. GRUNDSTÜCKSLINIEN (Plot) - 3. Stelle */}
         <div className="relative group flex items-center justify-center">
@@ -212,7 +212,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           <Tooltip label="Dach-Modul (11 Formen & Höhen)" shortcut="U" />
         </div>
 
-        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
+        <div className="h-px bg-slate-200 dark:bg-slate-800/80 my-1 mx-1 w-full" />
 
         {/* 7. TÜREN (Doors) */}
         <div className="relative group flex items-center justify-center">
@@ -371,7 +371,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
           <Tooltip label="Plan-Vorlage (Zeichenhilfe)" />
         </div>
 
-        <div className="h-px bg-slate-800/80 my-1 mx-1 w-full" />
+        <div className="h-px bg-slate-200 dark:bg-slate-800/80 my-1 mx-1 w-full" />
 
         {/* 16. SETUP & AKTIONEN MENÜ (Kompakt für Tablets & Vollbild) */}
         <div ref={setupMenuRef} className="relative flex items-center justify-center">
@@ -381,7 +381,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
             className={`w-11 h-11 md:w-9 md:h-9 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 rounded-xl md:rounded-lg flex items-center justify-center transition-all cursor-pointer ${
               showSetupMenu
                 ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30 font-bold'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/80'
             }`}
           >
             <Sliders className={iconClass} />
@@ -392,13 +392,13 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
             <div
               className={`absolute ${
                 leftHandedMode ? 'right-14' : 'left-14'
-              } bottom-0 w-64 bg-slate-950/98 backdrop-blur-2xl border border-slate-800 rounded-2xl shadow-2xl p-2 z-50 text-xs text-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-1`}
+              } bottom-0 w-64 bg-white/98 dark:bg-slate-950/98 backdrop-blur-2xl border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-2 z-50 text-xs text-slate-800 dark:text-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-1`}
             >
-              <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-800/80 font-bold text-[11px] text-slate-400 uppercase tracking-wider">
+              <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-800/80 font-bold text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 <span>Setup & Aktionen</span>
                 <button
                   onClick={() => setShowSetupMenu(false)}
-                  className="text-slate-500 hover:text-white p-0.5 rounded cursor-pointer"
+                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-0.5 rounded cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -411,12 +411,12 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
                     onZoomFit();
                     setShowSetupMenu(false);
                   }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
                 >
                   <Maximize2 className="w-4 h-4 text-amber-500 shrink-0" />
                   <div className="flex flex-col">
                     <span className="font-semibold text-xs">Ansicht einpassen</span>
-                    <span className="text-[10px] text-slate-400">Ganzes Haus zentrieren (Zoom Fit)</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Ganzes Haus zentrieren (Zoom Fit)</span>
                   </div>
                 </button>
               )}
@@ -428,7 +428,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
                     onToggleFullscreen();
                     setShowSetupMenu(false);
                   }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
                 >
                   {isFullscreen ? (
                     <Minimize className="w-4 h-4 text-amber-500 shrink-0" />
@@ -439,7 +439,7 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
                     <span className="font-semibold text-xs">
                       {isFullscreen ? 'Vollbild beenden' : 'Vollbildmodus'}
                     </span>
-                    <span className="text-[10px] text-slate-400">Browserleiste aus- oder einblenden</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Browserleiste aus- oder einblenden</span>
                   </div>
                 </button>
               )}
@@ -451,12 +451,12 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
                     onOpenExportDialog();
                     setShowSetupMenu(false);
                   }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
                 >
-                  <Download className="w-4 h-4 text-sky-400 shrink-0" />
+                  <Download className="w-4 h-4 text-sky-500 shrink-0" />
                   <div className="flex flex-col">
                     <span className="font-semibold text-xs">Pläne exportieren</span>
-                    <span className="text-[10px] text-slate-400">PDF, PNG, SVG oder Ausdruck</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">PDF, PNG, SVG oder Ausdruck</span>
                   </div>
                 </button>
               )}
@@ -468,12 +468,12 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
                     onToggleUnderlayHud();
                     setShowSetupMenu(false);
                   }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
                 >
-                  <ImageIcon className="w-4 h-4 text-amber-400 shrink-0" />
+                  <ImageIcon className="w-4 h-4 text-amber-500 shrink-0" />
                   <div className="flex flex-col">
                     <span className="font-semibold text-xs">Plan-Vorlage Menü</span>
-                    <span className="text-[10px] text-slate-400">Transparenz, Maßstab & Filter</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Transparenz, Maßstab & Filter</span>
                   </div>
                 </button>
               )}
@@ -485,12 +485,12 @@ export const CadToolbar: React.FC<CadToolbarProps> = ({
                     onOpenSettings();
                     setShowSetupMenu(false);
                   }}
-                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-200 cursor-pointer transition-colors"
+                  className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 text-slate-800 dark:text-slate-200 cursor-pointer transition-colors"
                 >
-                  <Settings className="w-4 h-4 text-slate-400 shrink-0" />
+                  <Settings className="w-4 h-4 text-slate-500 shrink-0" />
                   <div className="flex flex-col">
                     <span className="font-semibold text-xs">Einstellungen</span>
-                    <span className="text-[10px] text-slate-400">Einheiten, Baurecht & Fangen</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Design, Einheiten, Baurecht & Fangen</span>
                   </div>
                 </button>
               )}

@@ -22,6 +22,10 @@ import {
   Cpu,
   Activity,
   Copy,
+  Sun,
+  Moon,
+  Palette,
+  PanelRight,
 } from 'lucide-react';
 import { UnitType, ScaleType, Language, ProjectDefaults, SnapSettings } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -58,6 +62,11 @@ interface SettingsDialogProps {
   snapSettings?: SnapSettings;
   onSnapSettingsChange?: (s: SnapSettings) => void;
   initialTab?: 'standards' | 'snapping' | 'ai';
+  isDark?: boolean;
+  onToggleTheme?: () => void;
+  onSetTheme?: (dark: boolean) => void;
+  isInspectorCollapsed?: boolean;
+  onToggleInspector?: () => void;
 }
 
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({
@@ -74,6 +83,11 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   snapSettings,
   onSnapSettingsChange,
   initialTab = 'standards',
+  isDark = false,
+  onToggleTheme,
+  onSetTheme,
+  isInspectorCollapsed = false,
+  onToggleInspector,
 }) => {
   const t = getT(language);
   const [activeTab, setActiveTab] = useState<'standards' | 'snapping' | 'ai'>(initialTab);
@@ -229,26 +243,26 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-xl w-full flex flex-col text-slate-100 overflow-hidden max-h-[90vh]">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl max-w-xl w-full flex flex-col text-slate-800 dark:text-slate-100 overflow-hidden max-h-[90vh]">
         {/* Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/60">
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5 text-amber-500" />
             <h2 className="font-semibold text-sm">CAD Programmeinstellungen</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 bg-slate-950/30 px-3 pt-2 gap-1.5 shrink-0">
+        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950/30 px-3 pt-2 gap-1.5 shrink-0">
           <button
             onClick={() => setActiveTab('standards')}
             className={`px-3 py-2 rounded-t-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
               activeTab === 'standards'
-                ? 'bg-slate-900 text-amber-400 border-t border-x border-slate-700'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 border-t border-x border-slate-200 dark:border-slate-700 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
             }`}
           >
             <Settings className="w-3.5 h-3.5" />
@@ -259,8 +273,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             onClick={() => setActiveTab('snapping')}
             className={`px-3 py-2 rounded-t-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
               activeTab === 'snapping'
-                ? 'bg-slate-900 text-amber-400 border-t border-x border-slate-700'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 border-t border-x border-slate-200 dark:border-slate-700 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
             }`}
           >
             <Magnet className="w-3.5 h-3.5" />
@@ -271,11 +285,11 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             onClick={() => setActiveTab('ai')}
             className={`px-3 py-2 rounded-t-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
               activeTab === 'ai'
-                ? 'bg-slate-900 text-amber-400 border-t border-x border-slate-700'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 border-t border-x border-slate-200 dark:border-slate-700 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/50'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
             <span>KI (Gemini API)</span>
           </button>
         </div>
@@ -285,16 +299,92 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           {/* TAB 1: STANDARDS & GENERAL */}
           {activeTab === 'standards' && (
             <>
+              {/* Erscheinungsbild / Design (Helles vs. Dunkles Design) */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-800 dark:text-white flex items-center gap-1.5">
+                    <Palette className="w-4 h-4 text-amber-500" />
+                    <span>Erscheinungsbild / Design (Theme)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                    {isDark ? '🌙 Dunkles Studio' : '☀️ Helles Design'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Wählen Sie zwischen einer hellen, blendfreien Arbeitsumgebung und dem professionellen dunklen CAD-Studio.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  {/* Helles Design (Light UI) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onSetTheme) onSetTheme(false);
+                      else if (isDark && onToggleTheme) onToggleTheme();
+                    }}
+                    className={`p-3 rounded-xl border flex flex-col gap-2 text-left transition-all cursor-pointer ${
+                      !isDark
+                        ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/30 text-slate-900 dark:text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600">
+                          <Sun className="w-4 h-4" />
+                        </div>
+                        <span className="font-bold text-xs">Helles Design</span>
+                      </div>
+                      {!isDark && (
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                      Helle Menüs & Symbolleisten, klare weiße Arbeitsfläche, blendfrei für helle Büros.
+                    </span>
+                  </button>
+
+                  {/* Dunkles Design (Dark Studio) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onSetTheme) onSetTheme(true);
+                      else if (!isDark && onToggleTheme) onToggleTheme();
+                    }}
+                    className={`p-3 rounded-xl border flex flex-col gap-2 text-left transition-all cursor-pointer ${
+                      isDark
+                        ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30 text-slate-900 dark:text-white shadow-xs'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center text-sky-400">
+                          <Moon className="w-4 h-4" />
+                        </div>
+                        <span className="font-bold text-xs">Dunkles Design</span>
+                      </div>
+                      {isDark && (
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                      Schonend für die Augen bei längeren CAD-Sitzungen, kontrastreiches 3D-Studio.
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               {/* General: Language & Units */}
-              <div className="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 flex flex-col gap-3">
-                <span className="font-semibold text-white">Allgemein & Raster</span>
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 flex flex-col gap-3">
+                <span className="font-semibold text-slate-800 dark:text-white">Allgemein & Raster</span>
                 <div className="grid grid-cols-3 gap-2.5">
                   <div>
-                    <label className="text-slate-400">Sprache:</label>
+                    <label className="text-slate-600 dark:text-slate-400">Sprache:</label>
                     <select
                       value={language}
                       onChange={(e) => onLanguageChange(e.target.value as Language)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 mt-1 outline-none font-medium"
+                      className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-slate-200 mt-1 outline-none font-medium"
                     >
                       <option value="de">Deutsch (DE)</option>
                       <option value="en">English (EN)</option>
@@ -303,11 +393,11 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   </div>
 
                   <div>
-                    <label className="text-slate-400">Maßeinheit:</label>
+                    <label className="text-slate-600 dark:text-slate-400">Maßeinheit:</label>
                     <select
                       value={unit}
                       onChange={(e) => onUnitChange(e.target.value as UnitType)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 mt-1 outline-none font-medium"
+                      className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-slate-200 mt-1 outline-none font-medium"
                     >
                       <option value="m">Meter (m)</option>
                       <option value="cm">Zentimeter (cm)</option>
@@ -316,7 +406,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   </div>
 
                   <div>
-                    <label className="text-slate-400">Rasterweite:</label>
+                    <label className="text-slate-600 dark:text-slate-400">Rasterweite:</label>
                     <select
                       value={snapSettings?.gridSize ?? 0.25}
                       onChange={(e) => {
@@ -326,7 +416,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         }
                         handleUpdate('gridSize', g);
                       }}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200 mt-1 outline-none font-medium"
+                      className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-slate-200 mt-1 outline-none font-medium"
                     >
                       <option value="0.05">5 cm</option>
                       <option value="0.10">10 cm</option>
@@ -339,25 +429,25 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               </div>
 
               {/* Architectural Dimensions */}
-              <div className="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 flex flex-col gap-3">
-                <span className="font-semibold text-white">Architektur-Standardmaße</span>
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/60 flex flex-col gap-3">
+                <span className="font-semibold text-slate-800 dark:text-white">Architektur-Standardmaße</span>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-slate-400">Außenwandstärke:</label>
+                    <label className="text-slate-600 dark:text-slate-400">Außenwandstärke:</label>
                     <div className="flex items-center gap-1 mt-1">
                       <input
                         type="number"
                         step="0.01"
                         value={currentDefaults.exteriorWallThickness}
                         onChange={(e) => handleUpdate('exteriorWallThickness', parseFloat(e.target.value) || 0.30)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-white text-right"
+                        className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-slate-800 dark:text-white text-right"
                       />
                       <span className="text-slate-500 font-mono">m</span>
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-slate-400">Innenwandstärke:</label>
+                    <label className="text-slate-600 dark:text-slate-400">Innenwandstärke:</label>
                     <div className="flex items-center gap-1 mt-1">
                       <input
                         type="number"

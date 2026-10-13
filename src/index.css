@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* iPad Safari & Native Tablet Touch Optimization */
 html, body, #root {

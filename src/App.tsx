@@ -46,7 +46,7 @@ import { getT } from './i18n/translations';
 import { mergeBoundingBoxes, getWallBoundingBox, getFurnitureBoundingBox, lineIntersection, projectPointOntoWall } from './utils/cadMath';
 import { isTouchDevice, isIOSorIPadDevice } from './utils/touchGestures';
 import { createAutoFittedRoof } from './utils/roofAnalysis';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { RotateCcw, Trash2, ChevronLeft } from 'lucide-react';
 
 // UI components
 import { CadHeader } from './components/toolbar/CadHeader';
@@ -109,8 +109,45 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('2d');
   const [language, setLanguage] = useState<Language>('de');
 
-  // Default is LIGHT THEME per Teil C specifications ("Standard ist ein helles Design...")
-  const [isDark, setIsDark] = useState<boolean>(false);
+  // Theme state: defaults to dark (matching desktop preview), toggleable to light in settings or header
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('cad_theme');
+      if (saved) return saved === 'dark';
+    } catch {}
+    return true;
+  });
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    try {
+      localStorage.setItem('cad_theme', isDark ? 'dark' : 'light');
+    } catch {}
+  }, [isDark]);
+
+  // Inspector collapsed state (for desktop workspace expansion)
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cad_inspector_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleInspector = useCallback(() => {
+    setIsInspectorCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('cad_inspector_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
   const [selectedColor, setSelectedColor] = useState('#334155');
 
   // Canvas zoom & pan
@@ -1970,11 +2007,15 @@ export default function App() {
         e.preventDefault();
         handleDuplicateSelected();
       }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'i' || e.key === 'I')) {
+        e.preventDefault();
+        handleToggleInspector();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, selection, activeFloor]);
+  }, [handleUndo, handleRedo, handleDuplicateSelected, handleToggleInspector, selection, activeFloor]);
 
   // Hint text
   const hintText = useMemo(() => {
@@ -1999,6 +2040,8 @@ export default function App() {
         onLanguageChange={setLanguage}
         isDark={isDark}
         onToggleTheme={() => setIsDark(!isDark)}
+        isInspectorCollapsed={isInspectorCollapsed}
+        onToggleInspector={handleToggleInspector}
         canUndo={historyIndex > 0}
         canRedo={historyIndex < history.length - 1}
         onUndo={handleUndo}
@@ -2420,7 +2463,23 @@ export default function App() {
           onToggleLockLayer={handleToggleLockLayer}
           onOpenUnderlayCrop={() => setShowUnderlayCropModal(true)}
           onInsertUnderlayImage={handleInsertUnderlayImage}
+          isCollapsed={isInspectorCollapsed}
+          onToggleCollapse={handleToggleInspector}
         />
+
+        {/* Docked expand tab on right edge when inspector is collapsed on desktop */}
+        {!isTablet && isInspectorCollapsed && (
+          <button
+            onClick={handleToggleInspector}
+            title="Eigenschaften & Bibliothek einblenden (Strg+I)"
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-30 flex items-center gap-1 px-1.5 py-3.5 bg-white/95 dark:bg-slate-900/95 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border-l border-t border-b border-slate-300 dark:border-slate-750 rounded-l-xl shadow-xl backdrop-blur-md transition-all cursor-pointer group hover:pr-2.5 active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="text-[11px] font-bold [writing-mode:vertical-rl] rotate-180 tracking-widest uppercase text-slate-600 dark:text-slate-300">
+              Eigenschaften
+            </span>
+          </button>
+        )}
       </div>
 
       {/* 3. BOTTOM STATUS BAR */}
@@ -2553,6 +2612,11 @@ export default function App() {
         snapSettings={snapSettings}
         onSnapSettingsChange={handleSnapSettingsChange}
         initialTab={settingsInitialTab}
+        isDark={isDark}
+        onToggleTheme={() => setIsDark((prev) => !prev)}
+        onSetTheme={(dark) => setIsDark(dark)}
+        isInspectorCollapsed={isInspectorCollapsed}
+        onToggleInspector={handleToggleInspector}
       />
 
       <AiPlanImportModal

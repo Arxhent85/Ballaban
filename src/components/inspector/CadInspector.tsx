@@ -36,6 +36,8 @@ import {
   Sun,
   Contrast,
   RotateCcw,
+  ChevronRight,
+  PanelRightClose,
 } from 'lucide-react';
 import {
   SelectionState,
@@ -98,6 +100,8 @@ interface CadInspectorProps {
   onToggleLockLayer?: (layerId: string) => void;
   onOpenUnderlayCrop?: () => void;
   onInsertUnderlayImage?: (file: File) => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const TouchStepperInput: React.FC<{
@@ -178,6 +182,8 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
   onToggleLockLayer,
   onOpenUnderlayCrop,
   onInsertUnderlayImage,
+  isCollapsed = false,
+  onToggleCollapse,
 }) => {
   const t = getT(language);
   const [activeTab, setActiveTab] = useState<InspectorTab>('properties');
@@ -274,6 +280,7 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
   };
 
   if (isDrawerMode && !isOpenDrawer) return null;
+  if (!isDrawerMode && isCollapsed) return null;
 
   return (
     <aside
@@ -338,13 +345,13 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
       )}
 
       {/* 4 Tabs Header */}
-      <div className="flex border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/60 p-1">
+      <div className="flex items-center border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/60 p-1 gap-1">
         <button
           onClick={() => setActiveTab('properties')}
           className={`flex-1 py-1.5 text-xs font-semibold rounded-md flex items-center justify-center gap-1 transition-all cursor-pointer ${
             activeTab === 'properties'
-              ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm'
-              : 'text-stone-500 hover:text-stone-800 dark:hover:text-white'
+              ? 'bg-white text-stone-900 shadow-xs border border-stone-200 dark:border-transparent dark:bg-stone-100 dark:text-stone-900'
+              : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
           }`}
         >
           <Sliders className="w-3.5 h-3.5" />
@@ -355,8 +362,8 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
           onClick={() => setActiveTab('library')}
           className={`flex-1 py-1.5 text-xs font-semibold rounded-md flex items-center justify-center gap-1 transition-all cursor-pointer ${
             activeTab === 'library'
-              ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm'
-              : 'text-stone-500 hover:text-stone-800 dark:hover:text-white'
+              ? 'bg-white text-stone-900 shadow-xs border border-stone-200 dark:border-transparent dark:bg-stone-100 dark:text-stone-900'
+              : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
           }`}
         >
           <Armchair className="w-3.5 h-3.5" />
@@ -367,8 +374,8 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
           onClick={() => setActiveTab('layers')}
           className={`flex-1 py-1.5 text-xs font-semibold rounded-md flex items-center justify-center gap-1 transition-all cursor-pointer ${
             activeTab === 'layers'
-              ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm'
-              : 'text-stone-500 hover:text-stone-800 dark:hover:text-white'
+              ? 'bg-white text-stone-900 shadow-xs border border-stone-200 dark:border-transparent dark:bg-stone-100 dark:text-stone-900'
+              : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
@@ -379,13 +386,23 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
           onClick={() => setActiveTab('rooms')}
           className={`flex-1 py-1.5 text-xs font-semibold rounded-md flex items-center justify-center gap-1 transition-all cursor-pointer ${
             activeTab === 'rooms'
-              ? 'bg-stone-900 text-amber-400 dark:bg-stone-100 dark:text-stone-900 shadow-sm'
-              : 'text-stone-500 hover:text-stone-800 dark:hover:text-white'
+              ? 'bg-white text-stone-900 shadow-xs border border-stone-200 dark:border-transparent dark:bg-stone-100 dark:text-stone-900'
+              : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
           }`}
         >
           <Tag className="w-3.5 h-3.5" />
           <span>Räume</span>
         </button>
+
+        {onToggleCollapse && !isDrawerMode && (
+          <button
+            onClick={onToggleCollapse}
+            title="Inspektor zuklappen (für maximale Arbeitsfläche)"
+            className="p-1.5 rounded-md hover:bg-stone-200 dark:hover:bg-stone-800 text-stone-400 hover:text-stone-800 dark:hover:text-stone-100 transition-colors cursor-pointer shrink-0 ml-0.5"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* TAB CONTENT */}

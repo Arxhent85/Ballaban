@@ -139,9 +139,9 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             <button
               onClick={onCancelDrawing}
               title="Aktion abbrechen (Esc)"
-              className="h-12 px-4 rounded-2xl bg-stone-900/95 hover:bg-stone-800 text-stone-200 border border-stone-700/80 shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm font-semibold active:scale-95 transition-all cursor-pointer"
+              className="h-12 px-4 rounded-2xl bg-white/95 dark:bg-stone-900/95 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-200 border border-stone-300 dark:border-stone-700/80 shadow-2xl backdrop-blur-md flex items-center gap-2 text-sm font-semibold active:scale-95 transition-all cursor-pointer"
             >
-              <X className="w-4 h-4 text-red-400" />
+              <X className="w-4 h-4 text-red-500 dark:text-red-400" />
               <span>Abbrechen</span>
             </button>
           )}
@@ -163,7 +163,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
       <div
         className={`fixed bottom-11 sm:bottom-12 ${
           isLeftHanded ? 'right-4' : 'left-4'
-        } z-30 flex flex-wrap items-center gap-1.5 p-1 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl max-w-[85vw]`}
+        } z-30 flex flex-wrap items-center gap-1.5 p-1 bg-white/90 dark:bg-stone-900/85 backdrop-blur-md border border-stone-300 dark:border-stone-700/60 rounded-2xl shadow-xl max-w-[85vw]`}
       >
           {/* Multi-Select Toggle */}
           <button
@@ -172,7 +172,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             className={`h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer ${
               isMultiSelectMode
                 ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-stone-300 hover:bg-stone-800/80'
+                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/80'
             }`}
           >
             <span>+ Mehrfach</span>
@@ -185,7 +185,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             className={`h-9 px-2.5 rounded-xl flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
               isOrthoLocked
                 ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-stone-300 hover:bg-stone-800/80'
+                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/80'
             }`}
           >
             <span>90° Ortho</span>
@@ -198,7 +198,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             className={`h-9 px-2.5 rounded-xl flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
               isSnapEnabled
                 ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-stone-400 hover:bg-stone-800/80'
+                : 'text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800/80'
             }`}
           >
             <Magnet className="w-3.5 h-3.5" />
@@ -216,7 +216,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             className={`h-9 px-2.5 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all cursor-pointer ${
               pencilMode === 'finger_draws_too'
                 ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-stone-300 hover:bg-stone-800/80'
+                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/80'
             }`}
           >
             <span>{pencilMode === 'finger_draws_too' ? '✏️👆 Stift & Finger' : '✏️ Nur Stift'}</span>
@@ -233,7 +233,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             className={`h-9 px-2.5 rounded-xl flex items-center gap-1 text-xs font-semibold transition-all cursor-pointer ${
               precisionMode === 'offset_crosshair'
                 ? 'bg-purple-600 text-white shadow-sm'
-                : 'text-stone-300 hover:bg-stone-800/80'
+                : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800/80'
             }`}
           >
             <Search className="w-3.5 h-3.5" />
@@ -247,7 +247,7 @@ export const CadTouchControls: React.FC<CadTouchControlsProps> = ({
             className={`h-9 px-2.5 rounded-xl flex items-center gap-1 text-xs font-mono font-bold transition-all cursor-pointer ${
               showNumpad
                 ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-amber-400 hover:bg-stone-800/80'
+                : 'text-amber-600 dark:text-amber-400 hover:bg-stone-100 dark:hover:bg-stone-800/80'
             }`}
           >
             <span>123</span>

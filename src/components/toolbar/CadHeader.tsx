@@ -47,6 +47,7 @@ import {
   Eye,
   Mic,
   Image as ImageIcon,
+  PanelRight,
 } from 'lucide-react';
 import { ViewMode, Language, CadProject, Floor } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -88,6 +89,8 @@ interface CadHeaderProps {
   onInsertUnderlayImage?: (file: File) => void;
   isUnderlayHudOpen?: boolean;
   onToggleUnderlayHud?: () => void;
+  isInspectorCollapsed?: boolean;
+  onToggleInspector?: () => void;
 }
 
 export const CadHeader: React.FC<CadHeaderProps> = ({
@@ -127,6 +130,8 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   onInsertUnderlayImage,
   isUnderlayHudOpen,
   onToggleUnderlayHud,
+  isInspectorCollapsed = false,
+  onToggleInspector,
 }) => {
   const t = getT(language);
 
@@ -170,7 +175,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           ? 'max(env(safe-area-inset-right, 0px), 3.5rem)'
           : 'max(env(safe-area-inset-right, 0px), 0.5rem)',
       }}
-      className="h-12 md:h-13 border-b border-slate-800/80 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl px-2 sm:px-3 flex items-center justify-between z-30 select-none shrink-0 text-slate-100 transition-colors"
+      className="h-12 md:h-13 border-b border-slate-200 dark:border-slate-800/80 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl px-2 sm:px-3 flex items-center justify-between z-30 select-none shrink-0 text-slate-800 dark:text-slate-100 transition-colors"
     >
       {/* 1. LEFT ZONE: ☰-Menü & Projektname & Speicherstatus */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -179,16 +184,16 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           <button
             onClick={() => setShowMainMenu(!showMainMenu)}
             title="Hauptmenü (Datei, Vorlagen, Einstellungen)"
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer border border-slate-700/80"
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer border border-slate-200 dark:border-slate-700/80"
           >
-            {showMainMenu ? <X className="w-5 h-5 text-sky-400" /> : <Menu className="w-5 h-5" />}
+            {showMainMenu ? <X className="w-5 h-5 text-sky-500 dark:text-sky-400" /> : <Menu className="w-5 h-5" />}
           </button>
 
           {/* ☰ Full Dropdown Menu */}
           {showMainMenu && (
             <div
               onMouseLeave={() => setShowMainMenu(false)}
-              className="absolute left-0 mt-2 w-72 max-h-[85vh] overflow-y-auto bg-slate-950/95 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl py-2 z-50 text-xs text-slate-200 animate-in fade-in zoom-in-95 duration-150"
+              className="absolute left-0 mt-2 w-72 max-h-[85vh] overflow-y-auto bg-white/98 dark:bg-slate-950/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl py-2 z-50 text-xs text-slate-800 dark:text-slate-200 animate-in fade-in zoom-in-95 duration-150"
             >
               {/* SECTION: DATEI */}
               <div className="px-3 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
@@ -577,13 +582,13 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
         )}
 
         {/* Ansichts-Pill: "2D | 3D | Geteilt" (Apple-grade Segmented Control) */}
-        <div className="flex items-center p-0.5 bg-slate-900/90 rounded-xl border border-slate-800 text-xs">
+        <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-900/90 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
           <button
             onClick={() => onViewModeChange('2d')}
             className={`px-2.5 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
               viewMode === '2d'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 font-bold'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             2D
@@ -594,7 +599,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
             className={`px-2.5 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
               viewMode === '3d'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 font-bold'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             3D
@@ -605,7 +610,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
             className={`hidden sm:block px-2.5 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
               viewMode === 'split'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 font-bold'
-                : 'text-slate-400 hover:text-white'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             Geteilt
@@ -613,7 +618,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
         </div>
       </div>
 
-      {/* 3. RIGHT ZONE: Rückgängig, Wiederholen, Einpassen, Vollbild, Export */}
+      {/* 3. RIGHT ZONE: Rückgängig, Wiederholen, Einpassen, Vollbild, Theme, Inspektor, Export */}
       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
         {/* Undo / Redo */}
         <div className="flex items-center gap-0.5">
@@ -646,7 +651,7 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
           </button>
         )}
 
-        {/* VOLLBILD: Icon-only button (nie abgeschnitten oder überlagernd) */}
+        {/* VOLLBILD: Icon-only button */}
         {onToggleFullscreen && (
           <button
             onClick={onToggleFullscreen}
@@ -658,6 +663,30 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
             }`}
           >
             {isFullscreenActive ? <Minimize className="w-3.5 h-3.5 text-amber-500" /> : <Maximize className="w-3.5 h-3.5 text-amber-500" />}
+          </button>
+        )}
+
+        {/* Quick Theme Toggle (Hell / Dunkel) */}
+        <button
+          onClick={onToggleTheme}
+          title={isDark ? 'Zu hellem Design wechseln (Light UI)' : 'Zu dunklem Design wechseln (Dark Studio)'}
+          className="w-8 h-8 rounded-xl border border-stone-200/90 dark:border-stone-700/90 bg-stone-50 dark:bg-stone-800/80 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 transition-colors cursor-pointer flex items-center justify-center shrink-0"
+        >
+          {isDark ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-600" />}
+        </button>
+
+        {/* Inspector Toggle (Rechte Leiste zuklappen / aufklappen) */}
+        {onToggleInspector && (
+          <button
+            onClick={onToggleInspector}
+            title={isInspectorCollapsed ? 'Rechte Leiste / Inspektor ausklappen (Strg+I)' : 'Rechte Leiste / Inspektor zuklappen (Strg+I)'}
+            className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+              !isInspectorCollapsed
+                ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-500 text-amber-700 dark:text-amber-300 font-bold shadow-xs'
+                : 'border-stone-200/90 dark:border-stone-700/90 bg-stone-50 dark:bg-stone-800/80 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200'
+            }`}
+          >
+            <PanelRight className="w-3.5 h-3.5 text-amber-500" />
           </button>
         )}
 
