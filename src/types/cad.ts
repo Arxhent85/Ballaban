@@ -460,6 +460,7 @@ export interface SnapSettings {
   angleStepDeg: number; // Winkelschritt in Grad (default 15)
   ortho: boolean;
   step15Deg: boolean;
+  meterSteps?: boolean; // Magnetische Raste bei ganzen und halben Metern (0.50m / 1.00m)
 }
 
 export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
@@ -483,6 +484,7 @@ export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   angleStepDeg: 15,
   ortho: false,
   step15Deg: true,
+  meterSteps: true,
 };
 
 export type SnapPointType =
@@ -510,15 +512,19 @@ export type SnapPointType =
   | 'alignment' // Horizontale/vertikale Fluchtlinie
   | 'offset' // Paralleler Versatz
   | 'ortho'
-  | 'angle15';
+  | 'angle15'
+  | 'meter_step' // Ganze und halbe Meter (0.50m, 1.00m, 1.50m ...)
+  | 'parallel_equal_length' // Parallel & Gleiche Länge (=)
+  | 'endpoint_alignment'; // Ausrichtung an Endpunkt der gegenüberliegenden Wand
 
 export interface ActiveGuideLine {
   id: string;
-  type: 'parallel' | 'perpendicular' | 'extension' | 'alignment' | 'equal_length' | 'equal_spacing' | 'offset';
+  type: 'parallel' | 'perpendicular' | 'extension' | 'alignment' | 'equal_length' | 'equal_spacing' | 'offset' | 'meter_step';
   p1: Point2D;
   p2: Point2D;
+  referencePoint?: Point2D; // Ursprungspunkt des Bezugspunkts (z. B. Ecke der gegenüberliegenden Wand)
   label?: string;
-  symbol?: string; // '//', '⟂', '=', '90°'
+  symbol?: string; // '//', '⟂', '=', '90°', '📏'
   color?: string;
   dash?: number[];
   sourceWallIds?: string[];

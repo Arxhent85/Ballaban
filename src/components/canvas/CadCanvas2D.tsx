@@ -2298,11 +2298,30 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         });
       }
 
-      // B. Active Relationship Guidelines (Parallel, Perpendicular, Equal Length, Extension, Alignment, Offset)
+      // B. Active Relationship Guidelines (Parallel, Perpendicular, Equal Length, Extension, Alignment, Offset, Meter Steps)
       if (smartSnap.guideLines && smartSnap.guideLines.length > 0) {
         smartSnap.guideLines.forEach((gl) => {
           const p1 = worldToScreen(gl.p1);
           const p2 = worldToScreen(gl.p2);
+
+          // 0. Render prominent reference anchor point if provided (e.g. corner of opposite wall)
+          if (gl.referencePoint) {
+            const scRef = worldToScreen(gl.referencePoint);
+            const refColor = gl.color || '#8b5cf6';
+            ctx.save();
+            ctx.strokeStyle = refColor;
+            ctx.fillStyle = refColor;
+            // Pulsing / glowing outer anchor circle
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.arc(scRef.x, scRef.y, 7, 0, Math.PI * 2);
+            ctx.stroke();
+            // Solid center anchor dot
+            ctx.beginPath();
+            ctx.arc(scRef.x, scRef.y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
 
           ctx.save();
           ctx.strokeStyle = gl.color || '#3b82f6';
@@ -2388,7 +2407,41 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
             }
           }
 
-          // 4. Offset Guideline Badge
+          // 4. Alignment Guideline Badge (Flucht zu Wandende / Bezugspunkt)
+          if (gl.type === 'alignment' && gl.label) {
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            ctx.font = '700 10.5px "Inter", sans-serif';
+            const bW = ctx.measureText(gl.label).width + 16;
+            ctx.fillStyle = isDark ? '#2e1065' : '#f5f3ff';
+            ctx.strokeStyle = '#8b5cf6';
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(midX - bW / 2, midY - 22, bW, 20);
+            ctx.strokeRect(midX - bW / 2, midY - 22, bW, 20);
+            ctx.fillStyle = isDark ? '#c4b5fd' : '#6d28d9';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(gl.label, midX, midY - 12);
+          }
+
+          // 5. Meter Step (📏 Ganzmeter / Halbmeter Raster) Guideline Badge
+          if (gl.type === 'meter_step' && gl.label) {
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            ctx.font = '700 11px "JetBrains Mono", monospace';
+            const bW = ctx.measureText(gl.label).width + 16;
+            ctx.fillStyle = isDark ? '#042f2e' : '#f0fdfa';
+            ctx.strokeStyle = '#0d9488';
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(midX - bW / 2, midY - 24, bW, 22);
+            ctx.strokeRect(midX - bW / 2, midY - 24, bW, 22);
+            ctx.fillStyle = isDark ? '#2dd4bf' : '#0f766e';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(gl.label, midX, midY - 13);
+          }
+
+          // 6. Offset Guideline Badge
           if (gl.type === 'offset' && gl.label) {
             const midX = (p1.x + p2.x) / 2;
             const midY = (p1.y + p2.y) / 2;
@@ -2417,6 +2470,45 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         case 'endpoint':
           ctx.strokeStyle = '#10b981';
           ctx.strokeRect(sp.x - 6, sp.y - 6, 12, 12);
+          break;
+        case 'endpoint_alignment':
+          ctx.strokeStyle = '#8b5cf6';
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 7, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(sp.x - 9, sp.y);
+          ctx.lineTo(sp.x + 9, sp.y);
+          ctx.moveTo(sp.x, sp.y - 9);
+          ctx.lineTo(sp.x + 9, sp.y + 9);
+          ctx.stroke();
+          break;
+        case 'parallel_equal_length':
+          ctx.strokeStyle = '#ea580c';
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 7, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(sp.x - 3, sp.y - 4);
+          ctx.lineTo(sp.x - 1, sp.y + 4);
+          ctx.moveTo(sp.x + 1, sp.y - 4);
+          ctx.lineTo(sp.x + 3, sp.y + 4);
+          ctx.stroke();
+          break;
+        case 'meter_step':
+          ctx.strokeStyle = '#0d9488';
+          ctx.fillStyle = '#14b8a6';
+          ctx.beginPath();
+          ctx.moveTo(sp.x, sp.y - 7);
+          ctx.lineTo(sp.x + 7, sp.y);
+          ctx.lineTo(sp.x, sp.y + 7);
+          ctx.lineTo(sp.x - 7, sp.y);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 2, 0, Math.PI * 2);
+          ctx.fill();
           break;
         case 'midpoint':
           ctx.strokeStyle = '#ea580c';
@@ -2493,6 +2585,18 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
           ctx.fill();
           break;
+        case 'parallel':
+          ctx.strokeStyle = '#2563eb';
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 6, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(sp.x - 3, sp.y - 4);
+          ctx.lineTo(sp.x - 1, sp.y + 4);
+          ctx.moveTo(sp.x + 1, sp.y - 4);
+          ctx.lineTo(sp.x + 3, sp.y + 4);
+          ctx.stroke();
+          break;
         default:
           ctx.strokeStyle = '#3b82f6';
           ctx.beginPath();
@@ -2526,9 +2630,24 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         ctx.shadowBlur = 6;
         ctx.shadowOffsetY = 2;
 
+        const badgeBorderColor =
+          smartSnap.type === 'endpoint_alignment'
+            ? '#8b5cf6'
+            : smartSnap.type === 'parallel_equal_length'
+            ? '#ea580c'
+            : smartSnap.type === 'meter_step'
+            ? '#0d9488'
+            : smartSnap.type === 'endpoint'
+            ? '#10b981'
+            : smartSnap.type === 'midpoint'
+            ? '#ea580c'
+            : smartSnap.type === 'lot' || smartSnap.type === 'perpendicular'
+            ? '#16a34a'
+            : isDark ? '#334155' : '#cbd5e1';
+
         ctx.fillStyle = isDark ? '#0f172a' : '#ffffff';
-        ctx.strokeStyle = isDark ? '#334155' : '#cbd5e1';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = badgeBorderColor;
+        ctx.lineWidth = 1.3;
         if (typeof ctx.roundRect === 'function') {
           ctx.beginPath();
           ctx.roundRect(bX, bY, bW, bH, 5);
@@ -4964,18 +5083,48 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
               >
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-slate-400 uppercase tracking-wider font-sans">L:</span>
-                  <span className="font-bold text-white tracking-tight">{formatDimension(liveLen, unit, 2)}</span>
+                  <span className={`font-bold tracking-tight ${
+                    smartSnap?.type === 'meter_step'
+                      ? 'text-teal-300'
+                      : smartSnap?.type === 'parallel_equal_length'
+                      ? 'text-amber-300'
+                      : 'text-white'
+                  }`}>{formatDimension(liveLen, unit, 2)}</span>
                 </div>
                 <div className="w-px h-3 bg-white/20" />
                 <div className="flex items-center gap-1">
-                  <span className="text-sky-400 font-bold">{liveAngle.toFixed(1)}°</span>
+                  <span className={`font-bold ${
+                    smartSnap?.type === 'parallel' || smartSnap?.type === 'parallel_equal_length'
+                      ? 'text-blue-400'
+                      : smartSnap?.type === 'endpoint_alignment'
+                      ? 'text-purple-400'
+                      : 'text-sky-400'
+                  }`}>{liveAngle.toFixed(1)}°</span>
                 </div>
                 <span className="text-[10px] text-slate-300 bg-white/10 px-1.5 py-0.5 rounded-full font-sans">
                   {wallTag}
                 </span>
                 {smartSnap && smartSnap.snapped && (
-                  <span className="text-[10px] text-emerald-400 font-sans font-semibold flex items-center gap-1">
-                    ● {smartSnap.type === 'endpoint' ? 'Ecke' : smartSnap.type === 'guideline' ? 'Hilfslinie' : smartSnap.type}
+                  <span className={`text-[10px] font-sans font-semibold flex items-center gap-1 ${
+                    smartSnap.type === 'meter_step'
+                      ? 'text-teal-400'
+                      : smartSnap.type === 'parallel_equal_length'
+                      ? 'text-amber-400'
+                      : smartSnap.type === 'endpoint_alignment'
+                      ? 'text-purple-400'
+                      : 'text-emerald-400'
+                  }`}>
+                    ● {smartSnap.type === 'endpoint'
+                      ? 'Ecke'
+                      : smartSnap.type === 'endpoint_alignment'
+                      ? 'Flucht (Endpunkt)'
+                      : smartSnap.type === 'parallel_equal_length'
+                      ? 'Parallel // = Länge'
+                      : smartSnap.type === 'meter_step'
+                      ? 'Meter-Raster 📏'
+                      : smartSnap.type === 'guideline'
+                      ? 'Hilfslinie'
+                      : smartSnap.type}
                   </span>
                 )}
                 <span className="text-[10px] text-slate-400 font-sans hidden sm:inline">

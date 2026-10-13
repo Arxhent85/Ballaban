@@ -533,19 +533,23 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
 
     if (currentDist >= 0.20) {
       const currentAngle = Math.atan2(vec.y, vec.x);
-      const angularTol = Math.max(0.045, (snapRadiusPx * 1.3) / (currentDist * zoom));
+      // Increased magnetic angular pull (wider angle tolerance for easy latching)
+      const angularTol = Math.max(0.065, (snapRadiusPx * 1.8) / (currentDist * zoom));
 
       for (const w of activeWalls) {
         const wAng = Math.atan2(w.end.y - w.start.y, w.end.x - w.start.x);
+        const wLen = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
 
         // A. Parallel (//)
         if (settings.parallel !== false) {
           for (const pAng of [wAng, wAng + Math.PI]) {
             const diff = angleDifference(currentAngle, pAng);
             if (diff <= angularTol) {
+              const uX = Math.cos(pAng);
+              const uY = Math.sin(pAng);
               const snappedPt = {
-                x: origin.x + Math.cos(pAng) * currentDist,
-                y: origin.y + Math.sin(pAng) * currentDist,
+                x: origin.x + uX * currentDist,
+                y: origin.y + uY * currentDist,
               };
               const wH1 = w.height || 2.50;
               const wH2 = w.endHeight ?? wH1;
@@ -558,6 +562,109 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
                 ? `Höhen-Magnet: ${matchedH1.toFixed(2)}m → ${matchedH2.toFixed(2)}m (Wand gegenüber)`
                 : `Höhe: ${matchedH1.toFixed(2)}m`;
 
+              const matchedHeightsInfo: MatchedHeightsInfo = {
+                height: matchedH1,
+                endHeight: matchedH2,
+                sourceWallId: w.id,
+                isOpposite: isOpp,
+                label: heightLabel,
+              };
+
+              // 1. ENDPOINT ALIGNMENT TO OPPOSITE WALL ENDPOINTS (Rechteck- / Ecken-Ausrichtung)
+              // Project opposite wall's start and end points onto the parallel ray from origin
+              for (const ptRef of [w.end, w.start]) {
+                const projDist = (ptRef.x - origin.x) * uX + (ptRef.y - origin.y) * uY;
+                if (projDist >= 0.4) {
+                  const dAlong = Math.abs(currentDist - projDist);
+                  if (dAlong <= snapRadiusM * 1.6) {
+                    const alignPt = {
+                      x: origin.x + uX * projDist,
+                      y: origin.y + uY * projDist,
+                    };
+                    const alignGuide: ActiveGuideLine = {
+                      id: `align_end_${w.id}_${ptRef.x.toFixed(2)}_${ptRef.y.toFixed(2)}`,
+                      type: 'alignment',
+                      p1: ptRef,
+                      p2: alignPt,
+                      referencePoint: ptRef,
+                      label: `Flucht zu Wandende (${projDist.toFixed(2)}m)`,
+                      symbol: '╌',
+                      color: '#8b5cf6', // Violett / Purple
+                      dash: [4, 4],
+                      sourceWallIds: [w.id],
+                    };
+                    const parGuide: ActiveGuideLine = {
+                      id: `par_axis_${w.id}`,
+                      type: 'parallel',
+                      p1: origin,
+                      p2: alignPt,
+                      label: 'Parallel (//)',
+                      symbol: '//',
+                      color: '#2563eb', // Blau
+                      sourceWallIds: [w.id],
+                    };
+                    candidates.push({
+                      point: alignPt,
+                      type: 'endpoint_alignment',
+                      distancePx: (diff * currentDist + dAlong) * zoom,
+                      priority: 1.5, // High priority
+                      label: `Ausgerichtet an Wandende (${projDist.toFixed(2)}m)`,
+                      symbol: '╌',
+                      guideLine: alignGuide,
+                      secondaryGuideLine: parGuide,
+                      matchedWallIds: [w.id],
+                      matchedHeights: matchedHeightsInfo,
+                    });
+                  }
+                }
+              }
+
+              // 2. PARALLEL & GLEICHE LÄNGE (=) (Simultaneous parallel angle & length snap)
+              if (settings.equalLength !== false && wLen >= 0.5) {
+                const dLen = Math.abs(currentDist - wLen);
+                if (dLen <= snapRadiusM * 1.5) {
+                  const eqPt = {
+                    x: origin.x + uX * wLen,
+                    y: origin.y + uY * wLen,
+                  };
+                  const midPtCurrent = {
+                    x: (origin.x + eqPt.x) / 2,
+                    y: (origin.y + eqPt.y) / 2,
+                  };
+                  const midPtW = {
+                    x: (w.start.x + w.end.x) / 2,
+                    y: (w.start.y + w.end.y) / 2,
+                  };
+                  const parEqGuide: ActiveGuideLine = {
+                    id: 'par_eqlen_' + w.id,
+                    type: 'equal_length',
+                    p1: origin,
+                    p2: eqPt,
+                    label: `Parallel // • Gleiche Länge ${wLen.toFixed(2)}m`,
+                    symbol: '=',
+                    color: '#ea580c', // Orange / Amber
+                    sourceWallIds: [w.id],
+                    matchedLength: wLen,
+                    tickMarks: [midPtCurrent, midPtW],
+                  };
+                  candidates.push({
+                    point: eqPt,
+                    type: 'parallel_equal_length',
+                    distancePx: (diff * currentDist + dLen) * zoom,
+                    priority: 1.6, // High priority
+                    label: isSloped
+                      ? `Parallel & Gleiche Länge (${wLen.toFixed(2)}m) • Höhe ${matchedH1.toFixed(2)}m → ${matchedH2.toFixed(2)}m`
+                      : `Parallel & Gleiche Länge (${wLen.toFixed(2)}m = ${wLen.toFixed(2)}m)`,
+                    symbol: '=',
+                    guideLine: parEqGuide,
+                    matchedWallIds: [w.id],
+                    matchedLength: wLen,
+                    matchedHeights: matchedHeightsInfo,
+                  });
+                }
+              }
+
+              // 3. PURE PARALLEL (//)
               const guideLine: ActiveGuideLine = {
                 id: 'parallel_' + w.id,
                 type: 'parallel',
@@ -572,18 +679,12 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
                 point: snappedPt,
                 type: 'parallel',
                 distancePx: diff * currentDist * zoom,
-                priority: 2.2,
+                priority: 2.15,
                 label: isSloped ? `Parallel (//) • ${heightLabel}` : 'Parallel (//)',
                 symbol: '//',
                 guideLine,
                 matchedWallIds: [w.id],
-                matchedHeights: {
-                  height: matchedH1,
-                  endHeight: matchedH2,
-                  sourceWallId: w.id,
-                  isOpposite: true,
-                  label: heightLabel,
-                },
+                matchedHeights: matchedHeightsInfo,
               });
             }
           }
@@ -612,7 +713,7 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
                 point: snappedPt,
                 type: 'right_angle',
                 distancePx: diff * currentDist * zoom,
-                priority: 2.3,
+                priority: 2.25,
                 label: 'Rechtwinklig (90°)',
                 symbol: '⟂',
                 guideLine,
@@ -661,7 +762,7 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
       const currentAngle = Math.atan2(vec.y, vec.x);
       for (const w of activeWalls) {
         const wLen = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
-        if (wLen >= 0.5 && Math.abs(currentDist - wLen) <= snapRadiusM) {
+        if (wLen >= 0.5 && Math.abs(currentDist - wLen) <= snapRadiusM * 1.4) {
           const snappedPt = {
             x: origin.x + Math.cos(currentAngle) * wLen,
             y: origin.y + Math.sin(currentAngle) * wLen,
@@ -738,6 +839,57 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
   }
 
   // ==========================================================
+  // 5B. METRISCHE HAFTE-RASTE: GANZE UND HALBE METER (0.50m / 1.00m)
+  // ==========================================================
+  if (origin && settings.meterSteps !== false) {
+    const vec = { x: target.x - origin.x, y: target.y - origin.y };
+    const curD = Math.hypot(vec.x, vec.y);
+
+    if (curD >= 0.35) {
+      const nearestWhole = Math.round(curD);
+      const nearestHalf = Math.round(curD * 2) / 2;
+      const diffWhole = Math.abs(curD - nearestWhole);
+      const diffHalf = Math.abs(curD - nearestHalf);
+
+      // Whole meter magnetic threshold (± 0.12m)
+      const isWhole = diffWhole <= 0.12 && nearestWhole >= 0.5;
+      // Half meter magnetic threshold (± 0.08m)
+      const isHalf = !isWhole && diffHalf <= 0.08 && nearestHalf >= 0.5;
+
+      if (isWhole || isHalf) {
+        const snapD = isWhole ? nearestWhole : nearestHalf;
+        const dirX = vec.x / curD;
+        const dirY = vec.y / curD;
+        const meterPt = {
+          x: origin.x + dirX * snapD,
+          y: origin.y + dirY * snapD,
+        };
+
+        const guideLine: ActiveGuideLine = {
+          id: `meter_step_${snapD}`,
+          type: 'meter_step',
+          p1: origin,
+          p2: meterPt,
+          label: `${snapD.toFixed(2)} m`,
+          symbol: '📏',
+          color: '#0d9488', // Teal
+          dash: [5, 3],
+        };
+
+        candidates.push({
+          point: meterPt,
+          type: 'meter_step',
+          distancePx: (isWhole ? diffWhole : diffHalf) * zoom,
+          priority: isWhole ? 2.35 : 2.45,
+          label: isWhole ? `${snapD.toFixed(2)} m (Ganzmeter)` : `${snapD.toFixed(2)} m (Halbmeter)`,
+          symbol: '📏',
+          guideLine,
+        });
+      }
+    }
+  }
+
+  // ==========================================================
   // 6. AUSRICHTUNG (Horizontal & Vertical Alignment Guides)
   // ==========================================================
   if (settings.alignment !== false) {
@@ -764,15 +916,16 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
           type: 'alignment',
           p1: { x: Math.min(target.x, rp.x) - 1.5, y: rp.y },
           p2: { x: Math.max(target.x, rp.x) + 1.5, y: rp.y },
+          referencePoint: rp,
           label: 'Fluchtlinie',
-          color: '#6366f1',
+          color: '#8b5cf6', // Purple / Violett
           dash: [4, 4],
         };
         candidates.push({
           point: snappedPt,
           type: 'alignment',
           distancePx: diffY * zoom,
-          priority: 2.6,
+          priority: 2.5,
           label: 'Ausrichtung (Horizontal)',
           symbol: '┄',
           guideLine,
@@ -788,15 +941,16 @@ export function calculateSmartSnap(ctx: SmartSnapContext): SmartSnapResult {
           type: 'alignment',
           p1: { x: rp.x, y: Math.min(target.y, rp.y) - 1.5 },
           p2: { x: rp.x, y: Math.max(target.y, rp.y) + 1.5 },
+          referencePoint: rp,
           label: 'Fluchtlinie',
-          color: '#6366f1',
+          color: '#8b5cf6', // Purple / Violett
           dash: [4, 4],
         };
         candidates.push({
           point: snappedPt,
           type: 'alignment',
           distancePx: diffX * zoom,
-          priority: 2.6,
+          priority: 2.5,
           label: 'Ausrichtung (Vertikal)',
           symbol: '┆',
           guideLine,

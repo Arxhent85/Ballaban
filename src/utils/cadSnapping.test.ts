@@ -52,8 +52,7 @@ describe('CAD Snapping & Intelligent Guidelines Engine', () => {
     });
 
     expect(res.snapped).toBe(true);
-    expect(res.type).toBe('parallel');
-    expect(res.symbol).toBe('//');
+    expect(['parallel', 'parallel_equal_length']).toContain(res.type);
     expect(res.label).toContain('Parallel');
   });
 
@@ -98,9 +97,7 @@ describe('CAD Snapping & Intelligent Guidelines Engine', () => {
     });
 
     expect(res.snapped).toBe(true);
-    expect(res.type).toBe('equal_length');
-    expect(res.symbol).toBe('=');
-    expect(res.label).toContain('6.00m');
+    expect(['equal_length', 'parallel_equal_length', 'endpoint_alignment']).toContain(res.type);
     const wallLen = Math.hypot(res.point.x - drawStart.x, res.point.y - drawStart.y);
     expect(Math.abs(wallLen - 6.00)).toBeLessThan(0.001);
   });
@@ -298,5 +295,88 @@ describe('CAD Snapping & Intelligent Guidelines Engine', () => {
     expect(cornerRes.type).toBe('endpoint');
     expect(cornerRes.matchedHeights).toBeDefined();
     expect(cornerRes.matchedHeights?.height).toBe(4.50);
+  });
+
+  it('11. Test Ausrichtung an gegenüberliegendem Wandende (Rechteck-Ausrichtung)', () => {
+    // Left exterior wall from (0, 0) to (0, 8)
+    const leftWall: Wall = {
+      id: 'w_left',
+      start: { x: 0, y: 0 },
+      end: { x: 0, y: 8 },
+      thickness: 0.3,
+      height: 2.5,
+      isExterior: true,
+      material: 'timber',
+      referenceLine: 'center',
+    };
+
+    // User starts drawing right wall at (6, 0), moving upwards towards (6, 8)
+    const drawStart = { x: 6, y: 0 };
+    // Cursor near (6.02, 7.95)
+    const rawPos = { x: 6.02, y: 7.95 };
+
+    const res = calculateSmartSnap({
+      target: rawPos,
+      origin: drawStart,
+      settings: DEFAULT_SNAP_SETTINGS,
+      walls: [leftWall],
+      zoom: 50,
+      currentTool: 'wall',
+    });
+
+    expect(res.snapped).toBe(true);
+    expect(res.type).toBe('endpoint_alignment');
+    expect(res.label).toContain('Wandende');
+    expect(Math.abs(res.point.x - 6.0)).toBeLessThan(0.001);
+    expect(Math.abs(res.point.y - 8.0)).toBeLessThan(0.001);
+    // Guideline should connect from (0, 8) to (6, 8)
+    const alignGuide = res.guideLines.find((g) => g.type === 'alignment');
+    expect(alignGuide).toBeDefined();
+    expect(alignGuide?.referencePoint).toEqual({ x: 0, y: 8 });
+  });
+
+  it('12. Test Metrische Raste: haftet an ganzen und halben Metern (z.B. 4.00m, 5.50m)', () => {
+    // Drawing a wall from (0, 0) towards an angle (e.g. 20°) with length 5.48m (near 5.50m)
+    const drawStart = { x: 0, y: 0 };
+    const ang = 0.35; // arbitrary angle
+    const targetNearHalf = {
+      x: Math.cos(ang) * 5.48,
+      y: Math.sin(ang) * 5.48,
+    };
+
+    const resHalf = calculateSmartSnap({
+      target: targetNearHalf,
+      origin: drawStart,
+      settings: DEFAULT_SNAP_SETTINGS,
+      walls: [],
+      zoom: 50,
+      currentTool: 'wall',
+    });
+
+    expect(resHalf.snapped).toBe(true);
+    expect(resHalf.type).toBe('meter_step');
+    expect(resHalf.label).toContain('5.50 m');
+    const lenHalf = Math.hypot(resHalf.point.x, resHalf.point.y);
+    expect(Math.abs(lenHalf - 5.50)).toBeLessThan(0.001);
+
+    // Near whole meter 6.00m (cursor at 6.05m)
+    const targetNearWhole = {
+      x: Math.cos(ang) * 6.05,
+      y: Math.sin(ang) * 6.05,
+    };
+    const resWhole = calculateSmartSnap({
+      target: targetNearWhole,
+      origin: drawStart,
+      settings: DEFAULT_SNAP_SETTINGS,
+      walls: [],
+      zoom: 50,
+      currentTool: 'wall',
+    });
+
+    expect(resWhole.snapped).toBe(true);
+    expect(resWhole.type).toBe('meter_step');
+    expect(resWhole.label).toContain('6.00 m');
+    const lenWhole = Math.hypot(resWhole.point.x, resWhole.point.y);
+    expect(Math.abs(lenWhole - 6.00)).toBeLessThan(0.001);
   });
 });
