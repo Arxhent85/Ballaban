@@ -65,6 +65,8 @@ interface SettingsDialogProps {
   isDark?: boolean;
   onToggleTheme?: () => void;
   onSetTheme?: (dark: boolean) => void;
+  canvasBg?: 'cream' | 'white' | 'dark';
+  onCanvasBgChange?: (bg: 'cream' | 'white' | 'dark') => void;
   isInspectorCollapsed?: boolean;
   onToggleInspector?: () => void;
 }
@@ -86,6 +88,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   isDark = false,
   onToggleTheme,
   onSetTheme,
+  canvasBg = 'cream',
+  onCanvasBgChange,
   isInspectorCollapsed = false,
   onToggleInspector,
 }) => {
@@ -372,6 +376,96 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                       Schonend für die Augen bei längeren CAD-Sitzungen, kontrastreiches 3D-Studio.
                     </span>
                   </button>
+                </div>
+
+                {/* Canvas Background / Zeichenbereich Arbeitsfläche */}
+                <div className="pt-2.5 border-t border-slate-200 dark:border-slate-700/60 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Arbeitsfläche / Zeichenbereich (Hintergrund)</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400">
+                      {canvasBg === 'cream' ? '📜 Warmes Zeichenpapier' : canvasBg === 'white' ? '☀️ Reinweiß' : '🌙 Dunkel'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Wählen Sie den perfekten Farbton für den 2D-Zeichenbereich: Sanftes Creme verhindert Blendung und schont die Augen optimal.
+                  </p>
+
+                  <div className="grid grid-cols-3 gap-2.5 pt-1">
+                    {/* Creme / Warmes Zeichenpapier */}
+                    <button
+                      type="button"
+                      onClick={() => onCanvasBgChange?.('cream')}
+                      className={`p-2.5 rounded-xl border flex flex-col gap-1.5 text-left transition-all cursor-pointer ${
+                        canvasBg === 'cream'
+                          ? 'bg-[#f5f1e9] border-amber-600 ring-2 ring-amber-500/30 text-stone-900 shadow-xs'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 rounded-full border border-stone-300 bg-[#f5f1e9] shadow-inner" />
+                          <span className="font-bold text-xs">Creme-Papier</span>
+                        </div>
+                        {canvasBg === 'cream' && (
+                          <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-stone-600 dark:text-stone-400 leading-tight">
+                        Warmes Zeichenpapier, blendfrei & augenschonend.
+                      </span>
+                    </button>
+
+                    {/* Reinweiß */}
+                    <button
+                      type="button"
+                      onClick={() => onCanvasBgChange?.('white')}
+                      className={`p-2.5 rounded-xl border flex flex-col gap-1.5 text-left transition-all cursor-pointer ${
+                        canvasBg === 'white'
+                          ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/30 text-slate-900 dark:text-white shadow-xs'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 rounded-full border border-slate-300 bg-white shadow-inner" />
+                          <span className="font-bold text-xs">Reinweiß</span>
+                        </div>
+                        {canvasBg === 'white' && (
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                        Klassisch neutraler weißer Hintergrund.
+                      </span>
+                    </button>
+
+                    {/* Dunkel */}
+                    <button
+                      type="button"
+                      onClick={() => onCanvasBgChange?.('dark')}
+                      className={`p-2.5 rounded-xl border flex flex-col gap-1.5 text-left transition-all cursor-pointer ${
+                        canvasBg === 'dark'
+                          ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/30 text-slate-900 dark:text-white shadow-xs'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 rounded-full border border-zinc-700 bg-[#141416] shadow-inner" />
+                          <span className="font-bold text-xs">Anthrazit</span>
+                        </div>
+                        {canvasBg === 'dark' && (
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                        Dunkles CAD-Studio mit leuchtenden Vektoren.
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

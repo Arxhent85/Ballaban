@@ -145,6 +145,7 @@ interface CadCanvas2DProps {
   floorsCount?: number;
   selectedColor: string;
   isDark: boolean;
+  canvasBg?: 'cream' | 'white' | 'dark';
   onMoveSelection?: (dx: number, dy: number, specificIds?: string[]) => void;
   onCommitProjectChange?: () => void;
   onDeleteSelected?: (idsToDelete?: string[]) => void;
@@ -228,6 +229,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   floorsCount = 1,
   selectedColor,
   isDark,
+  canvasBg = 'cream',
   onMoveSelection,
   onCommitProjectChange,
   onDeleteSelected,
@@ -829,8 +831,13 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
 
-    // Canvas Background: warm architectural bone-white or deep charcoal
-    ctx.fillStyle = isDark ? '#141416' : '#fdfcfb';
+    // Canvas Theme & Background setup
+    // canvasBg defaults to 'cream' (warm architectural drafting paper, glare-free)
+    const isDark = canvasBg === 'dark';
+    const canvasBgColor = canvasBg === 'cream' ? '#f5f1e9' : canvasBg === 'white' ? '#ffffff' : '#141416';
+
+    // Canvas Background
+    ctx.fillStyle = canvasBgColor;
     ctx.fillRect(0, 0, width, height);
 
     // Subtle Architectural Grid
@@ -839,8 +846,12 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       const startX = ((panOffset.x % gSize) + gSize) % gSize;
       const startY = ((panOffset.y % gSize) + gSize) % gSize;
 
-      // Minor grid: warm subtle stone
-      ctx.strokeStyle = isDark ? 'rgba(63, 63, 70, 0.4)' : 'rgba(231, 229, 228, 0.7)';
+      // Minor grid: warm subtle stone / drafting lines
+      ctx.strokeStyle = canvasBg === 'cream'
+        ? 'rgba(210, 202, 188, 0.75)'
+        : isDark
+        ? 'rgba(63, 63, 70, 0.4)'
+        : 'rgba(231, 229, 228, 0.7)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let x = startX; x < width; x += gSize) {
@@ -858,7 +869,11 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       const majorStartX = ((panOffset.x % majorSize) + majorSize) % majorSize;
       const majorStartY = ((panOffset.y % majorSize) + majorSize) % majorSize;
 
-      ctx.strokeStyle = isDark ? 'rgba(82, 82, 91, 0.6)' : 'rgba(214, 211, 209, 0.85)';
+      ctx.strokeStyle = canvasBg === 'cream'
+        ? 'rgba(175, 163, 145, 0.85)'
+        : isDark
+        ? 'rgba(82, 82, 91, 0.6)'
+        : 'rgba(214, 211, 209, 0.85)';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       for (let x = majorStartX; x < width; x += majorSize) {
@@ -880,7 +895,11 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
     // Subtle shading for area outside the primary positive workspace (x < 0 or y < 0)
     if (originX > 0 || originY > 0) {
-      ctx.fillStyle = isDark ? 'rgba(0, 0, 0, 0.25)' : 'rgba(241, 245, 249, 0.55)';
+      ctx.fillStyle = canvasBg === 'cream'
+        ? 'rgba(224, 216, 202, 0.45)'
+        : isDark
+        ? 'rgba(0, 0, 0, 0.25)'
+        : 'rgba(241, 245, 249, 0.55)';
       if (originX > 0) ctx.fillRect(0, 0, originX, height);
       if (originY > 0) ctx.fillRect(originX, 0, width - originX, originY);
     }
@@ -1586,7 +1605,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         const sp2 = worldToScreen(p2);
 
         // Clear opening in wall
-        ctx.strokeStyle = isDark ? '#141416' : '#fdfcfb';
+        ctx.strokeStyle = canvasBgColor;
         ctx.lineWidth = (wall.thickness || 0.3) * zoom + 1;
         ctx.beginPath();
         ctx.moveTo(sp1.x, sp1.y);
@@ -1761,7 +1780,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         const sp2 = worldToScreen(p2);
 
         // Clear opening in wall
-        ctx.strokeStyle = isDark ? '#141416' : '#fdfcfb';
+        ctx.strokeStyle = canvasBgColor;
         ctx.lineWidth = (wall.thickness || 0.3) * zoom;
         ctx.beginPath();
         ctx.moveTo(sp1.x, sp1.y);
@@ -3089,6 +3108,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     unit,
     plot,
     isDark,
+    canvasBg,
     worldToScreen,
     isPointerDown,
     precisionMode,
@@ -4834,8 +4854,11 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
   return (
     <div
       ref={containerRef}
-      style={{ cursor: cursorStyle }}
-      className="relative flex-1 h-full w-full bg-stone-50 dark:bg-stone-950 overflow-hidden outline-none select-none"
+      style={{
+        cursor: cursorStyle,
+        backgroundColor: canvasBg === 'cream' ? '#f5f1e9' : canvasBg === 'white' ? '#ffffff' : '#141416',
+      }}
+      className="relative flex-1 h-full w-full overflow-hidden outline-none select-none"
     >
       <canvas
         ref={canvasRef}
@@ -4861,6 +4884,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         onRemoveGuideLine={(id) => onRemoveGuideLine?.(id)}
         onClearGuideLines={() => onClearGuideLines?.()}
         isDark={isDark}
+        canvasBg={canvasBg}
         enabled={showRulers}
         onToggleEnabled={() => onToggleRulers ? onToggleRulers() : setInternalShowRulers(!internalShowRulers)}
       />

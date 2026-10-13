@@ -27,6 +27,7 @@ interface CadRulersAndGuidesProps {
   onRemoveGuideLine: (id: string) => void;
   onClearGuideLines: () => void;
   isDark?: boolean;
+  canvasBg?: 'cream' | 'white' | 'dark';
   enabled?: boolean;
   onToggleEnabled?: () => void;
 }
@@ -44,6 +45,7 @@ export const CadRulersAndGuides: React.FC<CadRulersAndGuidesProps> = ({
   onRemoveGuideLine,
   onClearGuideLines,
   isDark = false,
+  canvasBg = 'cream',
   enabled = true,
   onToggleEnabled,
 }) => {
@@ -192,11 +194,14 @@ export const CadRulersAndGuides: React.FC<CadRulersAndGuidesProps> = ({
 
   if (!enabled) return null;
 
-  const rulerBg = isDark ? '#18181b' : '#f8fafc';
-  const rulerBorder = isDark ? '#27272a' : '#e2e8f0';
-  const tickColor = isDark ? '#71717a' : '#94a3b8';
-  const majorTickColor = isDark ? '#d4d4d8' : '#475569';
-  const textColor = isDark ? '#a1a1aa' : '#64748b';
+  const isCream = canvasBg === 'cream';
+  const isDarkRuler = canvasBg === 'dark' || (!canvasBg && isDark);
+
+  const rulerBg = isCream ? '#ece5d8' : isDarkRuler ? '#18181b' : '#f8fafc';
+  const rulerBorder = isCream ? '#d6cbba' : isDarkRuler ? '#27272a' : '#e2e8f0';
+  const tickColor = isCream ? '#9c8e79' : isDarkRuler ? '#71717a' : '#94a3b8';
+  const majorTickColor = isCream ? '#5c503e' : isDarkRuler ? '#d4d4d8' : '#475569';
+  const textColor = isCream ? '#6b5d49' : isDarkRuler ? '#a1a1aa' : '#64748b';
   const cursorIndicatorColor = '#f59e0b'; // amber-500
 
   const cursorScreenX = cursorPos ? cursorPos.x * zoom + panOffset.x : null;

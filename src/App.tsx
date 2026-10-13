@@ -129,6 +129,23 @@ export default function App() {
     } catch {}
   }, [isDark]);
 
+  // Canvas Background state: 'cream' (warm architectural drafting paper, glare-free per user request), 'white', or 'dark'
+  const [canvasBg, setCanvasBg] = useState<'cream' | 'white' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('cad_canvas_bg');
+      if (saved === 'cream' || saved === 'white' || saved === 'dark') {
+        return saved;
+      }
+    } catch {}
+    return 'cream';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cad_canvas_bg', canvasBg);
+    } catch {}
+  }, [canvasBg]);
+
   // Inspector collapsed state (for desktop workspace expansion)
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(() => {
     try {
@@ -2185,7 +2202,12 @@ export default function App() {
         />
 
         {/* Center Viewport */}
-        <main className="flex-1 h-full overflow-hidden flex relative">
+        <main
+          className="flex-1 h-full overflow-hidden flex relative"
+          style={{
+            backgroundColor: canvasBg === 'cream' ? '#f5f1e9' : canvasBg === 'white' ? '#ffffff' : '#141416',
+          }}
+        >
           {/* VIEW: 2D FLOOR PLAN */}
           {viewMode === '2d' && (
             <CadCanvas2D
@@ -2227,6 +2249,7 @@ export default function App() {
               floorsCount={project.floors.length}
               selectedColor={selectedColor}
               isDark={isDark}
+              canvasBg={canvasBg}
               onMoveSelection={handleMoveSelection}
               onCommitProjectChange={handleCommitProjectChange}
               onDeleteSelected={handleDeleteSelected}
@@ -2328,6 +2351,7 @@ export default function App() {
                   floorsCount={project.floors.length}
                   selectedColor={selectedColor}
                   isDark={isDark}
+                  canvasBg={canvasBg}
                   onMoveSelection={handleMoveSelection}
                   onCommitProjectChange={handleCommitProjectChange}
                   onDeleteSelected={handleDeleteSelected}
@@ -2615,6 +2639,8 @@ export default function App() {
         isDark={isDark}
         onToggleTheme={() => setIsDark((prev) => !prev)}
         onSetTheme={(dark) => setIsDark(dark)}
+        canvasBg={canvasBg}
+        onCanvasBgChange={setCanvasBg}
         isInspectorCollapsed={isInspectorCollapsed}
         onToggleInspector={handleToggleInspector}
       />
