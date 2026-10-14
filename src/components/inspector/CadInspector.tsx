@@ -1203,9 +1203,17 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                       type="number"
                       step="0.05"
                       min="0"
-                      max="1.5"
-                      value={selectedRoof.overhang}
-                      onChange={(e) => onUpdateRoof({ ...selectedRoof, overhang: parseFloat(e.target.value) || 0 })}
+                      max="2.0"
+                      value={selectedRoof.overhang ?? selectedRoof.overhangEaves ?? 0.40}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        onUpdateRoof({
+                          ...selectedRoof,
+                          overhang: val,
+                          overhangEaves: selectedRoof.isOverhangLinked !== false ? val : selectedRoof.overhangEaves,
+                          overhangGable: selectedRoof.isOverhangLinked !== false ? val : selectedRoof.overhangGable,
+                        });
+                      }}
                       className="w-18 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono font-semibold"
                     />
                     <span className="text-stone-400 font-mono">m</span>

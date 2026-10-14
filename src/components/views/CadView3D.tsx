@@ -1068,16 +1068,26 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         clippingPlanes: enableClip ? [clipPlaneRef.current] : [],
       });
 
-      const overhang = rf.overhang ?? 0.40;
+      const isLinked = rf.isOverhangLinked ?? true;
+      const defaultOverhang = rf.overhang ?? rf.overhangEaves ?? 0.40;
+      const eavesOverhang = rf.overhangEaves ?? defaultOverhang;
+      const gableOverhang = rf.overhangGable ?? defaultOverhang;
+
+      // When ridge is horizontal: eaves run along front/back (Z), gables run along left/right (X)
+      // When ridge is vertical: eaves run along left/right (X), gables run along front/back (Z)
+      const isRidgeHoriz = (rf.ridgeDirection ?? 'horizontal') === 'horizontal';
+      const overhangX = isLinked ? defaultOverhang : (isRidgeHoriz ? gableOverhang : eavesOverhang);
+      const overhangZ = isLinked ? defaultOverhang : (isRidgeHoriz ? eavesOverhang : gableOverhang);
+
       const bMinX = rf.customBounds?.minX ?? buildingBounds.minX;
       const bMaxX = rf.customBounds?.maxX ?? buildingBounds.maxX;
       const bMinZ = rf.customBounds?.minY ?? buildingBounds.minZ;
       const bMaxZ = rf.customBounds?.maxY ?? buildingBounds.maxZ;
 
-      const rMinX = bMinX - overhang;
-      const rMaxX = bMaxX + overhang;
-      const rMinZ = bMinZ - overhang;
-      const rMaxZ = bMaxZ + overhang;
+      const rMinX = bMinX - overhangX;
+      const rMaxX = bMaxX + overhangX;
+      const rMinZ = bMinZ - overhangZ;
+      const rMaxZ = bMaxZ + overhangZ;
 
       const rW = rMaxX - rMinX;
       const rD = rMaxZ - rMinZ;

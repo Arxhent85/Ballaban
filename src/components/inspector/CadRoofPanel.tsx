@@ -115,14 +115,23 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
   const currentRoof = useMemo<Roof>(() => {
     if (roof) {
       const autoFitted = createAutoFittedRoof(walls, roof);
+      const isLinked = roof.isOverhangLinked ?? true;
+      const masterOverhang = roof.overhang !== undefined
+        ? roof.overhang
+        : (roof.overhangEaves !== undefined ? roof.overhangEaves : (autoFitted.overhang ?? 0.40));
+      const eaves = isLinked ? masterOverhang : (roof.overhangEaves ?? masterOverhang);
+      const gable = isLinked ? masterOverhang : (roof.overhangGable ?? masterOverhang);
+
       return {
         ...autoFitted,
         ...roof,
         pitchDegrees: roof.pitchDegrees ?? autoFitted.pitchDegrees,
         height: roof.height ?? autoFitted.height,
         baseHeight: roof.baseHeight ?? (wallAnalysis.hasSlope ? wallAnalysis.minHeight : autoFitted.baseHeight),
-        overhangEaves: roof.overhangEaves ?? roof.overhang ?? 0.40,
-        overhangGable: roof.overhangGable ?? roof.overhang ?? 0.40,
+        overhang: masterOverhang,
+        overhangEaves: eaves,
+        overhangGable: gable,
+        isOverhangLinked: isLinked,
         accessories: roof.accessories ?? [],
       };
     }
@@ -133,6 +142,35 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
   const updateField = <K extends keyof Roof>(key: K, value: Roof[K]) => {
     const updated = { ...currentRoof, [key]: value };
     onLiveUpdateRoof(updated);
+  };
+
+  // Helper to trigger multiple live updates atomically
+  const updateFields = (patch: Partial<Roof>) => {
+    const updated = { ...currentRoof, ...patch };
+    onLiveUpdateRoof(updated);
+  };
+
+  // Dedicated atomic overhang handler
+  const handleOverhangChange = (newVal: number, target: 'all' | 'eaves' | 'gable' = 'all') => {
+    const safeVal = Math.max(0, Math.min(2.5, Math.round(newVal * 100) / 100));
+    const isLinked = currentRoof.isOverhangLinked ?? true;
+
+    if (target === 'all' || isLinked) {
+      updateFields({
+        overhang: safeVal,
+        overhangEaves: safeVal,
+        overhangGable: safeVal,
+      });
+    } else if (target === 'eaves') {
+      updateFields({
+        overhangEaves: safeVal,
+        overhang: safeVal,
+      });
+    } else {
+      updateFields({
+        overhangGable: safeVal,
+      });
+    }
   };
 
   const handlePitchChange = (degrees: number) => {
@@ -751,8 +789,22 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
                   Dachüberstand:
                 </span>
                 <button
-                  onClick={() => updateField('isOverhangLinked', !(currentRoof.isOverhangLinked ?? true))}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300 cursor-pointer"
+                  type="button"
+                  onClick={() => {
+                    const nextLinked = !(currentRoof.isOverhangLinked ?? true);
+                    if (nextLinked) {
+                      const unifiedVal = currentRoof.overhangEaves ?? currentRoof.overhang ?? 0.40;
+                      updateFields({
+                        isOverhangLinked: true,
+                        overhang: unifiedVal,
+                        overhangEaves: unifiedVal,
+                        overhangGable: unifiedVal,
+                      });
+                    } else {
+                      updateField('isOverhangLinked', false);
+                    }
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300 cursor-pointer hover:bg-stone-200 dark:hover:bg-stone-750 transition-colors"
                 >
                   {(currentRoof.isOverhangLinked ?? true) ? (
                     <>
@@ -768,74 +820,146 @@ export const CadRoofPanel: React.FC<CadRoofPanelProps> = ({
                 </button>
               </div>
 
-              {/* Traufüberstand */}
-              <div className="flex items-center justify-between gap-3 bg-stone-50 dark:bg-stone-850 p-2.5 rounded-2xl border border-stone-200/80 dark:border-stone-800">
-                <div className="text-xs">
-                  <span className="font-bold text-stone-800 dark:text-stone-200 block">Traufe (Längs)</span>
-                  <span className="text-[10px] text-stone-400">Regenschutz Außenwand</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    step="0.05"
-                    min="0"
-                    max="1.5"
-                    value={currentRoof.overhangEaves ?? currentRoof.overhang}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
-                      updateField('overhangEaves', val);
-                      if (currentRoof.isOverhangLinked ?? true) {
-                        updateField('overhangGable', val);
-                        updateField('overhang', val);
-                      }
-                    }}
-                    className="w-16 h-8 rounded-lg bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-center font-bold text-xs"
-                  />
-                  <span className="text-xs text-stone-400">m</span>
-                </div>
-              </div>
-
-              {/* Ortgangüberstand */}
-              {!(currentRoof.isOverhangLinked ?? true) && (
-                <div className="flex items-center justify-between gap-3 bg-stone-50 dark:bg-stone-850 p-2.5 rounded-2xl border border-stone-200/80 dark:border-stone-800 animate-in fade-in">
-                  <div className="text-xs">
-                    <span className="font-bold text-stone-800 dark:text-stone-200 block">Ortgang (Giebel)</span>
-                    <span className="text-[10px] text-stone-400">Giebelüberstand</span>
+              {/* Traufüberstand / Hauptüberstand */}
+              <div className="flex flex-col gap-2 bg-stone-50 dark:bg-stone-850 p-3 rounded-2xl border border-stone-200/80 dark:border-stone-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-xs text-stone-800 dark:text-stone-200 block">
+                      {(currentRoof.isOverhangLinked ?? true) ? 'Dachüberstand (Rundum)' : 'Traufe (Längs)'}
+                    </span>
+                    <span className="text-[10px] text-stone-400">
+                      {(currentRoof.isOverhangLinked ?? true) ? 'Regenschutz Außenwand rundum' : 'Regenschutz Außenwand'}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleOverhangChange(Math.max(0, Math.round(((currentRoof.overhangEaves ?? currentRoof.overhang ?? 0.40) - 0.05) * 100) / 100), 'eaves')}
+                      className="w-7 h-7 rounded-lg bg-stone-200 dark:bg-stone-750 hover:bg-stone-300 dark:hover:bg-stone-700 flex items-center justify-center font-bold text-stone-700 dark:text-stone-200 text-sm cursor-pointer select-none"
+                      title="-5 cm"
+                    >
+                      -
+                    </button>
                     <input
                       type="number"
                       step="0.05"
                       min="0"
-                      max="1.5"
-                      value={currentRoof.overhangGable ?? currentRoof.overhang}
-                      onChange={(e) => updateField('overhangGable', parseFloat(e.target.value) || 0)}
-                      className="w-16 h-8 rounded-lg bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-center font-bold text-xs"
+                      max="2.0"
+                      value={currentRoof.overhangEaves ?? currentRoof.overhang ?? 0.40}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value.replace(',', '.'));
+                        if (!isNaN(val)) {
+                          handleOverhangChange(val, 'eaves');
+                        }
+                      }}
+                      className="w-18 h-8 rounded-lg bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-center font-bold text-xs text-stone-900 dark:text-white"
                     />
-                    <span className="text-xs text-stone-400">m</span>
+                    <span className="text-xs font-bold text-stone-400">m</span>
+                    <button
+                      type="button"
+                      onClick={() => handleOverhangChange(Math.min(2.0, Math.round(((currentRoof.overhangEaves ?? currentRoof.overhang ?? 0.40) + 0.05) * 100) / 100), 'eaves')}
+                      className="w-7 h-7 rounded-lg bg-stone-200 dark:bg-stone-750 hover:bg-stone-300 dark:hover:bg-stone-700 flex items-center justify-center font-bold text-stone-700 dark:text-stone-200 text-sm cursor-pointer select-none"
+                      title="+5 cm"
+                    >
+                      +
+                    </button>
                   </div>
+                </div>
+
+                {/* Range Slider for Traufe */}
+                <input
+                  type="range"
+                  min="0"
+                  max="1.20"
+                  step="0.05"
+                  value={currentRoof.overhangEaves ?? currentRoof.overhang ?? 0.40}
+                  onChange={(e) => handleOverhangChange(parseFloat(e.target.value), 'eaves')}
+                  className="w-full h-2.5 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+              </div>
+
+              {/* Ortgangüberstand */}
+              {!(currentRoof.isOverhangLinked ?? true) && (
+                <div className="flex flex-col gap-2 bg-stone-50 dark:bg-stone-850 p-3 rounded-2xl border border-stone-200/80 dark:border-stone-800 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-xs text-stone-800 dark:text-stone-200 block">Ortgang (Giebel)</span>
+                      <span className="text-[10px] text-stone-400">Giebelüberstand</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOverhangChange(Math.max(0, Math.round(((currentRoof.overhangGable ?? currentRoof.overhang ?? 0.40) - 0.05) * 100) / 100), 'gable')}
+                        className="w-7 h-7 rounded-lg bg-stone-200 dark:bg-stone-750 hover:bg-stone-300 dark:hover:bg-stone-700 flex items-center justify-center font-bold text-stone-700 dark:text-stone-200 text-sm cursor-pointer select-none"
+                        title="-5 cm"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="2.0"
+                        value={currentRoof.overhangGable ?? currentRoof.overhang ?? 0.40}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value.replace(',', '.'));
+                          if (!isNaN(val)) {
+                            handleOverhangChange(val, 'gable');
+                          }
+                        }}
+                        className="w-18 h-8 rounded-lg bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-center font-bold text-xs text-stone-900 dark:text-white"
+                      />
+                      <span className="text-xs font-bold text-stone-400">m</span>
+                      <button
+                        type="button"
+                        onClick={() => handleOverhangChange(Math.min(2.0, Math.round(((currentRoof.overhangGable ?? currentRoof.overhang ?? 0.40) + 0.05) * 100) / 100), 'gable')}
+                        className="w-7 h-7 rounded-lg bg-stone-200 dark:bg-stone-750 hover:bg-stone-300 dark:hover:bg-stone-700 flex items-center justify-center font-bold text-stone-700 dark:text-stone-200 text-sm cursor-pointer select-none"
+                        title="+5 cm"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Range Slider for Ortgang */}
+                  <input
+                    type="range"
+                    min="0"
+                    max="1.20"
+                    step="0.05"
+                    value={currentRoof.overhangGable ?? currentRoof.overhang ?? 0.40}
+                    onChange={(e) => handleOverhangChange(parseFloat(e.target.value), 'gable')}
+                    className="w-full h-2.5 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  />
                 </div>
               )}
 
               {/* Quick Overhang Chips */}
               <div className="flex items-center gap-2">
                 {[
-                  { val: 0, label: '0 cm (Bündig)' },
+                  { val: 0.0, label: '0 cm (Bündig)' },
+                  { val: 0.2, label: '20 cm' },
                   { val: 0.4, label: '40 cm (Standard)' },
+                  { val: 0.6, label: '60 cm' },
                   { val: 0.8, label: '80 cm (Vordach)' },
-                ].map((item) => (
-                  <button
-                    key={item.val}
-                    onClick={() => {
-                      updateField('overhang', item.val);
-                      updateField('overhangEaves', item.val);
-                      updateField('overhangGable', item.val);
-                    }}
-                    className="flex-1 h-8 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-750 text-[10px] font-bold text-stone-600 dark:text-stone-300 cursor-pointer"
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                ].map((item) => {
+                  const currentVal = currentRoof.overhangEaves ?? currentRoof.overhang ?? 0.40;
+                  const isActive = Math.abs(currentVal - item.val) < 0.02;
+                  return (
+                    <button
+                      key={item.val}
+                      type="button"
+                      onClick={() => handleOverhangChange(item.val, 'all')}
+                      className={`flex-1 h-8 rounded-xl text-[10px] font-bold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-500/30'
+                          : 'bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-750 text-stone-600 dark:text-stone-300'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

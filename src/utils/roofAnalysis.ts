@@ -277,6 +277,12 @@ export function createAutoFittedRoof(
     height = Math.max(0.5, Math.round((span / 2) * Math.tan((pitchDegrees * Math.PI) / 180) * 100) / 100);
   }
 
+  const isLinked = existingRoof?.isOverhangLinked ?? true;
+  const defOverhang = type === 'flat' ? 0.15 : 0.40;
+  const masterOverhang = existingRoof?.overhang ?? existingRoof?.overhangEaves ?? defOverhang;
+  const eaves = isLinked ? masterOverhang : (existingRoof?.overhangEaves ?? masterOverhang);
+  const gable = isLinked ? masterOverhang : (existingRoof?.overhangGable ?? masterOverhang);
+
   return {
     id: existingRoof?.id || 'roof_' + Date.now(),
     type,
@@ -284,10 +290,10 @@ export function createAutoFittedRoof(
     pitchLeft: pitchDegrees,
     pitchRight: pitchDegrees,
     isPitchLinked: true,
-    overhang: existingRoof?.overhang ?? (type === 'flat' ? 0.15 : 0.40),
-    overhangEaves: existingRoof?.overhangEaves ?? (type === 'flat' ? 0.15 : 0.40),
-    overhangGable: existingRoof?.overhangGable ?? (type === 'flat' ? 0.15 : 0.40),
-    isOverhangLinked: existingRoof?.isOverhangLinked ?? true,
+    overhang: masterOverhang,
+    overhangEaves: eaves,
+    overhangGable: gable,
+    isOverhangLinked: isLinked,
     ridgeDirection,
     slopeDirection,
     ridgeOffset: existingRoof?.ridgeOffset ?? 0,

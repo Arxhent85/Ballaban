@@ -146,4 +146,25 @@ describe('Roof Analysis & Wall Slope Auto-Fit Engine', () => {
     expect(roof.type).toBe('flat');
     expect(roof.baseHeight).toBeCloseTo(2.6, 2);
   });
+
+  it('4. Preserves custom overhang and synchronizes eaves/gable when linked', () => {
+    const walls: Wall[] = [
+      { id: 'w1', start: { x: 0, y: 0 }, end: { x: 8, y: 0 }, thickness: 0.3, height: 2.6, endHeight: 2.6, isExterior: true },
+      { id: 'w2', start: { x: 8, y: 0 }, end: { x: 8, y: 6 }, thickness: 0.3, height: 2.6, endHeight: 2.6, isExterior: true },
+      { id: 'w3', start: { x: 8, y: 6 }, end: { x: 0, y: 6 }, thickness: 0.3, height: 2.6, endHeight: 2.6, isExterior: true },
+      { id: 'w4', start: { x: 0, y: 6 }, end: { x: 0, y: 0 }, thickness: 0.3, height: 2.6, endHeight: 2.6, isExterior: true },
+    ];
+
+    // If an existing roof has custom overhang 0.80m
+    const existing = {
+      type: 'gable' as const,
+      overhang: 0.80,
+      isOverhangLinked: true,
+    };
+
+    const fitted = createAutoFittedRoof(walls, existing);
+    expect(fitted.overhang).toBe(0.80);
+    expect(fitted.overhangEaves).toBe(0.80);
+    expect(fitted.overhangGable).toBe(0.80);
+  });
 });
