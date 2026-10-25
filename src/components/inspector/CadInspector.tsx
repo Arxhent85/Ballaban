@@ -1204,14 +1204,15 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                       step="0.05"
                       min="0"
                       max="2.0"
-                      value={selectedRoof.overhang ?? selectedRoof.overhangEaves ?? 0.40}
+                      value={(selectedRoof.overhang !== undefined ? selectedRoof.overhang : selectedRoof.overhangEaves) ?? 0.40}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
+                        const val = parseFloat(e.target.value);
+                        const safeVal = isNaN(val) ? 0 : Math.max(0, Math.min(2.5, Math.round(val * 100) / 100));
                         onUpdateRoof({
                           ...selectedRoof,
-                          overhang: val,
-                          overhangEaves: selectedRoof.isOverhangLinked !== false ? val : selectedRoof.overhangEaves,
-                          overhangGable: selectedRoof.isOverhangLinked !== false ? val : selectedRoof.overhangGable,
+                          overhang: safeVal,
+                          overhangEaves: selectedRoof.isOverhangLinked !== false ? safeVal : (selectedRoof.overhangEaves ?? safeVal),
+                          overhangGable: selectedRoof.isOverhangLinked !== false ? safeVal : (selectedRoof.overhangGable ?? safeVal),
                         });
                       }}
                       className="w-18 bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded px-2 py-0.5 text-right font-mono font-semibold"
@@ -1484,7 +1485,7 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                   </div>
                   <p className="text-[11px] text-stone-600 dark:text-stone-400">
                     {roofs.length > 0
-                      ? `Neigung: ${roofs[0].pitchDegrees}°, Überstand: ${(roofs[0].overhang || 0.4).toFixed(2)}m, Material: ${roofs[0].material || 'tiles_red'}`
+                      ? `Neigung: ${roofs[0].pitchDegrees}°, Überstand: ${((roofs[0].overhang !== undefined ? roofs[0].overhang : roofs[0].overhangEaves) ?? 0.40).toFixed(2)}m, Material: ${roofs[0].material || 'tiles_red'}`
                       : 'Erstelle ein passgenaues Sattel-, Pult-, Walm-, Flach- oder Zeltdach direkt auf die Außenwände deines Hauses.'}
                   </p>
                   {onOpenRoofModal && (

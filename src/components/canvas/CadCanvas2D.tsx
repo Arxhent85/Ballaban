@@ -2160,6 +2160,155 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       ctx.lineWidth = 2;
       ctx.stroke();
 
+      // 5. BIMCraft-style Dynamic Graduated Ruler along wall segment
+      const liveWorldLen = Math.hypot(currentCursorWorld.x - wallStartPoint.x, currentCursorWorld.y - wallStartPoint.y);
+      if (liveWorldLen > 0.15 && d > 1e-3) {
+        const ux = dx / d;
+        const uy = dy / d;
+        const rnx = -uy;
+        const rny = ux;
+        const tickBaseOffset = (wallThicknessPx / 2) + 6;
+
+        ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.75)' : 'rgba(71, 85, 105, 0.75)';
+        ctx.fillStyle = isDark ? '#e2e8f0' : '#1e293b';
+        ctx.font = '500 10px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        // Ruler baseline
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(sStart.x + rnx * tickBaseOffset, sStart.y + rny * tickBaseOffset);
+        ctx.lineTo(sEnd.x + rnx * tickBaseOffset, sEnd.y + rny * tickBaseOffset);
+        ctx.stroke();
+
+        // Graduation ticks: 0.10m minor (3px), 0.50m medium (6px), 1.00m major (10px + number)
+        const stepCount = Math.floor(liveWorldLen * 10);
+        for (let i = 1; i <= stepCount; i++) {
+          const m = i / 10;
+          if (m >= liveWorldLen - 0.05) break;
+          const ratio = m / liveWorldLen;
+          const tx = sStart.x + dx * ratio + rnx * tickBaseOffset;
+          const ty = sStart.y + dy * ratio + rny * tickBaseOffset;
+
+          const isMeter = i % 10 === 0;
+          const isHalfMeter = i % 5 === 0 && !isMeter;
+          const tickLen = isMeter ? 10 : isHalfMeter ? 6 : 3;
+
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(tx + rnx * tickLen, ty + rny * tickLen);
+          ctx.stroke();
+
+          if (isMeter) {
+            ctx.save();
+            ctx.translate(tx + rnx * (tickLen + 3), ty + rny * (tickLen + 3));
+            ctx.fillText(`${(i / 10).toFixed(0)}m`, 0, 0);
+            ctx.restore();
+          }
+        }
+      }
+
+      // 6. Corner Angle Arc (Winkel-Bogen an Ecken)
+      let incomingVector: Point2D | null = null;
+      if (wallChainPoints.length > 0) {
+        const lastPt = wallChainPoints[wallChainPoints.length - 1];
+        if (Math.hypot(lastPt.x - wallStartPoint.x, lastPt.y - wallStartPoint.y) > 0.05) {
+          incomingVector = { x: wallStartPoint.x - lastPt.x, y: wallStartPoint.y - lastPt.y };
+        }
+      }
+      if (!incomingVector && floor.walls.length > 0) {
+        const connectedWall = floor.walls.find((w) =>
+          distance(w.end, wallStartPoint) < 0.08 || distance(w.start, wallStartPoint) < 0.08
+        );
+        if (connectedWall) {
+          if (distance(connectedWall.end, wallStartPoint) < 0.08) {
+            incomingVector = {
+              x: connectedWall.end.x - connectedWall.start.x,
+              y: connectedWall.end.y - connectedWall.start.y,
+            };
+          } else {
+            incomingVector = {
+              x: connectedWall.start.x - connectedWall.end.x,
+              y: connectedWall.start.y - connectedWall.end.y,
+            };
+          }
+        }
+      }
+
+      if (incomingVector && d > 1e-3) {
+        const inAngle = Math.atan2(incomingVector.y, incomingVector.x);
+        const outAngle = Math.atan2(currentCursorWorld.y - wallStartPoint.y, currentCursorWorld.x - wallStartPoint.x);
+        let diffDeg = Math.abs(((outAngle - inAngle) * 180 / Math.PI));
+        while (diffDeg > 180) diffDeg = 360 - diffDeg;
+
+        const isExactRightAngle = Math.abs(diffDeg - 90) < 1.0;
+        const is45 = Math.abs(diffDeg - 45) < 1.0 || Math.abs(diffDeg - 135) < 1.0;
+
+        const arcRadius = 32;
+        ctx.save();
+        ctx.lineWidth = isExactRightAngle ? 2.2 : 1.5;
+        ctx.strokeStyle = isExactRightAngle
+          ? '#10b981'
+          : is45
+          ? '#f59e0b'
+          : isDark
+          ? 'rgba(56, 189, 248, 0.75)'
+          : 'rgba(37, 99, 235, 0.75)';
+
+        if (isExactRightAngle) {
+          const sqSize = 16;
+          const uIn = { x: incomingVector.x / Math.hypot(incomingVector.x, incomingVector.y), y: incomingVector.y / Math.hypot(incomingVector.x, incomingVector.y) };
+          const uOut = { x: (currentCursorWorld.x - wallStartPoint.x) / liveWorldLen, y: (currentCursorWorld.y - wallStartPoint.y) / liveWorldLen };
+          const cornerA = { x: sStart.x + uIn.x * sqSize, y: sStart.y + uIn.y * sqSize };
+          const cornerB = { x: cornerA.x + uOut.x * sqSize, y: cornerA.y + uOut.y * sqSize };
+          const cornerC = { x: sStart.x + uOut.x * sqSize, y: sStart.y + uOut.y * sqSize };
+
+          ctx.beginPath();
+          ctx.moveTo(cornerA.x, cornerA.y);
+          ctx.lineTo(cornerB.x, cornerB.y);
+          ctx.lineTo(cornerC.x, cornerC.y);
+          ctx.stroke();
+
+          ctx.fillStyle = '#10b981';
+          ctx.beginPath();
+          ctx.arc(sStart.x + (uIn.x + uOut.x) * (sqSize / 2), sStart.y + (uIn.y + uOut.y) * (sqSize / 2), 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(sStart.x, sStart.y, arcRadius, Math.min(inAngle, outAngle), Math.max(inAngle, outAngle));
+          ctx.stroke();
+        }
+
+        const bisectAng = inAngle + (outAngle - inAngle) / 2;
+        const badgeDist = arcRadius + 18;
+        const badgeX = sStart.x + Math.cos(bisectAng) * badgeDist;
+        const badgeY = sStart.y + Math.sin(bisectAng) * badgeDist;
+
+        const badgeLabel = `${diffDeg.toFixed(1)}°`;
+        ctx.font = '700 10.5px "JetBrains Mono", monospace';
+        const bTextW = ctx.measureText(badgeLabel).width;
+        const bPad = 6;
+        const bW = bTextW + bPad * 2;
+        const bH = 18;
+
+        ctx.fillStyle = isExactRightAngle ? '#065f46' : isDark ? '#0f172a' : '#ffffff';
+        ctx.strokeStyle = isExactRightAngle ? '#10b981' : isDark ? '#38bdf8' : '#2563eb';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(badgeX - bW / 2, badgeY - bH / 2, bW, bH, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = isExactRightAngle ? '#ecfdf5' : isDark ? '#f8fafc' : '#0f172a';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeLabel, badgeX, badgeY + 0.5);
+
+        ctx.restore();
+      }
+
       ctx.restore();
     }
 

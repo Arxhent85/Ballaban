@@ -60,7 +60,7 @@ export const RoofConfigModal: React.FC<RoofConfigModalProps> = ({
   // Initial roof state
   const [roofType, setRoofType] = useState<RoofType>(roof?.type || 'gable');
   const [pitchDegrees, setPitchDegrees] = useState<number>(roof?.pitchDegrees ?? 35);
-  const [overhang, setOverhang] = useState<number>(roof?.overhang ?? 0.40);
+  const [overhang, setOverhang] = useState<number>((roof?.overhang !== undefined ? roof.overhang : roof?.overhangEaves) ?? 0.40);
   const [ridgeDirection, setRidgeDirection] = useState<'horizontal' | 'vertical'>(
     roof?.ridgeDirection || (buildingBounds.width >= buildingBounds.depth ? 'horizontal' : 'vertical')
   );
@@ -68,6 +68,20 @@ export const RoofConfigModal: React.FC<RoofConfigModalProps> = ({
   const [material, setMaterial] = useState<Roof['material']>(roof?.material || 'tiles_anthracite');
   const [hasChimney, setHasChimney] = useState<boolean>(roof?.hasChimney ?? false);
   const [skylightsCount, setSkylightsCount] = useState<number>(roof?.skylightsCount ?? 0);
+
+  // Sync state whenever roof changes or modal reopens
+  React.useEffect(() => {
+    if (roof) {
+      setRoofType(roof.type);
+      setPitchDegrees(roof.pitchDegrees ?? 35);
+      setOverhang((roof.overhang !== undefined ? roof.overhang : roof.overhangEaves) ?? 0.40);
+      setRidgeDirection(roof.ridgeDirection || (buildingBounds.width >= buildingBounds.depth ? 'horizontal' : 'vertical'));
+      setBaseHeight(roof.baseHeight ?? buildingBounds.maxH);
+      setMaterial(roof.material || 'tiles_anthracite');
+      setHasChimney(roof.hasChimney ?? false);
+      setSkylightsCount(roof.skylightsCount ?? 0);
+    }
+  }, [roof, isOpen]);
 
   // Height calculated from pitch and span
   const roofHeight = React.useMemo(() => {

@@ -33,6 +33,7 @@ import { getT } from '../../i18n/translations';
 import { distance } from '../../utils/cadMath';
 import { exportProjectObj } from '../../utils/cadExport';
 import { analyzeWallsForRoof } from '../../utils/roofAnalysis';
+import { generateStraightSkeletonRoof } from '../../utils/straightSkeleton';
 import {
   Rotate3d,
   Footprints,
@@ -1436,7 +1437,59 @@ export const CadView3D: React.FC<CadView3DProps> = ({
         scene.add(roofMesh);
         interactiveMeshesRef.current.push(roofMesh);
       }
-      // 10j. KRÜPPELWALMDACH & FREIFORM (Gable with truncated hip / custom)
+      // 10j. KRÜPPELWALMDACH & FREIFORM (Straight Skeleton Wavefront Polygonal Roof)
+      else if (rf.type === 'freeform') {
+        // Collect exterior wall vertices to form polygonal footprint
+        const extWalls = floor.walls.filter((w) => w.isExterior);
+        const targetWalls = extWalls.length >= 3 ? extWalls : floor.walls;
+        const polyPoints: { x: number; y: number }[] = [];
+
+        if (targetWalls.length >= 3) {
+          targetWalls.forEach((w) => {
+            polyPoints.push({ x: w.start.x, y: w.start.y });
+          });
+        } else {
+          polyPoints.push(
+            { x: minX, y: minY },
+            { x: maxX, y: minY },
+            { x: maxX, y: maxY },
+            { x: minX, y: maxY }
+          );
+        }
+
+        const skel = generateStraightSkeletonRoof(polyPoints, {
+          baseHeight: rBaseY,
+          pitchDeg: rf.pitchDegrees || 30,
+          overhang: (rf.overhang !== undefined ? rf.overhang : rf.overhangEaves) ?? 0.40,
+        });
+
+        const pos: number[] = [];
+        skel.facets.forEach((f) => {
+          if (f.vertices.length >= 3) {
+            const p0 = f.vertices[0];
+            for (let k = 1; k < f.vertices.length - 1; k++) {
+              const p1 = f.vertices[k];
+              const p2 = f.vertices[k + 1];
+              pos.push(p0.x, p0.y, p0.z);
+              pos.push(p1.x, p1.y, p1.z);
+              pos.push(p2.x, p2.y, p2.z);
+            }
+          }
+        });
+
+        const polyRoofGeo = new THREE.BufferGeometry();
+        if (pos.length > 0) {
+          polyRoofGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+          polyRoofGeo.computeVertexNormals();
+        }
+
+        const roofMesh = new THREE.Mesh(polyRoofGeo, roofMat);
+        roofMesh.castShadow = true;
+        roofMesh.receiveShadow = true;
+        roofMesh.userData = { type: 'roof', id: rf.id };
+        scene.add(roofMesh);
+        interactiveMeshesRef.current.push(roofMesh);
+      }
       else {
         const span = isHoriz ? rD : rW;
         const length = isHoriz ? rW : rD;

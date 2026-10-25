@@ -219,6 +219,11 @@ export default function App() {
   const [showUnderlayCropModal, setShowUnderlayCropModal] = useState(false);
   const [isUnderlayHudOpen, setIsUnderlayHudOpen] = useState(false);
 
+  // BIMCraft & Revit 2-Letter Keyboard Shortcuts HUD state
+  const [shortcutFeedback, setShortcutFeedback] = useState<string | null>(null);
+  const pendingShortcutRef = useRef<string | null>(null);
+  const shortcutTimerRef = useRef<any>(null);
+
   // Tool options state (Wall, Door, Window)
   const [wallMode, setWallMode] = useState<'exterior' | 'interior'>('exterior');
   const [wallThicknessM, setWallThicknessM] = useState<number>(project.defaults?.exteriorWallThickness || 0.30);
@@ -1906,6 +1911,120 @@ export default function App() {
         return;
       }
 
+      // Check 2-letter Revit sequential shortcut (WA, DR, WN, RM, RP, DI, TR, SL, MV, CO, RO, MM, DL, ZA, WT, 3D, 2D)
+      const keyUpper = e.key.toUpperCase();
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
+        if (pendingShortcutRef.current) {
+          const combo = pendingShortcutRef.current + keyUpper;
+          pendingShortcutRef.current = null;
+          if (shortcutTimerRef.current) clearTimeout(shortcutTimerRef.current);
+
+          let matched = false;
+          let label = '';
+          if (combo === 'WA') {
+            setActiveTool('wall');
+            label = 'WA: Wandwerkzeug';
+            matched = true;
+          } else if (combo === 'DR') {
+            setActiveTool('door');
+            label = 'DR: Tür platzieren';
+            matched = true;
+          } else if (combo === 'WN') {
+            setActiveTool('window');
+            label = 'WN: Fenster platzieren';
+            matched = true;
+          } else if (combo === 'RM') {
+            setActiveTool('room');
+            label = 'RM: Raumwerkzeug';
+            matched = true;
+          } else if (combo === 'RP') {
+            handleOpenRoofModal();
+            label = 'RP: Dach-Modul';
+            matched = true;
+          } else if (combo === 'DI') {
+            setActiveTool('dimension');
+            label = 'DI: Bemaßung';
+            matched = true;
+          } else if (combo === 'TR') {
+            setActiveTool('eraser');
+            label = 'TR: Stutzen / Radierer';
+            matched = true;
+          } else if (combo === 'SL') {
+            if (selection.ids.length === 1 && selection.type === 'wall') {
+              handleSplitSelectedWall();
+            } else {
+              setActiveTool('split');
+            }
+            label = 'SL: Wand trennen';
+            matched = true;
+          } else if (combo === 'MV') {
+            setActiveTool('select');
+            label = 'MV: Auswählen / Verschieben';
+            matched = true;
+          } else if (combo === 'CO') {
+            handleDuplicateSelected();
+            label = 'CO: Duplizieren';
+            matched = true;
+          } else if (combo === 'RO') {
+            handleRotateSelected(90);
+            label = 'RO: 90° Drehen';
+            matched = true;
+          } else if (combo === 'MM') {
+            handleFlipSelected('horizontal');
+            label = 'MM: Horizontal spiegeln';
+            matched = true;
+          } else if (combo === 'DL') {
+            handleDeleteSelected();
+            label = 'DL: Löschen';
+            matched = true;
+          } else if (combo === 'ZA') {
+            handleZoomFit();
+            label = 'ZA: Ansicht einpassen';
+            matched = true;
+          } else if (combo === 'WT') {
+            setViewMode('split');
+            label = 'WT: Geteilte 2D/3D Ansicht';
+            matched = true;
+          } else if (combo === '3D') {
+            setViewMode('3d');
+            label = '3D: 3D-Ansicht';
+            matched = true;
+          } else if (combo === '2D') {
+            setViewMode('2d');
+            label = '2D: 2D-Grundriss';
+            matched = true;
+          }
+
+          if (matched) {
+            e.preventDefault();
+            setShortcutFeedback(label);
+            setTimeout(() => setShortcutFeedback(null), 1800);
+            return;
+          }
+        } else if (['W', 'D', 'R', 'S', 'M', 'C', 'Z', '3', '2'].includes(keyUpper)) {
+          pendingShortcutRef.current = keyUpper;
+          setShortcutFeedback(`${keyUpper}...`);
+          shortcutTimerRef.current = setTimeout(() => {
+            const firstKey = pendingShortcutRef.current;
+            pendingShortcutRef.current = null;
+            setShortcutFeedback(null);
+            if (firstKey === 'W') setActiveTool('wall');
+            if (firstKey === 'D') setActiveTool('door');
+            if (firstKey === 'R') {
+              if (selection.ids.length > 0) handleRotateSelected(90);
+              else setActiveTool('rect_room');
+            }
+            if (firstKey === 'S') setActiveTool('select');
+            if (firstKey === 'M') setActiveTool('measure');
+            if (firstKey === 'C') {
+              if (selection.ids.length === 1 && selection.type === 'wall') handleSplitSelectedWall();
+              else setActiveTool('split');
+            }
+          }, 650);
+          return;
+        }
+      }
+
       if (e.key === 'v' || e.key === 'V') setActiveTool('select');
       if (e.key === 'h' || e.key === 'H') setActiveTool('hand');
       if (e.key === 'w' || e.key === 'W') setActiveTool('wall');
@@ -2789,6 +2908,13 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Revit-Style 2-Letter Shortcut HUD Toast */}
+      {shortcutFeedback && (
+        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 pointer-events-none px-4 py-2 rounded-full bg-slate-900/90 text-white border border-amber-500/70 shadow-2xl backdrop-blur-md flex items-center gap-2.5 text-xs font-mono font-bold animate-in fade-in slide-in-from-bottom-2 select-none">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+          <span>{shortcutFeedback}</span>
         </div>
       )}
     </div>

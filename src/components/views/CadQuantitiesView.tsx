@@ -39,11 +39,59 @@ export const CadQuantitiesView: React.FC<CadQuantitiesViewProps> = ({ project, f
     const len = distance(w.start, w.end);
     totalWallLengthM += len;
     if (w.isExterior) {
-      extWallAreaM2 += len * w.height;
+      extWallAreaM2 += len * (w.height || 2.5);
     } else {
-      intWallAreaM2 += len * w.height;
+      intWallAreaM2 += len * (w.height || 2.5);
     }
   });
+
+  // Openings deductions (VOB-konformer Abzug)
+  let extOpeningAreaM2 = 0;
+  let intOpeningAreaM2 = 0;
+
+  floor.windows.forEach((win) => {
+    const parent = floor.walls.find((w) => w.id === win.wallId);
+    const a = win.width * win.height;
+    if (parent?.isExterior) {
+      extOpeningAreaM2 += a;
+    } else {
+      intOpeningAreaM2 += a;
+    }
+  });
+
+  floor.doors.forEach((door) => {
+    const parent = floor.walls.find((w) => w.id === door.wallId);
+    const a = door.width * door.height;
+    if (parent?.isExterior) {
+      extOpeningAreaM2 += a;
+    } else {
+      intOpeningAreaM2 += a;
+    }
+  });
+
+  const netExtWallAreaM2 = Math.max(0, extWallAreaM2 - extOpeningAreaM2);
+  const netIntWallAreaM2 = Math.max(0, intWallAreaM2 - intOpeningAreaM2);
+  const totalNetWallAreaM2 = netExtWallAreaM2 + netIntWallAreaM2;
+
+  // Wall volume (Mauerwerks- & Betonvolumen)
+  let totalWallVolumeM3 = 0;
+  floor.walls.forEach((w) => {
+    const len = distance(w.start, w.end);
+    totalWallVolumeM3 += len * (w.height || 2.5) * (w.thickness || 0.24);
+  });
+  floor.windows.forEach((win) => {
+    const p = floor.walls.find((w) => w.id === win.wallId);
+    totalWallVolumeM3 -= win.width * win.height * (p?.thickness || 0.24);
+  });
+  floor.doors.forEach((d) => {
+    const p = floor.walls.find((w) => w.id === d.wallId);
+    totalWallVolumeM3 -= d.width * d.height * (p?.thickness || 0.24);
+  });
+  totalWallVolumeM3 = Math.max(0, totalWallVolumeM3);
+
+  // Plaster Areas (Putzflächen)
+  const intPlasterAreaM2 = netIntWallAreaM2 * 2 + netExtWallAreaM2;
+  const extPlasterAreaM2 = netExtWallAreaM2;
 
   const totalLivingAreaM2 = floor.rooms
     .filter((r) => r.targetLivingArea !== false)
@@ -51,7 +99,7 @@ export const CadQuantitiesView: React.FC<CadQuantitiesViewProps> = ({ project, f
 
   const totalUsableAreaM2 = floor.rooms.reduce((acc, r) => acc + r.areaM2, 0);
 
-  // Gross floor area (approx 1.15 x living area + walls)
+  // Gross floor area & volume
   const bgfM2 = totalUsableAreaM2 * 1.18;
   const briM3 = bgfM2 * (floor.storyHeight || 2.75);
 
@@ -59,6 +107,31 @@ export const CadQuantitiesView: React.FC<CadQuantitiesViewProps> = ({ project, f
   floor.windows.forEach((w) => {
     totalWindowAreaM2 += w.width * w.height;
   });
+
+  // Roof Surface Area
+  let roofAreaM2 = 0;
+  if (floor.roofs && floor.roofs.length > 0) {
+    const rf = floor.roofs[0];
+    const pitchRad = ((rf.pitchDegrees || 30) * Math.PI) / 180;
+    const cosPitch = Math.max(0.2, Math.cos(pitchRad));
+    const bounds = rf.customBounds;
+    if (bounds) {
+      const rw = (bounds.maxX - bounds.minX) + 2 * (rf.overhang || 0.4);
+      const rd = (bounds.maxY - bounds.minY) + 2 * (rf.overhang || 0.4);
+      roofAreaM2 = (rw * rd) / cosPitch;
+    } else {
+      roofAreaM2 = (bgfM2 * 1.15) / cosPitch;
+    }
+  }
+
+  // Cost Benchmarks (DIN 276 KG 300)
+  const costMasonry = totalWallVolumeM3 * 340;
+  const costPlaster = intPlasterAreaM2 * 28 + extPlasterAreaM2 * 95;
+  const costRoof = roofAreaM2 * 135;
+  const costWindows = floor.windows.length * 680;
+  const costDoors = floor.doors.length * 420;
+  const costFlooring = totalLivingAreaM2 * 75;
+  const totalCostEstimate = costMasonry + costPlaster + costRoof + costWindows + costDoors + costFlooring;
 
   // Automated Building Code / Plan Checks
   const warnings: { id: string; text: string; severity: 'warning' | 'info' }[] = [];
@@ -165,6 +238,41 @@ export const CadQuantitiesView: React.FC<CadQuantitiesViewProps> = ({ project, f
               {totalWallLengthM.toFixed(1)} m
             </span>
             <span className="text-[11px] text-slate-500">Wandabwicklung lfd. M.</span>
+          </div>
+        </div>
+
+        {/* Second Row: Detailed BIM Material Quantities */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-1">
+            <span className="text-xs text-slate-400 font-medium">Netto-Wandfläche</span>
+            <span className="text-2xl font-bold text-orange-400 font-mono tabular-nums">
+              {totalNetWallAreaM2.toFixed(1)} m²
+            </span>
+            <span className="text-[11px] text-slate-500">abzgl. Öffnungen (VOB)</span>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-1">
+            <span className="text-xs text-slate-400 font-medium">Mauerwerk / Beton</span>
+            <span className="text-2xl font-bold text-purple-400 font-mono tabular-nums">
+              {totalWallVolumeM3.toFixed(1)} m³
+            </span>
+            <span className="text-[11px] text-slate-500">Netto-Bauteilvolumen</span>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-1">
+            <span className="text-xs text-slate-400 font-medium">Putz- & WDVS-Fläche</span>
+            <span className="text-2xl font-bold text-teal-400 font-mono tabular-nums">
+              {(intPlasterAreaM2 + extPlasterAreaM2).toFixed(1)} m²
+            </span>
+            <span className="text-[11px] text-slate-500">Innen & Außenfassade</span>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-1">
+            <span className="text-xs text-slate-400 font-medium">Dachfläche (3D)</span>
+            <span className="text-2xl font-bold text-amber-300 font-mono tabular-nums">
+              {roofAreaM2 > 0 ? `${roofAreaM2.toFixed(1)} m²` : '—'}
+            </span>
+            <span className="text-[11px] text-slate-500">inkl. Dachüberstand</span>
           </div>
         </div>
 
@@ -365,6 +473,80 @@ export const CadQuantitiesView: React.FC<CadQuantitiesViewProps> = ({ project, f
               </table>
             </div>
           </div>
+        </div>
+
+        {/* 3. Massen- & Kostenschätzung (DIN 276 / BKI Richtwerte) */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-1.5">
+              <Building className="w-4 h-4 text-emerald-400" />
+              <span>3. Massen- & Kostenschätzung (Richtwerte Kostengruppe 300)</span>
+            </h3>
+            <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-800/60">
+              Gesamtschätzung: ca. {Math.round(totalCostEstimate).toLocaleString('de-DE')} €
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-400 font-medium">
+                  <th className="py-2 px-3">Gewerke / Bauteil</th>
+                  <th className="py-2 px-3 text-right">Menge</th>
+                  <th className="py-2 px-3 text-right">Einheit</th>
+                  <th className="py-2 px-3 text-right">Richtpreis</th>
+                  <th className="py-2 px-3 text-right">Geschätzte Summe</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                <tr>
+                  <td className="py-2 px-3 font-sans text-white">Mauerwerk & Massivbau (KG 330)</td>
+                  <td className="py-2 px-3 text-right text-slate-300">{totalWallVolumeM3.toFixed(1)}</td>
+                  <td className="py-2 px-3 text-right text-slate-400 font-sans">m³</td>
+                  <td className="py-2 px-3 text-right text-slate-400">340 €</td>
+                  <td className="py-2 px-3 text-right text-emerald-400 font-bold">{Math.round(costMasonry).toLocaleString('de-DE')} €</td>
+                </tr>
+                <tr>
+                  <td className="py-2 px-3 font-sans text-white">Dachkonstruktion & Eindeckung (KG 360)</td>
+                  <td className="py-2 px-3 text-right text-slate-300">{roofAreaM2 > 0 ? roofAreaM2.toFixed(1) : '—'}</td>
+                  <td className="py-2 px-3 text-right text-slate-400 font-sans">m²</td>
+                  <td className="py-2 px-3 text-right text-slate-400">135 €</td>
+                  <td className="py-2 px-3 text-right text-emerald-400 font-bold">{Math.round(costRoof).toLocaleString('de-DE')} €</td>
+                </tr>
+                <tr>
+                  <td className="py-2 px-3 font-sans text-white">Fenster & Fenstertüren 3-fach (KG 334)</td>
+                  <td className="py-2 px-3 text-right text-slate-300">{floor.windows.length}</td>
+                  <td className="py-2 px-3 text-right text-slate-400 font-sans">Stk.</td>
+                  <td className="py-2 px-3 text-right text-slate-400">680 €</td>
+                  <td className="py-2 px-3 text-right text-emerald-400 font-bold">{Math.round(costWindows).toLocaleString('de-DE')} €</td>
+                </tr>
+                <tr>
+                  <td className="py-2 px-3 font-sans text-white">Türelemente & Zargen (KG 335)</td>
+                  <td className="py-2 px-3 text-right text-slate-300">{floor.doors.length}</td>
+                  <td className="py-2 px-3 text-right text-slate-400 font-sans">Stk.</td>
+                  <td className="py-2 px-3 text-right text-slate-400">420 €</td>
+                  <td className="py-2 px-3 text-right text-emerald-400 font-bold">{Math.round(costDoors).toLocaleString('de-DE')} €</td>
+                </tr>
+                <tr>
+                  <td className="py-2 px-3 font-sans text-white">Putzarbeiten & Fassadendämmung (KG 336/345)</td>
+                  <td className="py-2 px-3 text-right text-slate-300">{(intPlasterAreaM2 + extPlasterAreaM2).toFixed(1)}</td>
+                  <td className="py-2 px-3 text-right text-slate-400 font-sans">m²</td>
+                  <td className="py-2 px-3 text-right text-slate-400">ca. 45 €</td>
+                  <td className="py-2 px-3 text-right text-emerald-400 font-bold">{Math.round(costPlaster).toLocaleString('de-DE')} €</td>
+                </tr>
+                <tr>
+                  <td className="py-2 px-3 font-sans text-white">Estrich & Bodenbeläge (KG 352/353)</td>
+                  <td className="py-2 px-3 text-right text-slate-300">{totalLivingAreaM2.toFixed(1)}</td>
+                  <td className="py-2 px-3 text-right text-slate-400 font-sans">m²</td>
+                  <td className="py-2 px-3 text-right text-slate-400">75 €</td>
+                  <td className="py-2 px-3 text-right text-emerald-400 font-bold">{Math.round(costFlooring).toLocaleString('de-DE')} €</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <span className="text-[10px] text-slate-500 italic">
+            * Unverbindliche Orientierungswerte für Standardausführung (Bauwerk - Baukonstruktionen DIN 276 KG 300) zzgl. Baunebenkosten & MwSt.
+          </span>
         </div>
       </div>
     </div>

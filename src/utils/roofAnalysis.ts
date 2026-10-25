@@ -279,9 +279,21 @@ export function createAutoFittedRoof(
 
   const isLinked = existingRoof?.isOverhangLinked ?? true;
   const defOverhang = type === 'flat' ? 0.15 : 0.40;
-  const masterOverhang = existingRoof?.overhang ?? existingRoof?.overhangEaves ?? defOverhang;
-  const eaves = isLinked ? masterOverhang : (existingRoof?.overhangEaves ?? masterOverhang);
-  const gable = isLinked ? masterOverhang : (existingRoof?.overhangGable ?? masterOverhang);
+  const masterOverhang = (existingRoof?.overhang !== undefined && typeof existingRoof.overhang === 'number' && !isNaN(existingRoof.overhang))
+    ? existingRoof.overhang
+    : (existingRoof?.overhangEaves !== undefined && typeof existingRoof.overhangEaves === 'number' && !isNaN(existingRoof.overhangEaves))
+    ? existingRoof.overhangEaves
+    : defOverhang;
+  const eaves = isLinked
+    ? masterOverhang
+    : (existingRoof?.overhangEaves !== undefined && typeof existingRoof.overhangEaves === 'number' && !isNaN(existingRoof.overhangEaves))
+    ? existingRoof.overhangEaves
+    : masterOverhang;
+  const gable = isLinked
+    ? masterOverhang
+    : (existingRoof?.overhangGable !== undefined && typeof existingRoof.overhangGable === 'number' && !isNaN(existingRoof.overhangGable))
+    ? existingRoof.overhangGable
+    : masterOverhang;
 
   return {
     id: existingRoof?.id || 'roof_' + Date.now(),
