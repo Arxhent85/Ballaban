@@ -1,5 +1,6 @@
 /**
  * Export and Print Preview Dialog
+ * Professional architectural export with DIN 1356, DIN 277, WoFlV, and VOB options.
  */
 
 import React, { useState } from 'react';
@@ -7,15 +8,18 @@ import {
   Download,
   Printer,
   FileText,
-  Image,
   Code,
   Box,
   FileSpreadsheet,
   X,
   Check,
   Clipboard,
+  Layers,
+  Ruler,
+  Compass,
+  FileCheck2,
 } from 'lucide-react';
-import { CadProject, Floor, ScaleType, Language } from '../../types/cad';
+import { CadProject, Floor, Language } from '../../types/cad';
 import { getT } from '../../i18n/translations';
 import {
   exportProjectPdf,
@@ -42,12 +46,22 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
 }) => {
   const t = getT(language);
 
-  const [paperSize, setPaperSize] = useState<'a4' | 'a3'>('a4');
+  const [paperSize, setPaperSize] = useState<'a4' | 'a3'>('a3');
   const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
   const [scale, setScale] = useState<'1:50' | '1:100' | '1:20'>('1:50');
+  const [planStyle, setPlanStyle] = useState<'werkplan' | 'bauantrag'>('werkplan');
+
+  // Architectural Standards Toggles
+  const [includeAutoDimensions, setIncludeAutoDimensions] = useState(true);
+  const [includeRoomStamps, setIncludeRoomStamps] = useState(true);
+  const [includeWallHatching, setIncludeWallHatching] = useState(true);
+  const [includeSectionCuts, setIncludeSectionCuts] = useState(true);
+  const [includeElevationMarkers, setIncludeElevationMarkers] = useState(true);
+  const [includeStructuralAxes, setIncludeStructuralAxes] = useState(true);
+  const [includeRoofOutline, setIncludeRoofOutline] = useState(true);
   const [includeTitleBlock, setIncludeTitleBlock] = useState(true);
-  const [includeLegend, setIncludeLegend] = useState(true);
   const [includeNorthArrow, setIncludeNorthArrow] = useState(true);
+
   const [copiedNotification, setCopiedNotification] = useState(false);
 
   if (!isOpen) return null;
@@ -57,9 +71,17 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
       paperSize,
       orientation,
       scale,
+      planStyle,
       includeTitleBlock,
-      includeLegend,
+      includeLegend: true,
       includeNorthArrow,
+      includeAutoDimensions,
+      includeRoomStamps,
+      includeWallHatching,
+      includeSectionCuts,
+      includeElevationMarkers,
+      includeStructuralAxes,
+      includeRoofOutline,
     };
     exportProjectPdf(project, floor, opts);
   };
@@ -75,12 +97,15 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-xl w-full flex flex-col text-slate-100 overflow-hidden">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col text-slate-100 overflow-hidden max-h-[92vh]">
         {/* Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
           <div className="flex items-center gap-2">
-            <Printer className="w-5 h-5 text-emerald-400" />
-            <h2 className="font-semibold text-sm">{t.exportDialog.title}</h2>
+            <FileCheck2 className="w-5 h-5 text-emerald-400" />
+            <div>
+              <h2 className="font-semibold text-sm">Professioneller Bauplan- & PDF-Export (DIN 1356)</h2>
+              <p className="text-[10px] text-slate-400">Ausführungspläne, Bauantrag, Raumbuch nach DIN 277 & Bauteillisten</p>
+            </div>
           </div>
           <button onClick={onClose} className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white">
             <X className="w-4 h-4" />
@@ -88,86 +113,212 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
         </div>
 
         {/* Settings Body */}
-        <div className="p-6 flex flex-col gap-4 text-xs">
+        <div className="p-5 flex flex-col gap-4 text-xs overflow-y-auto">
           {/* Format Settings Grid */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-2.5">
+            {/* Plan Type */}
+            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/60 flex flex-col gap-1">
+              <label className="text-slate-400 font-medium text-[11px]">Plan-Kategorie:</label>
+              <select
+                value={planStyle}
+                onChange={(e) => {
+                  const val = e.target.value as 'werkplan' | 'bauantrag';
+                  setPlanStyle(val);
+                  if (val === 'werkplan') {
+                    setScale('1:50');
+                    setPaperSize('a3');
+                  } else {
+                    setScale('1:100');
+                  }
+                }}
+                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 outline-none text-xs"
+              >
+                <option value="werkplan">Werkplan (M 1:50)</option>
+                <option value="bauantrag">Bauantrag (M 1:100)</option>
+              </select>
+            </div>
+
             {/* Paper Size */}
-            <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60 flex flex-col gap-1">
-              <label className="text-slate-400 font-medium">{t.exportDialog.paperSize}:</label>
+            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/60 flex flex-col gap-1">
+              <label className="text-slate-400 font-medium text-[11px]">Blattformat:</label>
               <select
                 value={paperSize}
                 onChange={(e) => setPaperSize(e.target.value as 'a4' | 'a3')}
-                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 outline-none"
+                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 outline-none text-xs"
               >
-                <option value="a4">DIN A4</option>
                 <option value="a3">DIN A3 (Empfohlen)</option>
+                <option value="a4">DIN A4</option>
               </select>
             </div>
 
             {/* Orientation */}
-            <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60 flex flex-col gap-1">
-              <label className="text-slate-400 font-medium">{t.exportDialog.orientation}:</label>
+            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/60 flex flex-col gap-1">
+              <label className="text-slate-400 font-medium text-[11px]">Ausrichtung:</label>
               <select
                 value={orientation}
                 onChange={(e) => setOrientation(e.target.value as 'landscape' | 'portrait')}
-                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 outline-none"
+                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 outline-none text-xs"
               >
-                <option value="landscape">{t.exportDialog.landscape}</option>
-                <option value="portrait">{t.exportDialog.portrait}</option>
+                <option value="landscape">Querformat</option>
+                <option value="portrait">Hochformat</option>
               </select>
             </div>
 
             {/* Scale */}
-            <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60 flex flex-col gap-1">
-              <label className="text-slate-400 font-medium">{t.exportDialog.scale}:</label>
+            <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/60 flex flex-col gap-1">
+              <label className="text-slate-400 font-medium text-[11px]">Maßstab:</label>
               <select
                 value={scale}
                 onChange={(e) => setScale(e.target.value as '1:50' | '1:100' | '1:20')}
-                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 outline-none"
+                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 outline-none text-xs"
               >
+                <option value="1:50">1:50 (Werkplan)</option>
+                <option value="1:100">1:100 (Eingabeplan)</option>
                 <option value="1:20">1:20 (Detailplan)</option>
-                <option value="1:50">1:50 (Standard Bauplan)</option>
-                <option value="1:100">1:100 (Übersichtsplan)</option>
               </select>
             </div>
           </div>
 
-          {/* Checkboxes */}
-          <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800 flex flex-col gap-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeTitleBlock}
-                onChange={(e) => setIncludeTitleBlock(e.target.checked)}
-                className="accent-emerald-500 rounded"
-              />
-              <span className="text-slate-200">{t.exportDialog.includeTitleBlock} (Bauherr, Ort, Maßstab, Datum)</span>
-            </label>
+          {/* Architectural Elements & Standards Checkboxes */}
+          <div className="bg-slate-950/50 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-2.5">
+            <span className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1.5">
+              <Ruler className="w-3.5 h-3.5" />
+              DIN 1356 & DIN 277 Elemente für Bauausführung:
+            </span>
 
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeNorthArrow}
-                onChange={(e) => setIncludeNorthArrow(e.target.checked)}
-                className="accent-emerald-500 rounded"
-              />
-              <span className="text-slate-200">{t.exportDialog.includeNorthArrow}</span>
-            </label>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeAutoDimensions}
+                  onChange={(e) => setIncludeAutoDimensions(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">3-stufige Maßketten (DIN 1356)</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Öffnungsmaße, Wandstärken, Raumspannen, Gesamtmaß</span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeRoomStamps}
+                  onChange={(e) => setIncludeRoomStamps(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">DIN 277 Raumstempel</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Raumnummer, Nettofläche m², Belag, lichte Höhe</span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeWallHatching}
+                  onChange={(e) => setIncludeWallHatching(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">Wandschraffuren (DIN 1356-1)</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Mauerwerk 45°, Beton Kreuzschraffur, Dämmung</span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeSectionCuts}
+                  onChange={(e) => setIncludeSectionCuts(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">Schnittführung A-A & B-B</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Strich-Punkt-Linien mit Blickrichtungspfeilen</span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeElevationMarkers}
+                  onChange={(e) => setIncludeElevationMarkers(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">Höhenkoten (OKFF ±0,00 m)</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Fertigfußboden, Rohdecke & Geländeoberkante</span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeStructuralAxes}
+                  onChange={(e) => setIncludeStructuralAxes(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">Achsraster (1, 2, 3 / A, B, C)</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Rasterlinien mit Achsblasen für Rohbauer</span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeRoofOutline}
+                  onChange={(e) => setIncludeRoofOutline(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">Dachaufsicht & Überstand</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Dachüberstand gestrichelt, Firstlinie & Neigung</span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeTitleBlock}
+                  onChange={(e) => setIncludeTitleBlock(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">DIN EN ISO 7200 Plankopf</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Bauherr, Bauort, Planer, Index & Prüfhinweis</span>
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* Export Action Buttons */}
-          <div className="flex flex-col gap-2 pt-2">
-            <span className="font-semibold text-slate-300">Format zum Herunterladen wählen:</span>
+          <div className="flex flex-col gap-2 pt-1">
+            <span className="font-semibold text-slate-300 text-[11px]">Format zum Herunterladen wählen:</span>
 
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleDownloadPdf}
-                className="p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 flex items-center gap-3 transition-colors text-left"
+                className="p-3 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/50 flex items-center gap-3 transition-colors text-left group"
               >
-                <FileText className="w-5 h-5 text-red-400" />
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                  <FileText className="w-5 h-5" />
+                </div>
                 <div>
-                  <div className="font-semibold text-white">Vektor-PDF</div>
-                  <div className="text-[10px] text-slate-400">Maßstabsgetreu nach DIN</div>
+                  <div className="font-semibold text-white flex items-center gap-1.5">
+                    <span>Bauplan-PDF (2 Seiten)</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/30 text-emerald-300 font-normal">DIN 1356</span>
+                  </div>
+                  <div className="text-[10px] text-slate-300">Seite 1: Werkplan · Seite 2: Raumbuch & Bauteile</div>
                 </div>
               </button>
 
@@ -175,10 +326,12 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
                 onClick={() => exportProjectDxf(project, floor)}
                 className="p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 flex items-center gap-3 transition-colors text-left"
               >
-                <Code className="w-5 h-5 text-amber-500" />
+                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400">
+                  <Code className="w-5 h-5" />
+                </div>
                 <div>
                   <div className="font-semibold text-white">AutoCAD DXF</div>
-                  <div className="text-[10px] text-slate-400">Für CAD-Programme</div>
+                  <div className="text-[10px] text-slate-400">Layer: Wände, Öffnungen, Bemaßung</div>
                 </div>
               </button>
 
@@ -186,10 +339,12 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
                 onClick={() => exportProjectObj(project, floor)}
                 className="p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 flex items-center gap-3 transition-colors text-left"
               >
-                <Box className="w-5 h-5 text-amber-400" />
+                <div className="p-2 rounded-lg bg-sky-500/20 text-sky-400">
+                  <Box className="w-5 h-5" />
+                </div>
                 <div>
                   <div className="font-semibold text-white">3D Wavefront OBJ</div>
-                  <div className="text-[10px] text-slate-400">Für Blender & 3D-Druck</div>
+                  <div className="text-[10px] text-slate-400">Für Blender, SketchUp & 3D-Druck</div>
                 </div>
               </button>
 
@@ -197,10 +352,12 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
                 onClick={() => exportQuantitiesCsv(project, floor)}
                 className="p-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 flex items-center gap-3 transition-colors text-left"
               >
-                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
                 <div>
                   <div className="font-semibold text-white">Mengenliste (CSV)</div>
-                  <div className="text-[10px] text-slate-400">Für Excel & Kalkulation</div>
+                  <div className="text-[10px] text-slate-400">VOB-Kalkulation für Excel & AVA</div>
                 </div>
               </button>
             </div>
@@ -208,7 +365,7 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between">
+        <div className="p-3.5 border-t border-slate-800 bg-slate-950/70 flex items-center justify-between">
           <button
             onClick={handleCopyImage}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors"
@@ -223,10 +380,17 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
             </button>
             <button
               onClick={handlePrint}
-              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+              className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg text-xs shadow-sm flex items-center gap-1.5 transition-colors"
             >
               <Printer className="w-4 h-4" />
-              <span>{t.exportDialog.printNow}</span>
+              <span>Drucken</span>
+            </button>
+            <button
+              onClick={handleDownloadPdf}
+              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              <span>Bauplan-PDF herunterladen</span>
             </button>
           </div>
         </div>

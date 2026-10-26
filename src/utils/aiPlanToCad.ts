@@ -14,6 +14,7 @@
 import { Wall, Door, Window, Room, Furniture, Stair, Roof, Point2D, Floor, CadProject } from '../types/cad';
 import { AiPlanAnalysisResult, PlanQualityCheckItem, AiImportOptions } from '../types/aiImport';
 import { FURNITURE_CATALOG } from './furnitureLibrary';
+import { detectRoomsAndEnvelope } from './cadArchitecturalPlan';
 
 export interface PlanConversionResult {
   walls: Wall[];
@@ -170,6 +171,21 @@ export function convertAiPlanToCadObjects(
       targetLivingArea: category !== 'outdoor',
     };
   });
+
+  // If no explicit rooms were selected/found in plan but walls exist, auto-detect enclosed rooms!
+  if (shouldIncludeRooms && rooms.length === 0 && walls.length >= 3) {
+    const autoAnalysis = detectRoomsAndEnvelope(
+      walls,
+      doors,
+      windows,
+      [],
+      projectDefaults?.roomHeight || 2.75,
+      projectDefaults
+    );
+    if (autoAnalysis.rooms.length > 0) {
+      rooms.push(...autoAnalysis.rooms);
+    }
+  }
 
   // 5. Generate Furniture (Included unless explicitly set to false in options)
   const shouldIncludeFurniture = options.includeFurniture !== false;
