@@ -3,7 +3,7 @@
  * Modern, architectural standalone CAD application with precision drafting and 3D visualization.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   CadProject,
   Floor,
@@ -1970,7 +1970,7 @@ export default function App() {
             label = 'RO: 90° Drehen';
             matched = true;
           } else if (combo === 'MM') {
-            handleFlipSelected('horizontal');
+            handleFlipHorizontal();
             label = 'MM: Horizontal spiegeln';
             matched = true;
           } else if (combo === 'DL') {

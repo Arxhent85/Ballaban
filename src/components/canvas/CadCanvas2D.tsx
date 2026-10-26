@@ -2218,8 +2218,8 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           incomingVector = { x: wallStartPoint.x - lastPt.x, y: wallStartPoint.y - lastPt.y };
         }
       }
-      if (!incomingVector && floor.walls.length > 0) {
-        const connectedWall = floor.walls.find((w) =>
+      if (!incomingVector && walls && walls.length > 0) {
+        const connectedWall = walls.find((w: Wall) =>
           distance(w.end, wallStartPoint) < 0.08 || distance(w.start, wallStartPoint) < 0.08
         );
         if (connectedWall) {
