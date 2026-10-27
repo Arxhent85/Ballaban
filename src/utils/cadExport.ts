@@ -6,6 +6,7 @@
 import { jsPDF } from 'jspdf';
 import { CadProject, Floor } from '../types/cad';
 import { getWallPolygon, calculatePlotMetrics } from './cadMath';
+import { calculateCleanWallJunctions } from './cadWallJunctions';
 import {
   analyzeArchitecturalPlan,
   getGermanDoorTypeLabel,
@@ -215,9 +216,12 @@ export function exportProjectPdf(project: CadProject, floor: Floor, options: Exp
     }
   });
 
-  // 3. Render Walls with DIN 1356-1 Material Hatching & Thickness Callouts
-  floor.walls.forEach((w) => {
-    const pts = getWallPolygon(w);
+  // 3. Render Seamless Walls with DIN 1356-1 Material Hatching & Junction Cleanup
+  // We calculate seamless wall junctions to eliminate internal seam lines at X-crossings, T-junctions, and L-corners!
+  const cleanWallData = calculateCleanWallJunctions(floor.walls);
+
+  // Pass A: Fill wall body and draw hatching (fill only, no border strokes)
+  cleanWallData.walls.forEach(({ wall: w, poly: pts }) => {
     const mmPts = pts.map((p) => [toMmX(p.x), toMmY(p.y)]);
 
     if (showHatching) {
@@ -236,9 +240,6 @@ export function exportProjectPdf(project: CadProject, floor: Floor, options: Exp
       }
     }
 
-    doc.setDrawColor(15, 15, 15);
-    doc.setLineWidth(w.isExterior ? 0.35 : 0.24);
-
     const start = mmPts[0];
     const lines = [
       [mmPts[1][0] - mmPts[0][0], mmPts[1][1] - mmPts[0][1]],
@@ -246,16 +247,19 @@ export function exportProjectPdf(project: CadProject, floor: Floor, options: Exp
       [mmPts[3][0] - mmPts[2][0], mmPts[3][1] - mmPts[2][1]],
       [mmPts[0][0] - mmPts[3][0], mmPts[0][1] - mmPts[3][1]],
     ];
-    doc.lines(lines, start[0], start[1], [1, 1], 'FD', true);
+    doc.lines(lines, start[0], start[1], [1, 1], 'F', true);
 
     if (showHatching) {
       const isConcrete = w.material === 'concrete';
       drawWallHatchLines(doc, mmPts, w.isExterior ? 1.5 : 1.8, isConcrete);
-      // Redraw crisp outer wall contour
-      doc.setDrawColor(15, 15, 15);
-      doc.setLineWidth(w.isExterior ? 0.35 : 0.24);
-      doc.lines(lines, start[0], start[1], [1, 1], 'S', true);
     }
+  });
+
+  // Pass B: Stroke ONLY clean exposed boundaries (ZERO internal cross lines at X-crossings or T-junctions!)
+  cleanWallData.allBoundarySegments.forEach((seg) => {
+    doc.setDrawColor(15, 15, 15);
+    doc.setLineWidth(seg.isJointLine ? 0.15 : seg.isExterior ? 0.35 : 0.24);
+    doc.line(toMmX(seg.start.x), toMmY(seg.start.y), toMmX(seg.end.x), toMmY(seg.end.y));
   });
 
   // 4. Render Doors (Cutout, Jambs, Leaf, Swing Arc, Pos Badge & Rohbaumaß)
@@ -1051,13 +1055,10 @@ export function exportProjectDxf(project: CadProject, floor: Floor): void {
 
   dxf += `0\nSECTION\n2\nENTITIES\n`;
 
-  // Walls as 3DFACE / LINES
-  floor.walls.forEach((w) => {
-    const pts = getWallPolygon(w);
-    dxf += `0\nLINE\n8\nWALLS\n10\n${pts[0].x}\n20\n${-pts[0].y}\n30\n0.0\n11\n${pts[1].x}\n21\n${-pts[1].y}\n31\n0.0\n`;
-    dxf += `0\nLINE\n8\nWALLS\n10\n${pts[1].x}\n20\n${-pts[1].y}\n30\n0.0\n11\n${pts[2].x}\n21\n${-pts[2].y}\n31\n0.0\n`;
-    dxf += `0\nLINE\n8\nWALLS\n10\n${pts[2].x}\n20\n${-pts[2].y}\n30\n0.0\n11\n${pts[3].x}\n21\n${-pts[3].y}\n31\n0.0\n`;
-    dxf += `0\nLINE\n8\nWALLS\n10\n${pts[3].x}\n20\n${-pts[3].y}\n30\n0.0\n11\n${pts[0].x}\n21\n${-pts[0].y}\n31\n0.0\n`;
+  // Walls as clean seamless boundary lines (DIN 1356-1 compliant, no internal cross lines in AutoCAD/ArchiCAD/Revit)
+  const cleanWallData = calculateCleanWallJunctions(floor.walls);
+  cleanWallData.allBoundarySegments.forEach((seg) => {
+    dxf += `0\nLINE\n8\nWALLS\n10\n${seg.start.x}\n20\n${-seg.start.y}\n30\n0.0\n11\n${seg.end.x}\n21\n${-seg.end.y}\n31\n0.0\n`;
   });
 
   // Dimensions

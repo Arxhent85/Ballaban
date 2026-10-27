@@ -59,6 +59,7 @@ import {
   ActiveGuideLine,
   calculateEqualSpacingRatio,
 } from '../../utils/cadMath';
+import { calculateCleanWallJunctions } from '../../utils/cadWallJunctions';
 import {
   TouchInteractionMode,
   PencilMode,
@@ -685,9 +686,9 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     return mergeBoundingBoxes(boxes);
   }, [selection, walls, furniture, doors, windows, rooms, plot]);
 
-  // Seamless wall polygons and junction cap states
-  const seamlessWalls = useMemo(() => {
-    return calculateSeamlessWallRenderData(walls);
+  // Seamless wall polygons, mitered joints, and clean X/T junction boundaries
+  const cleanWallAssembly = useMemo(() => {
+    return calculateCleanWallJunctions(walls);
   }, [walls]);
 
   // Plot metrics (GRZ, GFZ, buildable area)
@@ -1471,10 +1472,10 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     // 3. SEAMLESS WALLS (Clean solid mass, mitered joints, visible distinction between 30cm & 11.5cm)
     // ==========================================
     const showWalls = layers.find((l) => l.id === 'walls')?.visible !== false;
-    if (showWalls && seamlessWalls.length > 0) {
+    if (showWalls && cleanWallAssembly.walls.length > 0) {
       // Pass A: Solid Fill of all walls in single pass to eliminate internal seam lines!
       ctx.fillStyle = isDark ? '#27272a' : '#292524';
-      seamlessWalls.forEach(({ poly }) => {
+      cleanWallAssembly.walls.forEach(({ poly }) => {
         const pts = poly.map(worldToScreen);
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
@@ -1486,7 +1487,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
       });
 
       // Pass A2: Bright Amber luminous fill for all selected walls
-      seamlessWalls.forEach(({ wall, poly }) => {
+      cleanWallAssembly.walls.forEach(({ wall, poly }) => {
         if (selection.ids.includes(wall.id)) {
           const pts = poly.map(worldToScreen);
           ctx.beginPath();
@@ -1500,52 +1501,31 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
         }
       });
 
-      // Pass B: Stroke outer boundaries and exposed end caps ONLY
-      seamlessWalls.forEach(({ wall, poly, hasStartCap, hasEndCap }) => {
-        const isSelected = selection.ids.includes(wall.id);
-        const isHovered = hoveredObjectId === wall.id;
-        const pts = poly.map(worldToScreen);
+      // Pass B: Stroke ONLY clean exposed boundaries (ZERO cross lines at X-crossings or T-junctions!)
+      cleanWallAssembly.allBoundarySegments.forEach((seg) => {
+        const isSelected = selection.ids.includes(seg.wallId);
+        const isHovered = hoveredObjectId === seg.wallId;
+        const p1 = worldToScreen(seg.start);
+        const p2 = worldToScreen(seg.end);
 
         ctx.strokeStyle = isSelected
           ? '#ea580c'
           : isHovered
           ? '#f97316'
-          : isDark
-          ? '#52525b'
-          : '#1c1917';
+          : seg.isJointLine
+          ? (isDark ? '#71717a' : '#a8a29e')
+          : (isDark ? '#52525b' : '#1c1917');
 
-        // Noticeable difference in line weight: Exterior walls (2.4) vs Interior walls (1.3)
-        ctx.lineWidth = isSelected ? 3.5 : wall.isExterior ? 2.4 : 1.3;
+        ctx.lineWidth = isSelected ? 3.5 : seg.isJointLine ? 1.0 : seg.isExterior ? 2.4 : 1.3;
 
-        // Left edge: pts[0] -> pts[1]
         ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
         ctx.stroke();
+      });
 
-        // Right edge: pts[2] -> pts[3]
-        ctx.beginPath();
-        ctx.moveTo(pts[2].x, pts[2].y);
-        ctx.lineTo(pts[3].x, pts[3].y);
-        ctx.stroke();
-
-        // End Cap: pts[1] -> pts[2] (only if not connected to another wall)
-        if (hasEndCap) {
-          ctx.beginPath();
-          ctx.moveTo(pts[1].x, pts[1].y);
-          ctx.lineTo(pts[2].x, pts[2].y);
-          ctx.stroke();
-        }
-
-        // Start Cap: pts[3] -> pts[0] (only if not connected to another wall)
-        if (hasStartCap) {
-          ctx.beginPath();
-          ctx.moveTo(pts[3].x, pts[3].y);
-          ctx.lineTo(pts[0].x, pts[0].y);
-          ctx.stroke();
-        }
-
-        // Sloped wall elevation tag (e.g. h1 = 2.50m -> h2 = 3.50m)
+      // Pass C: Sloped wall elevation tag (e.g. h1 = 2.50m -> h2 = 3.50m)
+      cleanWallAssembly.walls.forEach(({ wall }) => {
         if (wall.endHeight && Math.abs(wall.endHeight - wall.height) > 0.05) {
           const sMid = worldToScreen({
             x: (wall.start.x + wall.end.x) / 2,
@@ -1557,9 +1537,11 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
           ctx.textAlign = 'center';
           ctx.fillText(slopeText, sMid.x, sMid.y - 12);
         }
+      });
 
-        // Endpoint grab handles if selected
-        if (isSelected) {
+      // Pass D: Endpoint grab handles for selected walls
+      cleanWallAssembly.walls.forEach(({ wall }) => {
+        if (selection.ids.includes(wall.id)) {
           const s1 = worldToScreen(wall.start);
           const s2 = worldToScreen(wall.end);
 
@@ -3241,7 +3223,7 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
     activeTool,
     selection,
     selectionBoundingBox,
-    seamlessWalls,
+    cleanWallAssembly,
     marquee,
     hoveredObjectId,
     snapSettings,
