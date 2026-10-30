@@ -83,20 +83,20 @@ import { AiPlanImportModal } from './components/dialogs/AiPlanImportModal';
 import { VoiceTextCorrectionModal } from './components/dialogs/VoiceTextCorrectionModal';
 import { UnderlayCropModal } from './components/dialogs/UnderlayCropModal';
 import { loadImageFromFile } from './utils/imageProcessing';
+import {
+  getSavedVaultProject,
+  saveVaultProject,
+  hasSavedVaultProject,
+} from './utils/vaultSecurity';
 
 export default function App() {
-  // Project state: default to newly designed 6x8m Holiday House
+  // Vault Authentication State: starts locked on reload to protect user's private drawings
+  const [isAuthenticatedVault, setIsAuthenticatedVault] = useState<boolean>(false);
+  const [showWelcome, setShowWelcome] = useState<boolean>(true);
+
+  // Project state: clean blank canvas on page reload to protect private data until PIN is entered
   const [project, setProject] = useState<CadProject>(() => {
-    try {
-      const saved = localStorage.getItem('cad_holiday_house_project_v3');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.floors && parsed.floors.length > 0) return parsed;
-      }
-    } catch {
-      // ignore
-    }
-    return createHolidayHouse6x8Template();
+    return createEmptyProject();
   });
 
   // Undo / Redo history
@@ -195,13 +195,6 @@ export default function App() {
   }, []);
 
   // Dialogs
-  const [showWelcome, setShowWelcome] = useState<boolean>(() => {
-    try {
-      return !localStorage.getItem('cad_has_seen_welcome_v2');
-    } catch {
-      return false;
-    }
-  });
   const [showHelp, setShowHelp] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -395,11 +388,13 @@ export default function App() {
     };
   }, []);
 
-  // Autosave on mobile tab switch or backgrounding
+  // Autosave on mobile tab switch or backgrounding (only when authenticated in vault)
   useEffect(() => {
     const handleSave = () => {
       try {
-        localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(project));
+        if (isAuthenticatedVault && project) {
+          saveVaultProject(project);
+        }
       } catch {}
     };
     window.addEventListener('pagehide', handleSave);
@@ -413,7 +408,14 @@ export default function App() {
       window.removeEventListener('beforeunload', handleSave);
       document.removeEventListener('visibilitychange', handleVis);
     };
-  }, [project]);
+  }, [project, isAuthenticatedVault]);
+
+  // General autosave effect when project updates in authenticated vault mode
+  useEffect(() => {
+    if (isAuthenticatedVault && project) {
+      saveVaultProject(project);
+    }
+  }, [project, isAuthenticatedVault]);
 
   // Open drawer automatically when selecting an object on tablet
   useEffect(() => {
@@ -540,13 +542,11 @@ export default function App() {
       setHistory(newHistory);
       setHistoryIndex(newHistory.length - 1);
 
-      try {
-        localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(newProject));
-      } catch {
-        // quota
+      if (isAuthenticatedVault) {
+        saveVaultProject(newProject);
       }
     },
-    [history, historyIndex]
+    [history, historyIndex, isAuthenticatedVault]
   );
 
   // Update elements inside active floor
@@ -572,22 +572,22 @@ export default function App() {
       const prev = history[historyIndex - 1];
       setHistoryIndex(historyIndex - 1);
       setProject(prev);
-      try {
-        localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(prev));
-      } catch {}
+      if (isAuthenticatedVault) {
+        saveVaultProject(prev);
+      }
     }
-  }, [history, historyIndex]);
+  }, [history, historyIndex, isAuthenticatedVault]);
 
   const handleRedo = useCallback(() => {
     if (historyIndex < history.length - 1) {
       const next = history[historyIndex + 1];
       setHistoryIndex(historyIndex + 1);
       setProject(next);
-      try {
-        localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(next));
-      } catch {}
+      if (isAuthenticatedVault) {
+        saveVaultProject(next);
+      }
     }
-  }, [history, historyIndex]);
+  }, [history, historyIndex, isAuthenticatedVault]);
 
   // Zoom to Fit (filling approx 70% of canvas)
   const handleZoomFit = useCallback(() => {
@@ -649,6 +649,53 @@ export default function App() {
     setShowClearConfirm(false);
   }, [updateProject]);
 
+  // Vault Security Handlers: Unlock with PIN, Start fresh from 0, or Lock Vault
+  const handleUnlockWithPin = useCallback(() => {
+    const saved = getSavedVaultProject();
+    const projToLoad = saved || createHolidayHouse6x8Template();
+    setProject(projToLoad);
+    setHistory([projToLoad]);
+    setHistoryIndex(0);
+    setIsAuthenticatedVault(true);
+    setShowWelcome(false);
+    setSelection({ type: 'none', ids: [] });
+    // Fit to view
+    setTimeout(() => {
+      handleZoomFit();
+    }, 150);
+  }, [handleZoomFit]);
+
+  const handleStartFresh = useCallback(() => {
+    const empty = createEmptyProject();
+    if (empty.plot) {
+      empty.plot = {
+        ...empty.plot,
+        enabled: false,
+        points: undefined,
+      };
+    }
+    setProject(empty);
+    setHistory([empty]);
+    setHistoryIndex(0);
+    setIsAuthenticatedVault(false);
+    setShowWelcome(false);
+    setSelection({ type: 'none', ids: [] });
+  }, []);
+
+  const handleLockVault = useCallback(() => {
+    // If authenticated, ensure any pending changes are saved
+    if (isAuthenticatedVault && project) {
+      saveVaultProject(project);
+    }
+    setIsAuthenticatedVault(false);
+    const empty = createEmptyProject();
+    setProject(empty);
+    setHistory([empty]);
+    setHistoryIndex(0);
+    setSelection({ type: 'none', ids: [] });
+    setShowWelcome(true);
+  }, [isAuthenticatedVault, project]);
+
   const handleOpenSettingsWithTab = useCallback((tab: 'standards' | 'snapping' | 'ai') => {
     setSettingsInitialTab(tab);
     setShowSettings(true);
@@ -708,13 +755,13 @@ export default function App() {
           l.id === 'underlay' ? { ...l, locked: true } : l
         );
         const updatedProj = { ...currentProj, backgroundImage: updatedBg, layers: updatedLayers };
-        try {
-          localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(updatedProj));
-        } catch {}
+        if (isAuthenticatedVault) {
+          saveVaultProject(updatedProj);
+        }
         return updatedProj;
       });
     }
-  }, []);
+  }, [isAuthenticatedVault]);
 
   const handleInsertUnderlayImage = useCallback(async (file: File) => {
     try {
@@ -761,9 +808,9 @@ export default function App() {
         setHistory(newHistory);
         setHistoryIndex(newHistory.length - 1);
 
-        try {
-          localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(updatedProj));
-        } catch {}
+        if (isAuthenticatedVault) {
+          saveVaultProject(updatedProj);
+        }
 
         return updatedProj;
       });
@@ -775,7 +822,7 @@ export default function App() {
     } catch (err: any) {
       alert('Fehler beim Laden der Plan-Vorlage: ' + (err?.message || err));
     }
-  }, [history, historyIndex, handleZoomFit]);
+  }, [history, historyIndex, handleZoomFit, isAuthenticatedVault]);
 
   // Drag & Drop image or PDF onto workspace to directly insert as underlay
   const handleWorkspaceDragOver = useCallback((e: React.DragEvent) => {
@@ -1078,14 +1125,12 @@ export default function App() {
       if (newHistory.length > 50) newHistory.shift();
       setHistory(newHistory);
       setHistoryIndex(newHistory.length - 1);
-      try {
-        localStorage.setItem('cad_holiday_house_project_v3', JSON.stringify(currentProj));
-      } catch {
-        // quota
+      if (isAuthenticatedVault) {
+        saveVaultProject(currentProj);
       }
       return currentProj;
     });
-  }, [history, historyIndex]);
+  }, [history, historyIndex, isAuthenticatedVault]);
 
   // Element Actions
   const handleAddWall = (wall: Wall) => {
@@ -2256,6 +2301,9 @@ export default function App() {
         onInsertUnderlayImage={handleInsertUnderlayImage}
         isUnderlayHudOpen={isUnderlayHudOpen}
         onToggleUnderlayHud={() => setIsUnderlayHudOpen((prev) => !prev)}
+        isAuthenticatedVault={isAuthenticatedVault}
+        onLockVault={handleLockVault}
+        onOpenWelcome={() => setShowWelcome(true)}
       />
 
       {/* 2. MAIN WORKSPACE */}
@@ -2699,13 +2747,11 @@ export default function App() {
       />
       <WelcomeDialog
         isOpen={showWelcome}
-        onClose={() => {
-          setShowWelcome(false);
-          try {
-            localStorage.setItem('cad_has_seen_welcome_v2', 'true');
-          } catch {}
-        }}
+        onClose={() => setShowWelcome(false)}
         language={language}
+        onUnlockWithPin={handleUnlockWithPin}
+        onStartFresh={handleStartFresh}
+        hasSavedProject={hasSavedVaultProject()}
       />
 
       <HelpDialog

@@ -48,6 +48,10 @@ import {
   Mic,
   Image as ImageIcon,
   PanelRight,
+  Lock,
+  Unlock,
+  KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
 import { ViewMode, Language, CadProject, Floor } from '../../types/cad';
 import { getT } from '../../i18n/translations';
@@ -91,6 +95,9 @@ interface CadHeaderProps {
   onToggleUnderlayHud?: () => void;
   isInspectorCollapsed?: boolean;
   onToggleInspector?: () => void;
+  isAuthenticatedVault?: boolean;
+  onLockVault?: () => void;
+  onOpenWelcome?: () => void;
 }
 
 export const CadHeader: React.FC<CadHeaderProps> = ({
@@ -132,6 +139,9 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
   onToggleUnderlayHud,
   isInspectorCollapsed = false,
   onToggleInspector,
+  isAuthenticatedVault = false,
+  onLockVault,
+  onOpenWelcome,
 }) => {
   const t = getT(language);
 
@@ -199,6 +209,39 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
               <div className="px-3 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
                 Datei & Projekt
               </div>
+
+              {/* Vault Security Lock / Unlock Gateway */}
+              {isAuthenticatedVault ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLockVault?.();
+                    setShowMainMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-2.5 text-emerald-600 dark:text-emerald-400 font-semibold cursor-pointer transition-colors"
+                >
+                  <Lock className="w-4 h-4 text-emerald-500" />
+                  <div className="flex flex-col">
+                    <span>Projekt-Tresor sperren</span>
+                    <span className="text-[10px] font-normal text-emerald-500/80">Plan sichern & Startfenster anzeigen</span>
+                  </div>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenWelcome?.();
+                    setShowMainMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center gap-2.5 text-amber-600 dark:text-amber-400 font-semibold cursor-pointer transition-colors"
+                >
+                  <KeyRound className="w-4 h-4 text-amber-500" />
+                  <div className="flex flex-col">
+                    <span>Projekt mit PIN entsperren</span>
+                    <span className="text-[10px] font-normal text-amber-500/80">Gespeichertes Projekt fortsetzen</span>
+                  </div>
+                </button>
+              )}
 
               {/* Leere Seite (Moved into menu per Teil 4) */}
               <button
@@ -522,12 +565,22 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
             </h1>
           )}
 
-          {/* Discreet Saved Status Icon */}
+          {/* Discreet Saved & Vault Status Icon */}
           <div
-            title="Projekt automatisch lokal gesichert"
-            className="flex items-center text-emerald-500 shrink-0"
+            title={
+              isAuthenticatedVault
+                ? 'Projekt im geschützten Tresor gesichert'
+                : 'Gast-Modus (Nicht im Tresor gesichert)'
+            }
+            className={`flex items-center shrink-0 ${
+              isAuthenticatedVault ? 'text-emerald-500' : 'text-amber-400'
+            }`}
           >
-            <CheckCircle2 className="w-3.5 h-3.5" />
+            {isAuthenticatedVault ? (
+              <Lock className="w-3.5 h-3.5" />
+            ) : (
+              <CheckCircle2 className="w-3.5 h-3.5 opacity-60" />
+            )}
           </div>
         </div>
       </div>
@@ -663,6 +716,28 @@ export const CadHeader: React.FC<CadHeaderProps> = ({
             }`}
           >
             {isFullscreenActive ? <Minimize className="w-3.5 h-3.5 text-amber-500" /> : <Maximize className="w-3.5 h-3.5 text-amber-500" />}
+          </button>
+        )}
+
+        {/* Vault Lock / Unlock Quick Action */}
+        {isAuthenticatedVault ? (
+          <button
+            type="button"
+            onClick={onLockVault}
+            title="Projekt-Tresor sperren (Bildschirm verlassen & schützen)"
+            className="w-8 h-8 rounded-xl border border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 transition-colors cursor-pointer flex items-center justify-center shrink-0"
+          >
+            <Lock className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenWelcome}
+            title="Projekt mit PIN entsperren"
+            className="h-8 px-2.5 rounded-xl border border-amber-500/50 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 shrink-0"
+          >
+            <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden md:inline">PIN / Tresor</span>
           </button>
         )}
 
