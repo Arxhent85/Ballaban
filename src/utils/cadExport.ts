@@ -7,6 +7,7 @@ import { jsPDF } from 'jspdf';
 import { CadProject, Floor } from '../types/cad';
 import { getWallPolygon, calculatePlotMetrics } from './cadMath';
 import { calculateCleanWallJunctions } from './cadWallJunctions';
+import { projectBuildingElevation } from './cadElevationProjection';
 import {
   analyzeArchitecturalPlan,
   getGermanDoorTypeLabel,
@@ -31,6 +32,7 @@ export interface ExportPdfOptions {
   includeElevationMarkers?: boolean;
   includeStructuralAxes?: boolean;
   includeRoofOutline?: boolean;
+  includeElevationsAndSections?: boolean;
 }
 
 /**
@@ -778,7 +780,277 @@ export function exportProjectPdf(project: CadProject, floor: Floor, options: Exp
   }
 
   // ============================================================================
-  // PAGE 2: OFFICIAL CALCULATION & SCHEDULES (DIN 277, WoFlV, VOB)
+  // PAGE 2: OFFICIAL ARCHITECTURAL ELEVATIONS & CROSS-SECTION (DIN 1356-1)
+  // ============================================================================
+  if (options.includeElevationsAndSections !== false) {
+    doc.addPage(options.paperSize, options.orientation);
+
+    // Double Border
+    doc.setDrawColor(30, 30, 30);
+    doc.setLineWidth(0.45);
+    doc.rect(margin, margin, pageWidth - 2 * margin, pageHeight - 2 * margin);
+    doc.setLineWidth(0.15);
+    doc.rect(margin - 1.5, margin - 1.5, pageWidth - 2 * margin + 3, pageHeight - 2 * margin + 3);
+
+    // Header Banner
+    doc.setFillColor(242, 243, 247);
+    doc.rect(margin, margin, pageWidth - 2 * margin, 13, 'F');
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.2);
+    doc.line(margin, margin + 13, pageWidth - margin, margin + 13);
+
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 15, 15);
+    doc.text('BAUANTRAGS-ZEICHNUNG · FASSADEN-ANSICHTEN & GEBÄUDESCHNITT A-A', margin + 4, margin + 6.0);
+
+    doc.setFontSize(6.2);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(90, 95, 105);
+    doc.text(
+      'DIN 1356-1 Bauzeichnungen · Orthogonale Fassadenprojektionen & Querschnitt mit Höhenkoten bezogen auf OKFF ±0,00 m',
+      margin + 4,
+      margin + 10.5
+    );
+
+    // --- 1. SÜDANSICHT (Left Top) ---
+    const south = projectBuildingElevation(project, floor, 'south');
+    const scaleElev = Math.min(5.5, 105 / Math.max(1, south.facadeWidthM));
+    const sGndY = margin + 68;
+    const sStartX = margin + 18;
+    const sW = south.facadeWidthM * scaleElev;
+    const sWallH = south.wallHeightM * scaleElev;
+    const sRidgeH = south.ridgeHeightM * scaleElev;
+
+    // Title
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(20, 20, 20);
+    doc.text('SÜDANSICHT (Gartenseite)', sStartX, margin + 19);
+
+    // Ground line
+    doc.setDrawColor(100, 110, 125);
+    doc.setLineWidth(0.4);
+    doc.line(sStartX - 8, sGndY, sStartX + sW + 8, sGndY);
+    doc.setFontSize(5.0);
+    doc.setTextColor(120, 125, 135);
+    doc.text('±0,00 GOK', sStartX - 7, sGndY + 2.5);
+
+    // Wall Body
+    doc.setFillColor(238, 236, 232);
+    doc.setDrawColor(30, 30, 30);
+    doc.setLineWidth(0.25);
+    doc.rect(sStartX, sGndY - sWallH, sW, sWallH, 'FD');
+
+    // Roof
+    doc.setFillColor(180, 50, 50);
+    doc.setDrawColor(120, 30, 30);
+    doc.setLineWidth(0.25);
+    if (south.isGableSide) {
+      doc.triangle(
+        sStartX - 2, sGndY - sWallH,
+        sStartX + sW / 2, sGndY - sRidgeH,
+        sStartX + sW + 2, sGndY - sWallH,
+        'FD'
+      );
+    } else {
+      const rfLines = [
+        [sW + 4, 0],
+        [-2, -(sRidgeH - sWallH)],
+        [-sW, 0],
+        [-2, (sRidgeH - sWallH)],
+      ];
+      doc.lines(rfLines, sStartX - 2, sGndY - sWallH, [1, 1], 'FD', true);
+    }
+
+    // Openings (Doors & Windows) on South
+    south.openings.forEach((op) => {
+      const opX = sStartX + op.xM * scaleElev;
+      const opW = op.widthM * scaleElev;
+      const opH = op.heightM * scaleElev;
+      const opY = sGndY - (op.bottomM + op.heightM) * scaleElev;
+
+      if (op.type === 'door') {
+        doc.setFillColor(210, 230, 225);
+        doc.setDrawColor(20, 80, 70);
+        doc.setLineWidth(0.2);
+        doc.rect(opX, opY, opW, opH, 'FD');
+      } else {
+        doc.setFillColor(200, 225, 245);
+        doc.setDrawColor(20, 70, 120);
+        doc.setLineWidth(0.2);
+        doc.rect(opX, opY, opW, opH, 'FD');
+      }
+    });
+
+    // Level marker (Firsthöhe)
+    doc.setFontSize(5.0);
+    doc.setTextColor(30, 30, 30);
+    doc.text(`+${south.ridgeHeightM.toFixed(2)} FH`, sStartX - 1, sGndY - sRidgeH - 1, { align: 'right' });
+    doc.text(`+${south.eavesHeightM.toFixed(2)} TH`, sStartX - 1, sGndY - sWallH + 1, { align: 'right' });
+
+    // Dimension line below
+    doc.setDrawColor(40, 40, 40);
+    doc.setLineWidth(0.15);
+    doc.line(sStartX, sGndY + 5, sStartX + sW, sGndY + 5);
+    doc.line(sStartX, sGndY + 4, sStartX, sGndY + 6);
+    doc.line(sStartX + sW, sGndY + 4, sStartX + sW, sGndY + 6);
+    doc.text(`${south.facadeWidthM.toFixed(2)} m`, sStartX + sW / 2, sGndY + 4.2, { align: 'center' });
+
+    // --- 2. NORDANSICHT (Right Top) ---
+    const north = projectBuildingElevation(project, floor, 'north');
+    const nStartX = pageWidth / 2 + 10;
+    const nW = north.facadeWidthM * scaleElev;
+    const nWallH = north.wallHeightM * scaleElev;
+    const nRidgeH = north.ridgeHeightM * scaleElev;
+
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(20, 20, 20);
+    doc.text('NORDANSICHT (Eingangsseite)', nStartX, margin + 19);
+
+    // Ground line
+    doc.setDrawColor(100, 110, 125);
+    doc.setLineWidth(0.4);
+    doc.line(nStartX - 8, sGndY, nStartX + nW + 8, sGndY);
+    doc.setFontSize(5.0);
+    doc.setTextColor(120, 125, 135);
+    doc.text('±0,00 GOK', nStartX - 7, sGndY + 2.5);
+
+    // Wall Body
+    doc.setFillColor(238, 236, 232);
+    doc.setDrawColor(30, 30, 30);
+    doc.setLineWidth(0.25);
+    doc.rect(nStartX, sGndY - nWallH, nW, nWallH, 'FD');
+
+    // Roof
+    doc.setFillColor(180, 50, 50);
+    doc.setDrawColor(120, 30, 30);
+    doc.setLineWidth(0.25);
+    if (north.isGableSide) {
+      doc.triangle(
+        nStartX - 2, sGndY - nWallH,
+        nStartX + nW / 2, sGndY - nRidgeH,
+        nStartX + nW + 2, sGndY - nWallH,
+        'FD'
+      );
+    } else {
+      const rfLinesN = [
+        [nW + 4, 0],
+        [-2, -(nRidgeH - nWallH)],
+        [-nW, 0],
+        [-2, (nRidgeH - nWallH)],
+      ];
+      doc.lines(rfLinesN, nStartX - 2, sGndY - nWallH, [1, 1], 'FD', true);
+    }
+
+    // Openings on North
+    north.openings.forEach((op) => {
+      const opX = nStartX + op.xM * scaleElev;
+      const opW = op.widthM * scaleElev;
+      const opH = op.heightM * scaleElev;
+      const opY = sGndY - (op.bottomM + op.heightM) * scaleElev;
+
+      if (op.type === 'door') {
+        doc.setFillColor(210, 230, 225);
+        doc.setDrawColor(20, 80, 70);
+        doc.setLineWidth(0.2);
+        doc.rect(opX, opY, opW, opH, 'FD');
+      } else {
+        doc.setFillColor(200, 225, 245);
+        doc.setDrawColor(20, 70, 120);
+        doc.setLineWidth(0.2);
+        doc.rect(opX, opY, opW, opH, 'FD');
+      }
+    });
+
+    doc.setFontSize(5.0);
+    doc.setTextColor(30, 30, 30);
+    doc.text(`+${north.ridgeHeightM.toFixed(2)} FH`, nStartX - 1, sGndY - nRidgeH - 1, { align: 'right' });
+    doc.text(`+${north.eavesHeightM.toFixed(2)} TH`, nStartX - 1, sGndY - nWallH + 1, { align: 'right' });
+
+    // Dimension line below
+    doc.setDrawColor(40, 40, 40);
+    doc.setLineWidth(0.15);
+    doc.line(nStartX, sGndY + 5, nStartX + nW, sGndY + 5);
+    doc.line(nStartX, sGndY + 4, nStartX, sGndY + 6);
+    doc.line(nStartX + nW, sGndY + 4, nStartX + nW, sGndY + 6);
+    doc.text(`${north.facadeWidthM.toFixed(2)} m`, nStartX + nW / 2, sGndY + 4.2, { align: 'center' });
+
+    // --- 3. GEBÄUDESCHNITT A-A (Bottom) ---
+    const secGndY = pageHeight - margin - 22;
+    const secStartX = margin + 25;
+    const secScale = Math.min(7.5, (pageWidth - 2 * margin - 50) / Math.max(1, south.facadeWidthM));
+    const secSpanW = south.facadeWidthM * secScale;
+    const secWallH = south.wallHeightM * secScale;
+    const secRidgeH = south.ridgeHeightM * secScale;
+    const slabH = 0.25 * secScale;
+    const ceilH = 0.20 * secScale;
+
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(20, 20, 20);
+    doc.text('GEBÄUDESCHNITT A-A (DIN 1356-1)', secStartX, sGndY + 16);
+
+    // Ground Line
+    doc.setDrawColor(100, 110, 125);
+    doc.setLineWidth(0.4);
+    doc.line(secStartX - 15, secGndY, secStartX + secSpanW + 15, secGndY);
+    doc.setFontSize(5.0);
+    doc.setTextColor(120, 125, 135);
+    doc.text('Gelände ±0,00 GOK', secStartX - 14, secGndY + 2.5);
+
+    // Fundamente (Streifenfundamente)
+    doc.setFillColor(215, 218, 224);
+    doc.setDrawColor(40, 40, 40);
+    doc.setLineWidth(0.2);
+    doc.rect(secStartX - 3, secGndY, 8, 10, 'FD');
+    doc.rect(secStartX + secSpanW - 5, secGndY, 8, 10, 'FD');
+
+    // Bodenplatte (d = 25 cm)
+    doc.setFillColor(225, 228, 235);
+    doc.rect(secStartX, secGndY - slabH, secSpanW, slabH, 'FD');
+    doc.setFontSize(4.8);
+    doc.setTextColor(60, 60, 65);
+    doc.text('Bodenplatte d = 25 cm mit Wärmedämmung', secStartX + secSpanW / 2, secGndY - slabH / 2 + 1, { align: 'center' });
+
+    // Exterior walls sliced
+    const wallThickMm = 0.365 * secScale;
+    doc.setFillColor(240, 230, 220);
+    doc.rect(secStartX, secGndY - slabH - secWallH, wallThickMm, secWallH, 'FD');
+    doc.rect(secStartX + secSpanW - wallThickMm, secGndY - slabH - secWallH, wallThickMm, secWallH, 'FD');
+
+    // Geschossdecke
+    doc.setFillColor(220, 225, 232);
+    doc.rect(secStartX, secGndY - slabH - secWallH - ceilH, secSpanW, ceilH, 'FD');
+    doc.text('Geschossdecke d = 20 cm', secStartX + secSpanW / 2, secGndY - slabH - secWallH - ceilH / 2 + 1, { align: 'center' });
+
+    // Sparrendach (Rafters)
+    doc.setDrawColor(180, 80, 20);
+    doc.setLineWidth(0.6);
+    doc.line(secStartX - 3, secGndY - slabH - secWallH, secStartX + secSpanW / 2, secGndY - slabH - secRidgeH);
+    doc.line(secStartX + secSpanW + 3, secGndY - slabH - secWallH, secStartX + secSpanW / 2, secGndY - slabH - secRidgeH);
+    // Kehlbalken
+    doc.line(secStartX + secSpanW * 0.25, secGndY - slabH - secWallH - (secRidgeH - secWallH) * 0.45, secStartX + secSpanW * 0.75, secGndY - slabH - secWallH - (secRidgeH - secWallH) * 0.45);
+
+    // Height markers
+    doc.setFontSize(5.0);
+    doc.setTextColor(30, 30, 30);
+    doc.text(`+${(0.25 + south.ridgeHeightM).toFixed(2)} OK First`, secStartX - 2, secGndY - slabH - secRidgeH, { align: 'right' });
+    doc.text(`+${(0.25 + south.eavesHeightM).toFixed(2)} OK Traufe`, secStartX - 2, secGndY - slabH - secWallH, { align: 'right' });
+    doc.text('+0,00 OKFF', secStartX - 2, secGndY - slabH + 1, { align: 'right' });
+
+    // Dimension line at bottom
+    doc.setDrawColor(40, 40, 40);
+    doc.setLineWidth(0.15);
+    doc.line(secStartX, secGndY + 6, secStartX + secSpanW, secGndY + 6);
+    doc.line(secStartX, secGndY + 5, secStartX, secGndY + 7);
+    doc.line(secStartX + secSpanW, secGndY + 5, secStartX + secSpanW, secGndY + 7);
+    doc.text(`${south.facadeWidthM.toFixed(2)} m (Gebäudequerschnitt)`, secStartX + secSpanW / 2, secGndY + 5.2, { align: 'center' });
+  }
+
+  // ============================================================================
+  // PAGE 3: OFFICIAL CALCULATION & SCHEDULES (DIN 277, WoFlV, VOB)
   // ============================================================================
   doc.addPage(options.paperSize, options.orientation);
 

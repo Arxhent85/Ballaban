@@ -2592,6 +2592,7 @@ export default function App() {
           }}
           onEditRoom={(r) => setEditingRoom(r)}
           onBatchUpdateWalls={handleBatchUpdateWalls}
+          onUpdateAllWalls={(updatedWalls) => updateActiveFloor((f) => ({ ...f, walls: updatedWalls }))}
           plot={project.plot}
           onUpdatePlot={handleUpdatePlot}
           floorsCount={project.floors.length}

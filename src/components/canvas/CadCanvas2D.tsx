@@ -1553,6 +1553,51 @@ export const CadCanvas2D: React.FC<CadCanvas2DProps> = ({
 
           ctx.fillRect(s2.x - 6, s2.y - 6, 12, 12);
           ctx.strokeRect(s2.x - 6, s2.y - 6, 12, 12);
+
+          // Pass E: High-visibility Parametric Dimension & Length Badge at midpoint
+          const midX = (wall.start.x + wall.end.x) / 2;
+          const midY = (wall.start.y + wall.end.y) / 2;
+          const sMid = worldToScreen({ x: midX, y: midY });
+          const lenM = distance(wall.start, wall.end);
+          const badgeText = `${lenM.toFixed(2)} m`;
+
+          ctx.save();
+          ctx.font = 'bold 11px "JetBrains Mono", monospace';
+          const textW = ctx.measureText(badgeText).width;
+
+          // Normal vector offset so badge sits neatly beside the wall
+          const dx = wall.end.x - wall.start.x;
+          const dy = wall.end.y - wall.start.y;
+          const l = Math.hypot(dx, dy) || 1;
+          const nx = -dy / l;
+          const ny = dx / l;
+          const offsetDist = Math.max(18, (wall.thickness * zoom) / 2 + 16);
+
+          const badgeX = sMid.x + nx * offsetDist;
+          const badgeY = sMid.y + ny * offsetDist;
+
+          // Draw rounded badge background with subtle drop shadow
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+          ctx.shadowBlur = 6;
+          ctx.fillStyle = '#0f172a';
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(badgeX - textW / 2 - 8, badgeY - 11, textW + 16, 22, 6);
+          } else {
+            ctx.rect(badgeX - textW / 2 - 8, badgeY - 11, textW + 16, 22);
+          }
+          ctx.fill();
+          ctx.stroke();
+
+          // Text
+          ctx.shadowColor = 'transparent';
+          ctx.fillStyle = '#fde68a';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(badgeText, badgeX, badgeY);
+          ctx.restore();
         }
       });
     }

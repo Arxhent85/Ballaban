@@ -59,6 +59,7 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
   const [includeElevationMarkers, setIncludeElevationMarkers] = useState(true);
   const [includeStructuralAxes, setIncludeStructuralAxes] = useState(true);
   const [includeRoofOutline, setIncludeRoofOutline] = useState(true);
+  const [includeElevationsAndSections, setIncludeElevationsAndSections] = useState(true);
   const [includeTitleBlock, setIncludeTitleBlock] = useState(true);
   const [includeNorthArrow, setIncludeNorthArrow] = useState(true);
 
@@ -82,6 +83,7 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
       includeElevationMarkers,
       includeStructuralAxes,
       includeRoofOutline,
+      includeElevationsAndSections,
     };
     exportProjectPdf(project, floor, opts);
   };
@@ -282,6 +284,20 @@ export const ExportPrintDialog: React.FC<ExportPrintDialogProps> = ({
                   <strong className="text-white">Dachaufsicht & Überstand</strong>
                   <br />
                   <span className="text-[10px] text-slate-400">Dachüberstand gestrichelt, Firstlinie & Neigung</span>
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeElevationsAndSections}
+                  onChange={(e) => setIncludeElevationsAndSections(e.target.checked)}
+                  className="accent-emerald-500 rounded"
+                />
+                <span className="text-slate-200">
+                  <strong className="text-white">Ansichten & Schnitt A-A (DIN 1356-1)</strong>
+                  <br />
+                  <span className="text-[10px] text-slate-400">Vektorblatt mit Süd-/Nordansicht & Querschnitt</span>
                 </span>
               </label>
 

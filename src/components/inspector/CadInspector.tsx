@@ -57,6 +57,8 @@ import {
   BackgroundImage,
 } from '../../types/cad';
 import { formatDimension, distance, calculatePlotMetrics } from '../../utils/cadMath';
+import { resizeWallParametrically, ResizeAnchor } from '../../utils/cadWallParametric';
+import { calculateWallThermalEvaluation, calculateWindowUValue } from '../../utils/buildingPhysics';
 import { FURNITURE_CATALOG } from '../../utils/furnitureLibrary';
 import { getT } from '../../i18n/translations';
 
@@ -86,6 +88,7 @@ interface CadInspectorProps {
   onAddFurniture: (f: Furniture) => void;
   onEditRoom: (r: Room) => void;
   onBatchUpdateWalls?: (updates: Partial<Wall>) => void;
+  onUpdateAllWalls?: (walls: Wall[]) => void;
   plot?: PlotBoundary;
   onUpdatePlot?: (plot: PlotBoundary) => void;
   floorsCount?: number;
@@ -168,6 +171,7 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
   onAddFurniture,
   onEditRoom,
   onBatchUpdateWalls,
+  onUpdateAllWalls,
   plot,
   onUpdatePlot,
   floorsCount = 1,
@@ -208,6 +212,21 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
   const selectedRoof = !isMultiSelect
     ? (singleId ? roofs.find((r) => r.id === singleId) || null : (selection.type === 'roof' ? roofs[0] || null : null))
     : (selection.type === 'roof' ? roofs[0] || null : null);
+
+  // Parametric wall length editing state
+  const [wallResizeAnchor, setWallResizeAnchor] = useState<ResizeAnchor>('start');
+  const [keepCornerConnected, setKeepCornerConnected] = useState<boolean>(true);
+
+  // Building Physics & Energy standards evaluation
+  const wallThermal = useMemo(() => {
+    if (!selectedWall) return null;
+    return calculateWallThermalEvaluation(selectedWall);
+  }, [selectedWall]);
+
+  const windowThermal = useMemo(() => {
+    if (!selectedWindow) return null;
+    return calculateWindowUValue(selectedWindow);
+  }, [selectedWindow]);
 
   // Filtered library items
   const filteredCatalog = FURNITURE_CATALOG.filter((item) => {
@@ -611,12 +630,119 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                   </div>
                 </div>
 
-                {/* Wall Length */}
-                <div className="flex items-center justify-between">
-                  <span className="text-stone-500">Länge:</span>
-                  <span className="font-mono font-bold text-stone-900 dark:text-white">
-                    {formatDimension(distance(selectedWall.start, selectedWall.end), unit, 2)}
-                  </span>
+                {/* Parametric Wall Length Controller */}
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-stone-800 dark:text-stone-200 text-[11px] flex items-center gap-1">
+                      <span>Wandlänge (parametrisch)</span>
+                    </span>
+                    <TouchStepperInput
+                      value={Math.round(distance(selectedWall.start, selectedWall.end) * 100) / 100}
+                      step={0.10}
+                      min={0.20}
+                      max={50.0}
+                      unitLabel="m"
+                      onChange={(newLen) => {
+                        const res = resizeWallParametrically(
+                          selectedWall,
+                          newLen,
+                          wallResizeAnchor,
+                          walls,
+                          keepCornerConnected
+                        );
+                        if (onUpdateAllWalls) {
+                          onUpdateAllWalls(res.allUpdatedWalls);
+                        } else {
+                          onUpdateWall(res.updatedWall);
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {/* Quick delta steps */}
+                  <div className="grid grid-cols-4 gap-1">
+                    {[-0.5, -0.1, 0.1, 0.5].map((delta) => (
+                      <button
+                        key={delta}
+                        type="button"
+                        onClick={() => {
+                          const curLen = distance(selectedWall.start, selectedWall.end);
+                          const target = Math.max(0.2, Math.round((curLen + delta) * 100) / 100);
+                          const res = resizeWallParametrically(
+                            selectedWall,
+                            target,
+                            wallResizeAnchor,
+                            walls,
+                            keepCornerConnected
+                          );
+                          if (onUpdateAllWalls) {
+                            onUpdateAllWalls(res.allUpdatedWalls);
+                          } else {
+                            onUpdateWall(res.updatedWall);
+                          }
+                        }}
+                        className="py-1 px-1 rounded bg-stone-200/80 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-[10px] font-mono font-medium text-stone-700 dark:text-stone-200 text-center transition-colors cursor-pointer"
+                      >
+                        {delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}m
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Anchor point selector */}
+                  <div className="flex flex-col gap-1 pt-1 border-t border-amber-500/20">
+                    <span className="text-[10px] text-stone-500 dark:text-stone-400">Verlängerungs-Richtung:</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setWallResizeAnchor('start')}
+                        className={`py-1 px-1 rounded text-[10px] font-medium border text-center transition-colors cursor-pointer ${
+                          wallResizeAnchor === 'start'
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                            : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
+                        }`}
+                        title="Startpunkt bleibt fixiert, Ende verlängert sich"
+                      >
+                        ◀ Anfang fest
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWallResizeAnchor('center')}
+                        className={`py-1 px-1 rounded text-[10px] font-medium border text-center transition-colors cursor-pointer ${
+                          wallResizeAnchor === 'center'
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                            : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
+                        }`}
+                        title="Beidseitig symmetrisch verlängern"
+                      >
+                        ↔ Symmetrisch
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWallResizeAnchor('end')}
+                        className={`py-1 px-1 rounded text-[10px] font-medium border text-center transition-colors cursor-pointer ${
+                          wallResizeAnchor === 'end'
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                            : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
+                        }`}
+                        title="Endpunkt bleibt fixiert, Anfang verlängert sich"
+                      >
+                        Ende fest ▶
+                      </button>
+                    </div>
+
+                    {/* Checkbox: preserve connected corner joints */}
+                    <label className="flex items-center gap-1.5 mt-1 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={keepCornerConnected}
+                        onChange={(e) => setKeepCornerConnected(e.target.checked)}
+                        className="rounded accent-amber-600"
+                      />
+                      <span className="text-[10px] text-stone-600 dark:text-stone-300 font-medium">
+                        Wandecken mitbewegen (Raum bleibt geschlossen)
+                      </span>
+                    </label>
+                  </div>
                 </div>
 
                 {/* Wall Thickness Custom Input with Touch Stepper */}
@@ -733,6 +859,48 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                     <option value="log">🌲 Massivholz / Blockbohle</option>
                   </select>
                 </div>
+
+                {/* Building Physics & Energy Card (GEG 2024 / DIN EN ISO 6946) */}
+                {wallThermal && (
+                  <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-emerald-800 dark:text-emerald-300 text-[11px] flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span>Bauphysik & Energiepass</span>
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                        {wallThermal.efficiencyClass}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="flex flex-col bg-stone-100/60 dark:bg-stone-900/60 p-2 rounded-lg border border-stone-200 dark:border-stone-800">
+                        <span className="text-stone-500 text-[10px]">U-Wert (W/m²K):</span>
+                        <span className="font-mono font-bold text-sm text-stone-900 dark:text-white">
+                          {wallThermal.uValue.toFixed(2)}
+                        </span>
+                        <span className="text-[9px] text-stone-400">
+                          {selectedWall.isExterior ? 'GEG max: 0,24' : 'Innenwand'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col bg-stone-100/60 dark:bg-stone-900/60 p-2 rounded-lg border border-stone-200 dark:border-stone-800">
+                        <span className="text-stone-500 text-[10px]">Wärmeverlust:</span>
+                        <span className="font-mono font-bold text-sm text-stone-900 dark:text-white">
+                          {wallThermal.heatLossWattsPerK} W/K
+                        </span>
+                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                          {wallThermal.gegCompliant ? '✅ GEG-konform' : '⚠️ GEG Überschritten'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-stone-500 dark:text-stone-400 flex items-center justify-between pt-1 border-t border-emerald-500/20">
+                      <span>R-Wert: {wallThermal.rValue} m²K/W</span>
+                      <span>Schallschutz: 48 dB (Rw)</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Actions */}
                 <div className="flex gap-2 pt-2">
@@ -1006,6 +1174,41 @@ export const CadInspector: React.FC<CadInspectorProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Window Thermal & Energy Standard Card */}
+                {windowThermal && (
+                  <div className="bg-blue-950/20 border border-blue-500/30 rounded-xl p-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-blue-800 dark:text-blue-300 text-[11px] flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        <span>Fenster-Wärmeschutz (GEG 2024)</span>
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30">
+                        {windowThermal.gegCompliant ? '✅ GEG-konform' : '⚠️ Unzureichend'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="flex flex-col bg-stone-100/60 dark:bg-stone-900/60 p-2 rounded-lg border border-stone-200 dark:border-stone-800">
+                        <span className="text-stone-500 text-[10px]">Uw-Wert (W/m²K):</span>
+                        <span className="font-mono font-bold text-sm text-stone-900 dark:text-white">
+                          {windowThermal.uw.toFixed(2)}
+                        </span>
+                        <span className="text-[9px] text-stone-400">GEG max: 1,30</span>
+                      </div>
+
+                      <div className="flex flex-col bg-stone-100/60 dark:bg-stone-900/60 p-2 rounded-lg border border-stone-200 dark:border-stone-800">
+                        <span className="text-stone-500 text-[10px]">Verglasung:</span>
+                        <span className="font-mono font-bold text-[11px] text-stone-900 dark:text-white truncate">
+                          {windowThermal.label}
+                        </span>
+                        <span className="text-[9px] text-blue-600 dark:text-blue-400 font-semibold">
+                          Warm-Edge Randverbund
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex justify-end pt-1">
                   <button
