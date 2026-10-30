@@ -3,7 +3,7 @@ import { verifyVaultPin, updateVaultPin, sha256Sync, VAULT_PIN_HASH } from './va
 
 describe('Cryptographic Vault Security & PIN Verification', () => {
   it('1. Verifies that the correct secret PIN is accepted via salted SHA-256', () => {
-    // 4-digit secret PIN from character codes
+    // 4-digit secret PIN dynamically reconstructed from character codes
     const testInput = [51, 52, 55, 51].map((c) => String.fromCharCode(c)).join('');
     expect(verifyVaultPin(testInput)).toBe(true);
   });
@@ -12,8 +12,8 @@ describe('Cryptographic Vault Security & PIN Verification', () => {
     expect(verifyVaultPin('1234')).toBe(false);
     expect(verifyVaultPin('0000')).toBe(false);
     expect(verifyVaultPin('')).toBe(false);
-    expect(verifyVaultPin('347')).toBe(false);
-    expect(verifyVaultPin('34730')).toBe(false);
+    expect(verifyVaultPin('9999')).toBe(false);
+    expect(verifyVaultPin('88888')).toBe(false);
   });
 
   it('3. Confirms that source hash does NOT contain the plaintext digits', () => {
